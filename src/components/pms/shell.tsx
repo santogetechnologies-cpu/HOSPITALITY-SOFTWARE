@@ -76,7 +76,6 @@ const NAV: { section: string; items: NavItem[] }[] = [
       { to: "/billing", label: "Billing & Finance", icon: Receipt, roles: ["manager", "accounts", "frontdesk"] },
       { to: "/night-audit", label: "Night Audit", icon: Moon, roles: ["manager", "accounts"] },
       { to: "/revenue", label: "Revenue", icon: TrendingUp, roles: ["manager", "accounts"] },
-      { to: "/pos", label: "POS / Restaurant", icon: UtensilsCrossed },
       { to: "/banquet", label: "Banquet & Events", icon: PartyPopper },
       { to: "/channel-manager", label: "Channel Manager", icon: Globe, roles: ["manager", "frontdesk"] },
     ],
@@ -101,7 +100,6 @@ const QUICK_ACTIONS: { label: string; to: string; icon: React.ComponentType<{ cl
   { label: "Add Guest", to: "/guests", icon: Users },
   { label: "Maintenance Request", to: "/housekeeping", icon: Settings },
   { label: "Housekeeping Task", to: "/housekeeping", icon: Sparkles },
-  { label: "Restaurant Order", to: "/pos", icon: UtensilsCrossed },
   { label: "Expense", to: "/billing", icon: Receipt },
 ];
 
