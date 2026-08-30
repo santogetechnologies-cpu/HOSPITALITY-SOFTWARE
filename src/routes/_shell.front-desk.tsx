@@ -1,54 +1,60 @@
 import * as React from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { EmptyState, KpiCard, PageHeader, Panel, Pill } from "@/components/pms/bits";
 import { usePms } from "@/lib/pms-store";
-import { toast } from "sonner";
 import { inr } from "@/lib/pms-data";
-import { LogIn, LogOut, Users, DoorOpen, Plus } from "lucide-react";
+import { toast } from "sonner";
+import { LogIn, LogOut, Plus, Users, DoorOpen, CheckCircle2, AlertCircle } from "lucide-react";
 
 export const Route = createFileRoute("/_shell/front-desk")({
   head: () => ({
     meta: [
-      { title: "Front Desk — DRB Hotel PMS" },
-      { name: "description", content: "Fast DRB Hotel front desk workflows: check-in queue, departures, walk-ins, room transfers and upgrades." },
-      { property: "og:title", content: "DRB Hotel — Front Desk" },
+      { title: "Front Desk & Check-In — DRB Hotel PMS" },
+      { name: "description", content: "Front desk arrivals queue, room assignments, departures, and walk-in bookings." },
     ],
   }),
   component: FrontDesk,
 });
 
-const HK_CHECKLIST = [
-  "Welcome letter",
-  "Towels & robes",
-  "Minibar restocked",
-  "AC & Lights test"
-];
+const HK_CHECKLIST = ["Keycards encoded", "ID verified & scanned", "Registration card signed", "Deposit settled"];
 
 function FrontDesk() {
-  const { reservations, rooms, checkIn, checkOut, transferRoom, addRoomReservation, assignGuestToRoom, guests } = usePms();
+  const { rooms, reservations, guests, payments, checkIn, checkOut, addRoomReservation, settlePayment } = usePms();
+
+  const arrivals = reservations.filter((r) => r.status === "CONFIRMED" || r.status === "PENDING");
+  const inHouse = reservations.filter((r) => r.status === "OCCUPIED");
+  const vacant = rooms.filter((r) => r.status === "AVAILABLE");
+
   const [selected, setSelected] = React.useState<string | null>(null);
-  const [walkIn, setWalkIn] = React.useState({ name: "", phone: "", email: "", room: "", nights: "1", amount: "" });
-  
-  const roomReservations = reservations.filter(r => r.resource_type === 'ROOM');
-  const arrivals = roomReservations.filter((r) => r.status === "CONFIRMED" || r.status === "PENDING");
-  const inHouse = roomReservations.filter((r) => r.status === "OCCUPIED");
-  
-  const res = roomReservations.find((r) => r.id === selected) ?? null;
-  const resGuest = res ? guests.find(g => g.id === res.guest_id) : null;
-  const resRoom = res ? rooms.find(rm => rm.id === rm.id) : null;
+  const res = reservations.find((r) => r.id === selected) ?? null;
+  const resGuest = res ? guests.find((g) => g.id === res.guest_id) : null;
+  const resRoom = res ? rooms.find((r) => r.id === res.room_id) : null;
 
-  const vacant = rooms.filter((r) => r.status === "AVAILABLE" || r.status === "DIRTY");
+  const [checkinPayAmount, setCheckinPayAmount] = React.useState("");
+  const [checkinPayMethod, setCheckinPayMethod] = React.useState<"CASH" | "UPI" | "CARD" | "BANK_TRANSFER">("CASH");
 
-  const getGuestName = (guestId: string) => guests.find(g => g.id === guestId)?.name || "Unknown";
+  const getGuestName = (guestId: string) => guests.find(g => g.id === guestId)?.name || "Guest";
+  const getGuestPhone = (guestId: string) => guests.find(g => g.id === guestId)?.phone;
   const getRoomNum = (roomId?: string) => rooms.find(r => r.id === roomId)?.room_number || "TBD";
+
+  const getReservationPayment = (resId: string) => payments.find(p => p.reservation_id === resId);
+
+  const getReservationFinancials = (r: typeof reservations[0]) => {
+    const p = getReservationPayment(r.id);
+    const total = Number(p?.total_amount) || Number(r.base_amount) || 0;
+    const paid = Number(p?.paid_amount) || 0;
+    const balance = total - paid > 0 ? total - paid : 0;
+    const isPaid = balance === 0 && total > 0;
+    return { total, paid, balance, isPaid, payment: p };
+  };
 
   const [bookingOpen, setBookingOpen] = React.useState(false);
   const [b, setB] = React.useState({
@@ -69,6 +75,22 @@ function FrontDesk() {
     } else {
       toast.error(res?.error || "Failed to book room");
     }
+  };
+
+  const handleCompleteCheckIn = async () => {
+    if (!res || !res.room_id) return;
+    const { balance } = getReservationFinancials(res);
+
+    // If there is an unpaid balance and staff entered an amount, settle it
+    const payAmt = parseFloat(checkinPayAmount);
+    if (balance > 0 && !isNaN(payAmt) && payAmt > 0) {
+      await settlePayment(res.id, payAmt, checkinPayMethod);
+    }
+
+    await checkIn(res.id, res.room_id);
+    toast.success(`${resGuest?.name || 'Guest'} checked in to Room ${resRoom?.room_number}`);
+    setSelected(null);
+    setCheckinPayAmount("");
   };
 
   return (
@@ -93,31 +115,70 @@ function FrontDesk() {
 
       <Tabs defaultValue="checkin">
         <TabsList className="rounded-xl">
-          <TabsTrigger value="checkin" className="rounded-lg">Check-In Queue</TabsTrigger>
-          <TabsTrigger value="checkout" className="rounded-lg">Departures</TabsTrigger>
+          <TabsTrigger value="checkin" className="rounded-lg">
+            Check-In Queue ({arrivals.length})
+          </TabsTrigger>
+          <TabsTrigger value="checkout" className="rounded-lg">
+            Departures ({inHouse.length})
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="checkin" className="mt-5">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {arrivals.map((r) => {
               const gName = getGuestName(r.guest_id);
+              const gPhone = getGuestPhone(r.guest_id);
               const rmNum = getRoomNum(r.room_id);
+              const { total, paid, balance, isPaid } = getReservationFinancials(r);
+
               return (
-                <div key={r.id} className="card-premium hover-lift p-5">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="flex items-center gap-2 text-base font-semibold">{gName}</div>
-                      <div className="text-xs text-muted-foreground">{r.id.slice(0, 8).toUpperCase()}</div>
+                <div key={r.id} className="card-premium hover-lift p-5 flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="flex items-center gap-2 text-base font-semibold">{gName}</div>
+                        <div className="text-xs text-muted-foreground font-mono">{r.id.slice(0, 8).toUpperCase()} {gPhone ? `· ${gPhone}` : ''}</div>
+                      </div>
+                      {isPaid ? (
+                        <Pill tone="success">Paid in Full</Pill>
+                      ) : paid > 0 ? (
+                        <Pill tone="info">Partial Paid</Pill>
+                      ) : (
+                        <Pill tone="warning">Pending Due</Pill>
+                      )}
                     </div>
-                    <Pill tone="warning">Pending</Pill>
+
+                    <dl className="mt-4 grid grid-cols-2 gap-2 text-xs">
+                      <div className="rounded-lg bg-secondary/60 p-2">
+                        <dt className="text-muted-foreground">Room</dt>
+                        <dd className="font-semibold">{rmNum}</dd>
+                      </div>
+                      <div className="rounded-lg bg-secondary/60 p-2">
+                        <dt className="text-muted-foreground">Arrival</dt>
+                        <dd className="font-semibold">{r.booking_date}</dd>
+                      </div>
+                      <div className="rounded-lg bg-secondary/60 p-2">
+                        <dt className="text-muted-foreground">Total Bill</dt>
+                        <dd className="font-semibold">{inr(total)}</dd>
+                      </div>
+                      <div className="rounded-lg bg-secondary/60 p-2">
+                        <dt className="text-muted-foreground">Pending Balance</dt>
+                        <dd className={balance > 0 ? "font-bold text-warning" : "font-semibold text-success"}>
+                          {balance > 0 ? inr(balance) : "₹0.00 (Settled)"}
+                        </dd>
+                      </div>
+                    </dl>
                   </div>
-                  <dl className="mt-4 grid grid-cols-2 gap-2 text-xs">
-                    <div className="rounded-lg bg-secondary/60 p-2"><dt className="text-muted-foreground">Room</dt><dd className="font-semibold">{rmNum}</dd></div>
-                    <div className="rounded-lg bg-secondary/60 p-2"><dt className="text-muted-foreground">Arrival</dt><dd className="font-semibold">{r.booking_date}</dd></div>
-                    <div className="rounded-lg bg-secondary/60 p-2"><dt className="text-muted-foreground">Status</dt><dd className="font-semibold">{r.status}</dd></div>
-                    <div className="rounded-lg bg-secondary/60 p-2"><dt className="text-muted-foreground">Balance</dt><dd className="font-semibold">{inr(r.base_amount)}</dd></div>
-                  </dl>
-                  <Button className="mt-4 w-full rounded-xl bg-brass text-gold-foreground hover:opacity-90" onClick={() => setSelected(r.id)}>Start Check In</Button>
+
+                  <Button 
+                    className="mt-4 w-full rounded-xl bg-brass text-gold-foreground hover:opacity-90" 
+                    onClick={() => {
+                      setSelected(r.id);
+                      setCheckinPayAmount(String(balance > 0 ? balance : 0));
+                    }}
+                  >
+                    Start Check In
+                  </Button>
                 </div>
               );
             })}
@@ -128,76 +189,157 @@ function FrontDesk() {
         <TabsContent value="checkout" className="mt-5">
           <Panel bodyClassName="p-0">
             <Table>
-              <TableHeader><TableRow><TableHead>Guest</TableHead><TableHead>Room</TableHead><TableHead>Checkout Date</TableHead><TableHead>Base Amount</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Guest & Contact</TableHead>
+                  <TableHead>Room</TableHead>
+                  <TableHead>Total Bill</TableHead>
+                  <TableHead>Paid</TableHead>
+                  <TableHead>Outstanding Balance</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
+                </TableRow>
+              </TableHeader>
               <TableBody>
                 {inHouse.map((r) => {
                   const gName = getGuestName(r.guest_id);
+                  const gPhone = getGuestPhone(r.guest_id);
                   const rmNum = getRoomNum(r.room_id);
+                  const { total, paid, balance } = getReservationFinancials(r);
+
                   return (
                     <TableRow key={r.id}>
-                      <TableCell className="font-medium">{gName}</TableCell>
-                      <TableCell className="tabular-nums">{rmNum}</TableCell>
-                      <TableCell>{r.end_time ? new Date(r.end_time).toLocaleDateString() : r.booking_date}</TableCell>
-                      <TableCell>{inr(r.base_amount)}</TableCell>
+                      <TableCell>
+                        <div className="font-semibold">{gName}</div>
+                        <div className="text-xs text-muted-foreground">{gPhone || "—"}</div>
+                      </TableCell>
+                      <TableCell className="font-semibold tabular-nums">Room {rmNum}</TableCell>
+                      <TableCell className="font-medium">{inr(total)}</TableCell>
+                      <TableCell className="text-success font-medium">{inr(paid)}</TableCell>
+                      <TableCell className={balance > 0 ? "font-bold text-warning" : "text-success font-medium"}>
+                        {balance > 0 ? inr(balance) : "₹0.00 (Settled)"}
+                      </TableCell>
                       <TableCell className="text-right">
-                        <Button size="sm" variant="outline" className="rounded-lg" onClick={() => { checkOut(r.id); toast.success(`${gName} checked out`); }}>Check Out</Button>
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          className="rounded-lg" 
+                          onClick={async () => {
+                            if (balance > 0) {
+                              if (!confirm(`This guest has an outstanding balance of ${inr(balance)}. Proceed to check out and mark room for housekeeping?`)) return;
+                            }
+                            await checkOut(r.id); 
+                            toast.success(`${gName} checked out · Room ${rmNum} moved to Housekeeping`); 
+                          }}
+                        >
+                          Check Out
+                        </Button>
                       </TableCell>
                     </TableRow>
                   );
                 })}
               </TableBody>
             </Table>
+            {!inHouse.length && (
+              <div className="p-8">
+                <EmptyState title="No In-House Departures" body="All active guest folios are currently checked in." icon={LogOut} />
+              </div>
+            )}
           </Panel>
         </TabsContent>
       </Tabs>
 
+      {/* Check-In Modal */}
       <Dialog open={!!res} onOpenChange={(o: boolean) => { if (!o) setSelected(null); }}>
         <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Check in · {resGuest?.name}</DialogTitle>
-            <DialogDescription>{res?.id} · {resRoom?.room_number}</DialogDescription>
+            <DialogTitle>Check In · {resGuest?.name}</DialogTitle>
+            <DialogDescription>Room {resRoom?.room_number} · Arrival Confirmation #{res?.id.slice(0, 8).toUpperCase()}</DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="rounded-xl border border-border p-3"><div className="eyebrow">Guest</div><div className="mt-1 text-sm font-medium">{resGuest?.name}</div><div className="text-xs text-muted-foreground">{resGuest?.phone || "No phone"}</div></div>
-            <div className="rounded-xl border border-border p-3"><div className="eyebrow">ID document</div><div className="mt-2 grid h-16 place-items-center rounded-lg bg-secondary text-[10px] uppercase tracking-widest text-muted-foreground">Pending Scan</div></div>
-            <div className="space-y-2"><Label>Room assignment</Label>
-              <Select defaultValue={res?.room_id ?? ""}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {res?.room_id && <SelectItem value={res.room_id}>{resRoom?.room_number}</SelectItem>}
-                  {vacant.map((v) => <SelectItem key={v.id} value={v.id}>{v.room_number}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2"><Label>Deposit collected (₹)</Label><Input defaultValue={res?.base_amount} /></div>
-            <div className="space-y-2 sm:col-span-2"><Label>Payment method</Label>
-              <Select defaultValue="Card">
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>{["Card", "UPI", "Cash", "Bank transfer", "City ledger"].map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div className="sm:col-span-2">
-              <div className="eyebrow mb-2">Arrival checklist</div>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {HK_CHECKLIST.map((c) => (
-                  <label key={c} className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"><Checkbox defaultChecked /> {c} verified</label>
-                ))}
+
+          {res && (() => {
+            const { total, paid, balance, isPaid } = getReservationFinancials(res);
+
+            return (
+              <div className="space-y-4 pt-2">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="rounded-xl border border-border p-3">
+                    <div className="text-xs font-semibold uppercase text-gold">Guest Details</div>
+                    <div className="mt-1 text-sm font-semibold">{resGuest?.name}</div>
+                    <div className="text-xs text-muted-foreground">{resGuest?.phone || "No phone on record"}</div>
+                  </div>
+
+                  <div className="rounded-xl border border-border p-3">
+                    <div className="text-xs font-semibold uppercase text-gold">Room Assignment</div>
+                    <div className="mt-1 text-sm font-semibold">Room {resRoom?.room_number || "TBD"} ({resRoom?.room_name || "Standard"})</div>
+                    <div className="text-xs text-muted-foreground">Floor {resRoom?.floor || "1"}</div>
+                  </div>
+                </div>
+
+                {/* Financial Breakdown */}
+                <div className="rounded-xl border border-border bg-secondary/30 p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-xs text-muted-foreground">Total Bill: {inr(total)}</div>
+                      <div className="text-xs text-success font-medium">Already Paid: {inr(paid)}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[10px] uppercase font-semibold text-muted-foreground">Balance Due</div>
+                      <div className={balance > 0 ? "text-xl font-bold text-warning" : "text-xl font-bold text-success flex items-center gap-1 justify-end"}>
+                        {balance > 0 ? inr(balance) : <><CheckCircle2 className="size-5 text-success inline" /> Settled (₹0.00)</>}
+                      </div>
+                    </div>
+                  </div>
+
+                  {balance > 0 && (
+                    <div className="mt-4 pt-3 border-t border-border grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Collect Balance on Check-in (₹)</Label>
+                        <Input 
+                          type="number" 
+                          value={checkinPayAmount} 
+                          onChange={(e) => setCheckinPayAmount(e.target.value)} 
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Payment Method</Label>
+                        <Select value={checkinPayMethod} onValueChange={(v: any) => setCheckinPayMethod(v)}>
+                          <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="CASH">Cash</SelectItem>
+                            <SelectItem value="UPI">UPI / QR</SelectItem>
+                            <SelectItem value="CARD">Credit / Debit Card</SelectItem>
+                            <SelectItem value="BANK_TRANSFER">Bank Transfer</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <div className="text-xs font-semibold uppercase text-gold mb-2">Arrival Checkpoints</div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {HK_CHECKLIST.map((c) => (
+                      <label key={c} className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs">
+                        <Checkbox defaultChecked /> {c}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-3 border-t border-border">
+                  <Button variant="ghost" onClick={() => setSelected(null)}>Cancel</Button>
+                  <Button className="bg-brass text-gold-foreground hover:opacity-90" onClick={handleCompleteCheckIn}>
+                    Complete Check-In
+                  </Button>
+                </div>
               </div>
-            </div>
-          </div>
-          <div className="flex justify-end gap-3 pt-4">
-            <Button variant="ghost" onClick={() => setSelected(null)}>Cancel</Button>
-            <Button className="bg-brass text-gold-foreground hover:opacity-90" onClick={() => {
-              if (res && res.room_id) {
-                checkIn(res.id, res.room_id);
-                toast.success(`${resGuest?.name} checked in to room ${resRoom?.room_number}`);
-                setSelected(null);
-              }
-            }}>Complete Check-In</Button>
-          </div>
+            );
+          })()}
         </DialogContent>
       </Dialog>
 
+      {/* New Room Booking Dialog */}
       <Dialog open={bookingOpen} onOpenChange={setBookingOpen}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
@@ -205,11 +347,11 @@ function FrontDesk() {
             <DialogDescription>Book a room for a walk-in or phone reservation</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2"><Label>Guest name</Label><Input value={b.guestName} onChange={(e) => setB({ ...b, guestName: e.target.value })} placeholder="Guest name" /></div>
-            <div className="space-y-2"><Label>Phone</Label><Input value={b.phone} onChange={(e) => setB({ ...b, phone: e.target.value })} placeholder="Phone number" /></div>
-            <div className="space-y-2"><Label>Email</Label><Input type="email" value={b.email} onChange={(e) => setB({ ...b, email: e.target.value })} placeholder="Email address" /></div>
+            <div className="space-y-2"><Label>Guest name *</Label><Input value={b.guestName} onChange={(e) => setB({ ...b, guestName: e.target.value })} placeholder="e.g. Rajesh Sharma" /></div>
+            <div className="space-y-2"><Label>Phone</Label><Input value={b.phone} onChange={(e) => setB({ ...b, phone: e.target.value })} placeholder="+91 98765 43210" /></div>
+            <div className="space-y-2"><Label>Email</Label><Input type="email" value={b.email} onChange={(e) => setB({ ...b, email: e.target.value })} placeholder="guest@example.com" /></div>
             <div className="space-y-2"><Label>ID Verification Number</Label><Input value={(b as any).idNumber || ""} onChange={(e) => setB({ ...b, idNumber: e.target.value } as any)} placeholder="Passport, Aadhaar, etc." /></div>
-            <div className="space-y-2"><Label>Room</Label>
+            <div className="space-y-2"><Label>Room *</Label>
               <Select value={b.roomId} onValueChange={(v) => {
                 const room = rooms.find(r => r.id === v);
                 if (room) setB({ ...b, roomId: v, baseAmount: room.price, totalAmount: room.price * b.nights });
@@ -224,8 +366,8 @@ function FrontDesk() {
                 setB({ ...b, nights, totalAmount: b.baseAmount * nights });
               }} />
             </div>
-            <div className="space-y-2"><Label>Total Amount</Label><Input type="number" value={b.totalAmount} onChange={(e) => setB({ ...b, totalAmount: parseFloat(e.target.value) })} /></div>
-            <div className="space-y-2"><Label>Paid Amount (Deposit)</Label><Input type="number" value={b.paidAmount} onChange={(e) => setB({ ...b, paidAmount: parseFloat(e.target.value) || 0 })} /></div>
+            <div className="space-y-2"><Label>Total Amount (₹)</Label><Input type="number" value={b.totalAmount} onChange={(e) => setB({ ...b, totalAmount: parseFloat(e.target.value) || 0 })} /></div>
+            <div className="space-y-2"><Label>Paid Amount / Deposit (₹)</Label><Input type="number" value={b.paidAmount} onChange={(e) => setB({ ...b, paidAmount: parseFloat(e.target.value) || 0 })} /></div>
             <div className="space-y-2 sm:col-span-2"><Label>Payment Method</Label>
               <Select value={b.paymentMethod} onValueChange={(v) => setB({ ...b, paymentMethod: v })}>
                 <SelectTrigger><SelectValue placeholder="Payment Method" /></SelectTrigger>
@@ -239,7 +381,7 @@ function FrontDesk() {
               </Select>
             </div>
           </div>
-          <div className="flex justify-end gap-3 pt-4">
+          <div className="flex justify-end gap-3 pt-4 border-t border-border">
             <Button variant="ghost" onClick={() => setBookingOpen(false)}>Cancel</Button>
             <Button onClick={handleBooking} className="bg-brass text-gold-foreground hover:opacity-90">Confirm Booking</Button>
           </div>
