@@ -191,7 +191,7 @@ function FrontDesk() {
       </Dialog>
 
       <Dialog open={bookingOpen} onOpenChange={setBookingOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-3xl">
           <DialogHeader>
             <DialogTitle>New Room Reservation</DialogTitle>
             <DialogDescription>Book a room for a walk-in or phone reservation</DialogDescription>
@@ -199,7 +199,8 @@ function FrontDesk() {
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2"><Label>Guest name</Label><Input value={b.guestName} onChange={(e) => setB({ ...b, guestName: e.target.value })} placeholder="Guest name" /></div>
             <div className="space-y-2"><Label>Phone</Label><Input value={b.phone} onChange={(e) => setB({ ...b, phone: e.target.value })} placeholder="Phone number" /></div>
-            <div className="space-y-2 sm:col-span-2"><Label>Email</Label><Input type="email" value={b.email} onChange={(e) => setB({ ...b, email: e.target.value })} placeholder="Email address" /></div>
+            <div className="space-y-2"><Label>Email</Label><Input type="email" value={b.email} onChange={(e) => setB({ ...b, email: e.target.value })} placeholder="Email address" /></div>
+            <div className="space-y-2"><Label>ID Verification Number</Label><Input value={(b as any).idNumber || ""} onChange={(e) => setB({ ...b, idNumber: e.target.value } as any)} placeholder="Passport, Aadhaar, etc." /></div>
             <div className="space-y-2"><Label>Room</Label>
               <Select value={b.roomId} onValueChange={(v) => {
                 const room = rooms.find(r => r.id === v);

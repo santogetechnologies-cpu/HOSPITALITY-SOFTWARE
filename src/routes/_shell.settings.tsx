@@ -9,9 +9,11 @@ import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PageHeader, Panel } from "@/components/pms/bits";
+import { Pill } from "@/components/pms/pill";
 import { usePms } from "@/lib/pms-store";
-import { inr, ROOM_TYPES } from "@/lib/pms-data";
-import { Plus } from "lucide-react";
+import { useSettings } from "@/lib/use-settings";
+import { inr } from "@/lib/pms-data";
+import { Plus, Building2, Layers } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -30,10 +32,14 @@ const SECTIONS = ["Hotel Profile", "Rooms", "Policies", "Notifications", "Integr
 
 function SettingsPage() {
   const { rooms, addRoom } = usePms();
+  const { settings, addFloor, removeFloor, addRoomType, removeRoomType } = useSettings();
+  
   const [active, setActive] = React.useState("Hotel Profile");
   
   const [addRoomOpen, setAddRoomOpen] = React.useState(false);
-  const [r, setR] = React.useState({ number: "", type: "Deluxe King", floor: "1", price: 0 });
+  const [r, setR] = React.useState({ number: "", type: "", floor: "", price: 0 });
+  const [newFloor, setNewFloor] = React.useState("");
+  const [newType, setNewType] = React.useState({ name: "", price: "" });
 
   const handleAddRoom = async () => {
     if (!r.number || !r.price) return toast.error("Number and Price are required");
@@ -65,16 +71,50 @@ function SettingsPage() {
               <div className="sm:col-span-2"><Button className="rounded-xl bg-brass text-gold-foreground hover:opacity-90" onClick={() => toast.success("Hotel profile saved")}>Save changes</Button></div>
             </div>
           ) : active === "Rooms" ? (
-            <div className="space-y-4">
-              <div className="flex justify-end">
-                <Button onClick={() => setAddRoomOpen(true)} className="rounded-xl bg-brass text-gold-foreground shadow-brass hover:opacity-90">
-                  <Plus className="mr-2 size-4" /> Add Room
-                </Button>
+            <div className="space-y-8">
+              <div className="grid gap-6 md:grid-cols-2">
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 font-medium"><Layers className="size-4" /> Configured Floors</div>
+                  <div className="flex flex-wrap gap-2">
+                    {settings.floors.map(f => (
+                      <Pill key={f} tone="secondary" className="cursor-pointer hover:bg-destructive/10" onClick={() => removeFloor(f)}>{f} &times;</Pill>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <Input value={newFloor} onChange={e => setNewFloor(e.target.value)} placeholder="New floor..." className="h-8" />
+                    <Button size="sm" onClick={() => { if(newFloor) { addFloor(newFloor); setNewFloor(""); } }}>Add</Button>
+                  </div>
+                </div>
+                
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 font-medium"><Building2 className="size-4" /> Room Types</div>
+                  <div className="flex flex-wrap gap-2">
+                    {settings.roomTypes.map(t => (
+                      <Pill key={t.id} tone="secondary" className="cursor-pointer hover:bg-destructive/10" onClick={() => removeRoomType(t.id)}>{t.name} ({inr(t.basePrice)}) &times;</Pill>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <Input value={newType.name} onChange={e => setNewType({...newType, name: e.target.value})} placeholder="Type name..." className="h-8 w-1/2" />
+                    <Input type="number" value={newType.price} onChange={e => setNewType({...newType, price: e.target.value})} placeholder="Base ₹" className="h-8 w-1/4" />
+                    <Button size="sm" onClick={() => { if(newType.name) { addRoomType(newType.name, parseFloat(newType.price)||0); setNewType({name: "", price: ""}); } }}>Add</Button>
+                  </div>
+                </div>
               </div>
-              <Table>
-                <TableHeader><TableRow><TableHead>Room</TableHead><TableHead>Type</TableHead><TableHead>Floor</TableHead><TableHead className="text-right">Rate</TableHead></TableRow></TableHeader>
-                <TableBody>{rooms.map((room) => <TableRow key={room.id}><TableCell>{room.room_number}</TableCell><TableCell>{room.room_name || room.room_type_id || "Room"}</TableCell><TableCell>{room.floor}</TableCell><TableCell className="text-right">{inr(room.price)}</TableCell></TableRow>)}</TableBody>
-              </Table>
+
+              <Separator />
+
+              <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <div className="font-medium">Active Rooms</div>
+                  <Button onClick={() => setAddRoomOpen(true)} className="rounded-xl bg-brass text-gold-foreground shadow-brass hover:opacity-90">
+                    <Plus className="mr-2 size-4" /> Add Room
+                  </Button>
+                </div>
+                <Table>
+                  <TableHeader><TableRow><TableHead>Room</TableHead><TableHead>Type</TableHead><TableHead>Floor</TableHead><TableHead className="text-right">Rate</TableHead></TableRow></TableHeader>
+                  <TableBody>{rooms.map((room) => <TableRow key={room.id}><TableCell>{room.room_number || (room as any).number}</TableCell><TableCell>{room.room_type_id || (room as any).type || "Room"}</TableCell><TableCell>{room.floor}</TableCell><TableCell className="text-right">{inr(room.price || (room as any).rate)}</TableCell></TableRow>)}</TableBody>
+                </Table>
+              </div>
             </div>
           ) : (
             <div className="space-y-3">
@@ -97,13 +137,24 @@ function SettingsPage() {
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="space-y-2"><Label>Room Number</Label><Input value={r.number} onChange={e => setR({...r, number: e.target.value})} placeholder="e.g. 101" /></div>
-            <div className="space-y-2"><Label>Floor</Label><Input value={r.floor} onChange={e => setR({...r, floor: e.target.value})} placeholder="e.g. 1" /></div>
+            <div className="space-y-2"><Label>Floor</Label>
+              <Select value={r.floor} onValueChange={v => setR({...r, floor: v})}>
+                <SelectTrigger><SelectValue placeholder="Select floor..." /></SelectTrigger>
+                <SelectContent>
+                  {settings.floors.map(f => <SelectItem key={f} value={f}>{f}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="space-y-2"><Label>Room Category</Label>
-              <Input 
-                value={r.type} 
-                onChange={e => setR({...r, type: e.target.value})} 
-                placeholder="e.g. Deluxe King, Suite, etc." 
-              />
+              <Select value={r.type} onValueChange={v => {
+                const rt = settings.roomTypes.find(t => t.name === v);
+                setR({...r, type: v, price: rt ? rt.basePrice : r.price});
+              }}>
+                <SelectTrigger><SelectValue placeholder="Select type..." /></SelectTrigger>
+                <SelectContent>
+                  {settings.roomTypes.map(rt => <SelectItem key={rt.id} value={rt.name}>{rt.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2"><Label>Base Rate (₹)</Label><Input type="number" value={r.price} onChange={e => setR({...r, price: parseFloat(e.target.value)})} /></div>
           </div>

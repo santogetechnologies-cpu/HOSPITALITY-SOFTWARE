@@ -654,7 +654,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
 
       addRoom: async (number, type, floor, price) => {
         const id = `room-${Date.now()}`;
-        await supabase.from('rooms').insert({
+        const { error } = await supabase.from('rooms').insert({
           id,
           number,
           floor: parseInt(floor) || 1,
@@ -663,6 +663,12 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
           status: 'vacant-clean',
           created_at: new Date().toISOString()
         });
+        if (error) {
+          console.error("Error creating room", error);
+          toast.error(`Failed to create room: ${error.message}`);
+          return;
+        }
+        toast.success(`Room ${number} created successfully`);
         fetchData();
       }
     };
