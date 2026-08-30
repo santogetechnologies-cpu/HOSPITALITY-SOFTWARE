@@ -246,6 +246,7 @@ function RoomsPage() {
                         <span className={cn("size-2 rounded-full", STATUS_META[room.status].dot)} />
                         <span className="font-semibold tabular-nums">{room.room_number}</span>
                       </button>
+                      {DATES.map((d, i) => {
                         const booking = res.find((r) => {
                           const date = new Date(r.booking_date);
                           // mock check: if booking date matches current column date roughly
