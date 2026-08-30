@@ -8,8 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { PageHeader, Panel } from "@/components/pms/bits";
-import { Pill } from "@/components/pms/pill";
+import { PageHeader, Panel, Pill } from "@/components/pms/bits";
 import { usePms } from "@/lib/pms-store";
 import { useSettings } from "@/lib/use-settings";
 import { inr } from "@/lib/pms-data";
@@ -43,10 +42,14 @@ function SettingsPage() {
 
   const handleAddRoom = async () => {
     if (!r.number || !r.price) return toast.error("Number and Price are required");
-    await addRoom(r.number, r.type, r.floor, r.price);
-    setAddRoomOpen(false);
-    toast.success("Room added successfully");
-    setR({ number: "", type: "Deluxe King", floor: "1", price: 0 });
+    const res = await addRoom(r.number, r.type, r.floor, r.price);
+    if (res?.success) {
+      toast.success(`Room ${r.number} added successfully`);
+      setAddRoomOpen(false);
+      setR({ number: "", type: "", floor: "", price: 0 });
+    } else if (res?.error) {
+      toast.error(res.error);
+    }
   };
 
   return (

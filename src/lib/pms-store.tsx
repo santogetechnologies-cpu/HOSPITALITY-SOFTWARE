@@ -665,11 +665,10 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         });
         if (error) {
           console.error("Error creating room", error);
-          toast.error(`Failed to create room: ${error.message}`);
-          return;
+          return { success: false, error: error.message };
         }
-        toast.success(`Room ${number} created successfully`);
         fetchData();
+        return { success: true };
       }
     };
   }, [state, fetchData]);
