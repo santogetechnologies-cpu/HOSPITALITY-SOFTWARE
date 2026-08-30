@@ -124,10 +124,10 @@ function LoginPage() {
             </div>
           </div>
 
-          <div className="eyebrow">{isSignUp ? "Admin Setup" : "Staff sign in"}</div>
-          <h2 className="mt-2 text-3xl font-semibold">{isSignUp ? "Create Super Admin" : "Welcome back"}</h2>
+          <div className="eyebrow">Staff Sign In</div>
+          <h2 className="mt-2 text-3xl font-semibold">Welcome back</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            {isSignUp ? "Register the first account to take full control of the property." : "Sign in to access your property management workspace."}
+            Sign in to access your property management workspace.
           </p>
 
           <form onSubmit={submit} className="mt-7 space-y-4">
@@ -152,7 +152,7 @@ function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                autoComplete={isSignUp ? "new-password" : "current-password"}
+                autoComplete="current-password"
                 className="h-11"
                 required
               />
