@@ -53,7 +53,7 @@ export const Route = createFileRoute("/_shell/dashboard")({
 });
 
 function Dashboard() {
-  const { rooms, reservations, hkTasks, session, checkIn, checkOut, setTaskStage } = usePms();
+  const { rooms, reservations, hkTasks, session, checkIn, checkOut, setTaskStage, seedDatabase } = usePms();
   const navigate = useNavigate();
   const [openRoom, setOpenRoom] = React.useState<Room | null>(null);
 
@@ -86,6 +86,9 @@ function Dashboard() {
         subtitle="Wednesday, 12 August 2026 · Business date open · 25 keys"
         actions={
           <>
+            <Button variant="outline" className="rounded-xl border-dashed border-gold text-gold hover:bg-gold/10" onClick={seedDatabase}>
+              Seed Database
+            </Button>
             <Button variant="outline" className="rounded-xl" onClick={() => void navigate({ to: "/front-desk" })}>
               Front Desk
             </Button>
