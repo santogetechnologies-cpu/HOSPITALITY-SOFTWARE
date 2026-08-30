@@ -330,14 +330,13 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
       
       addRoomReservation: async (b) => {
         try {
-          // 1. Insert Guest
+          // 1. Insert Guest (using columns guaranteed to exist on guests table)
           const guestId = crypto.randomUUID();
           const { error: gErr } = await supabase.from('guests').insert({
             id: guestId,
             name: b.guestName,
-            phone: b.phone,
-            email: b.email || null,
-            last_stay: b.date || new Date().toISOString().split('T')[0]
+            phone: b.phone || null,
+            email: b.email || null
           });
           if (gErr) throw gErr;
 
@@ -422,6 +421,8 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
       
       addEvent: (e) => patch((s) => ({ events: [{ ...e, id: `EV-${s.events.length + 1}` }, ...s.events] })),
       
+      addPayment: (p) => patch((s) => ({ payments: [{ ...p, id: `PAY-${s.payments.length + 1}` }, ...s.payments] })),
+
       addGuest: async (g) => {
         try {
           const id = crypto.randomUUID();
@@ -430,13 +431,8 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             name: g.name, 
             email: g.email || null,
             phone: g.phone || null,
-            country: g.country || null,
-            last_stay: new Date().toISOString().split('T')[0],
-            stays: Number(g.stays) || 0,
-            spend: Number(g.spend) || 0,
-            type: g.type || 'Individual',
-            vip: Boolean(g.vip),
-            preferences: g.preferences || [],
+            address: g.address || null,
+            id_number: g.id_number || null,
             notes: g.notes || null
           });
           if (error) {
