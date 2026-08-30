@@ -93,10 +93,9 @@ type Ctx = State & {
   checkIn: (reservationId: string, roomNumber?: string) => void;
   checkOut: (reservationId: string) => void;
   setReservationStatus: (id: string, status: ReservationStatus) => void;
-  addReservation: (r: Partial<Reservation> & { guest: string }) => Reservation;
+  setReservationStatus: (id: string, status: ReservationStatus) => void;
+  addRoomReservation: (booking: { guestName: string; phone: string; email: string; roomId: string; date: string; nights: number; baseAmount: number; totalAmount: number; paymentMethod: string; paidAmount: number; }) => Promise<{ success: boolean; error?: string }>;
   transferRoom: (reservationId: string, toRoom: string) => void;
-  setTaskStage: (taskId: string, stage: HkTask["stage"]) => void;
-  assignTask: (taskId: string, assignee: string) => void;
   addFolioLine: (line: Omit<FolioLine, "id">) => void;
   addTicket: (t: Omit<Ticket, "id" | "raised">) => void;
   addOrder: (o: Omit<PosOrder, "id" | "time">) => void;
@@ -117,8 +116,10 @@ type Ctx = State & {
   addExpense: (amount: number, category: string, description: string) => Promise<void>;
   
   // Staff Mutators
+  addStaff: (name: string, role: string, phone: string) => Promise<void>;
   updateStaffRole: (profileId: string, role: string) => Promise<void>;
   toggleStaffStatus: (profileId: string) => Promise<void>;
+  deleteStaff: (profileId: string) => Promise<void>;
 };
 
 const PmsContext = React.createContext<Ctx | null>(null);
@@ -312,53 +313,51 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         await supabase.from('reservations').update({ status }).eq('id', id);
       },
       
-      addReservation: (r) => {
-        // A real app would return a Promise here, but keeping signature sync for UI compat.
-        const res: Reservation = {
-          id: `DRB-24${Math.floor(Math.random() * 800 + 100)}`,
-          guest: r.guest,
-          email: r.email ?? "guest@example.com",
-          phone: r.phone ?? "+91 90000 00000",
-          room: r.room ?? "—",
-          roomType: r.roomType ?? "Deluxe King",
-          arrival: r.arrival ?? "12 Aug 2026",
-          departure: r.departure ?? "14 Aug 2026",
-          nights: r.nights ?? 2,
-          adults: r.adults ?? 2,
-          ratePlan: r.ratePlan ?? "Best Flexible",
-          source: r.source ?? "Direct Website",
-          amount: r.amount ?? 9000,
-          paid: r.paid ?? 0,
-          payment: r.payment ?? "Pending",
-          status: r.status ?? "Confirmed",
-          eta: r.eta ?? "14:00",
-          vip: r.vip ?? false,
-        };
-        
-        // Optimistic
-        patch((s) => ({ reservations: [res, ...s.reservations] }));
-        
-        // Async push
-        supabase.from('reservations').insert({
-          id: res.id, guest_id: "G-1000", room_id: "room-101", arrival: '2026-08-12', departure: '2026-08-14', nights: res.nights, status: res.status
-        }).then(() => fetchData());
-        
-        return res;
+      addRoomReservation: async (b) => {
+        try {
+          // 1. Insert Guest
+          const guestId = crypto.randomUUID();
+          await supabase.from('guests').insert({
+            id: guestId, name: b.guestName, phone: b.phone, email: b.email
+          });
+
+          // 2. Insert Reservation
+          const resId = `RES-${Date.now().toString().slice(-6)}`;
+          await supabase.from('reservations').insert({
+            id: resId,
+            guest_id: guestId,
+            room_id: b.roomId,
+            resource_type: 'ROOM',
+            booking_date: b.date,
+            start_time: '14:00:00',
+            end_time: '11:00:00',
+            status: 'CONFIRMED',
+            base_amount: b.baseAmount
+          });
+
+          // 3. Update Room Status
+          await supabase.from('rooms').update({ status: 'BOOKED' }).eq('id', b.roomId);
+
+          // 4. Create Payment Folio
+          await supabase.from('payments').insert({
+            id: crypto.randomUUID(),
+            reservation_id: resId,
+            total_amount: b.totalAmount,
+            paid_amount: b.paidAmount,
+            status: b.paidAmount >= b.totalAmount ? 'COMPLETED' : b.paidAmount > 0 ? 'PARTIAL' : 'PENDING'
+          });
+
+          fetchData();
+          return { success: true };
+        } catch (err: any) {
+          console.error("Booking error:", err);
+          return { success: false, error: err.message || "Failed to create booking" };
+        }
       },
       
       transferRoom: async (reservationId, toRoom) => {
-        await supabase.from('reservations').update({ room: toRoom }).eq('id', reservationId);
+        await supabase.from('reservations').update({ room_id: toRoom }).eq('id', reservationId);
         fetchData();
-      },
-      
-      setTaskStage: async (taskId, stage) => {
-        patch((s) => ({ hkTasks: s.hkTasks.map((t) => (t.id === taskId ? { ...t, stage } : t)) }));
-        await supabase.from('hk_tasks').update({ stage }).eq('id', taskId);
-      },
-      
-      assignTask: async (taskId, assignee) => {
-        patch((s) => ({ hkTasks: s.hkTasks.map((t) => (t.id === taskId ? { ...t, assignee, stage: t.stage === 'Dirty' ? 'Assigned' : t.stage } : t)) }));
-        await supabase.from('hk_tasks').update({ assignee }).eq('id', taskId);
       },
       
       addFolioLine: async (line) => {
@@ -545,6 +544,12 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         fetchData();
       },
       
+      addStaff: async (name, role, phone) => {
+        const id = crypto.randomUUID();
+        await supabase.from('profiles').insert({ id, name, role, phone, status: 'ACTIVE' });
+        fetchData();
+      },
+      
       updateStaffRole: async (profileId, role) => {
         await supabase.from('profiles').update({ role }).eq('id', profileId);
         fetchData();
@@ -557,6 +562,11 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
           await supabase.from('profiles').update({ status: newStatus }).eq('id', profileId);
           fetchData();
         }
+      },
+
+      deleteStaff: async (profileId) => {
+        await supabase.from('profiles').delete().eq('id', profileId);
+        fetchData();
       }
     };
   }, [state, fetchData]);

@@ -53,7 +53,7 @@ export const Route = createFileRoute("/_shell/dashboard")({
 });
 
 function Dashboard() {
-  const { rooms, reservations, hkTasks, session, checkIn, checkOut, setTaskStage, seedDatabase } = usePms();
+  const { rooms, reservations, session, checkIn, checkOut, seedDatabase } = usePms();
   const navigate = useNavigate();
   const [openRoom, setOpenRoom] = React.useState<Room | null>(null);
 
@@ -264,56 +264,17 @@ function Dashboard() {
           </ul>
         </Panel>
 
-        <Panel title="Housekeeping" description="Live cleaning pipeline" bodyClassName="p-5">
+        <Panel title="Housekeeping" description="Live room statuses" bodyClassName="p-5">
           <div className="grid grid-cols-2 gap-3">
             {[
-              { label: "Rooms to clean", value: hkTasks.filter((t) => t.stage === "Dirty" || t.stage === "Assigned").length, tone: "warning" as const },
-              { label: "Cleaning", value: hkTasks.filter((t) => t.stage === "Cleaning").length, tone: "info" as const },
-              { label: "Ready", value: hkTasks.filter((t) => t.stage === "Ready").length, tone: "success" as const },
-              { label: "Maintenance", value: rooms.filter((r) => r.status === "maintenance" || r.status === "ooo").length, tone: "destructive" as const },
+              { label: "Dirty Rooms", value: rooms.filter((r) => r.status === "DIRTY").length, tone: "warning" as const },
+              { label: "Cleaning", value: rooms.filter((r) => r.status === "CLEANING").length, tone: "info" as const },
+              { label: "Available", value: rooms.filter((r) => r.status === "AVAILABLE").length, tone: "success" as const },
+              { label: "Maintenance", value: rooms.filter((r) => ["OUT OF SERVICE", "MAINTENANCE"].includes(r.status)).length, tone: "destructive" as const },
             ].map((s) => (
               <div key={s.label} className="rounded-xl border border-border bg-secondary/50 p-3">
                 <div className="text-xl font-semibold">{s.value}</div>
                 <div className="text-[11px] text-muted-foreground">{s.label}</div>
-              </div>
-            ))}
-          </div>
-          <div className="mt-4 space-y-3">
-            {hkTasks.slice(0, 4).map((t) => (
-              <div key={t.id} className="rounded-xl border border-border p-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-semibold">Room {t.room}</span>
-                  <Pill tone={t.stage === "Ready" ? "success" : t.stage === "Cleaning" ? "info" : "warning"}>
-                    {t.stage}
-                  </Pill>
-                </div>
-                <div className="mt-1 text-xs text-muted-foreground">
-                  {t.kind} · {t.assignee}
-                </div>
-                <div className="mt-2 flex gap-2">
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    className="h-7 rounded-lg text-xs"
-                    onClick={() => {
-                      setTaskStage(t.id, "Cleaning");
-                      toast.info(`Cleaning started in room ${t.room}`);
-                    }}
-                  >
-                    Start
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 rounded-lg text-xs"
-                    onClick={() => {
-                      setTaskStage(t.id, "Ready");
-                      toast.success(`Room ${t.room} marked ready`);
-                    }}
-                  >
-                    Mark Ready
-                  </Button>
-                </div>
               </div>
             ))}
           </div>

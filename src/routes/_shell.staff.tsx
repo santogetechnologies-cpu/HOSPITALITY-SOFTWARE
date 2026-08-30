@@ -6,7 +6,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EmptyState, PageHeader, Panel, Pill } from "@/components/pms/bits";
 import { usePms } from "@/lib/pms-store";
 import { toast } from "sonner";
-import { Users, UserCheck, UserX, Shield } from "lucide-react";
+import { Users, UserCheck, UserX, Shield, Plus, Trash2 } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export const Route = createFileRoute("/_shell/staff")({
   head: () => ({
@@ -19,12 +22,23 @@ export const Route = createFileRoute("/_shell/staff")({
 });
 
 function StaffPage() {
-  const { profiles, session, updateStaffRole, toggleStaffStatus } = usePms();
+  const { profiles, session, updateStaffRole, toggleStaffStatus, addStaff, deleteStaff } = usePms();
 
   const isSuperAdmin = session?.role === "SUPER_ADMIN";
 
   const activeStaff = profiles.filter(p => p.status === 'ACTIVE');
   const inactiveStaff = profiles.filter(p => p.status === 'INACTIVE');
+
+  const [addOpen, setAddOpen] = React.useState(false);
+  const [form, setForm] = React.useState({ name: "", phone: "", role: "FRONT_DESK" });
+
+  const handleAdd = async () => {
+    if (!form.name || !form.role) return toast.error("Please fill required fields");
+    await addStaff(form.name, form.role, form.phone);
+    setAddOpen(false);
+    toast.success("Staff member added successfully");
+    setForm({ name: "", phone: "", role: "FRONT_DESK" });
+  };
 
   return (
     <div className="space-y-6 pb-12">
@@ -32,7 +46,15 @@ function StaffPage() {
         eyebrow="Configuration"
         title="Staff & Access"
         subtitle="Manage employee logins and role-based permissions"
-        actions={<Pill tone="info">{activeStaff.length} active members</Pill>}
+        actions={
+          isSuperAdmin ? (
+            <Button onClick={() => setAddOpen(true)} className="rounded-xl bg-brass text-gold-foreground shadow-brass hover:opacity-90">
+              <Plus className="mr-2 size-4" /> Add Staff
+            </Button>
+          ) : (
+            <Pill tone="info">{activeStaff.length} active members</Pill>
+          )
+        }
       />
 
       <div className="grid gap-4 sm:grid-cols-3 mb-6">
@@ -100,17 +122,29 @@ function StaffPage() {
                   )}
                 </TableCell>
                 <TableCell className="text-right">
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    disabled={!isSuperAdmin || (p.role === 'SUPER_ADMIN' && p.name === session.name)}
-                    onClick={() => {
-                      toggleStaffStatus(p.id);
-                      toast.warning(`${p.name}'s access revoked.`);
-                    }}
-                  >
-                    Revoke Login
-                  </Button>
+                  <div className="flex items-center justify-end gap-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      disabled={!isSuperAdmin || (p.role === 'SUPER_ADMIN' && p.name === session.name)}
+                      onClick={() => {
+                        toggleStaffStatus(p.id);
+                        toast.warning(`${p.name}'s access revoked.`);
+                      }}
+                    >
+                      Revoke
+                    </Button>
+                    {isSuperAdmin && (
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={async () => {
+                        if(confirm("Are you sure you want to permanently delete this staff member?")) {
+                          await deleteStaff(p.id);
+                          toast.success("Staff deleted");
+                        }
+                      }}>
+                        <Trash2 className="size-4" />
+                      </Button>
+                    )}
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
@@ -138,17 +172,29 @@ function StaffPage() {
                 <TableCell className="font-medium line-through">{p.name || "Unnamed"}</TableCell>
                 <TableCell>{p.role}</TableCell>
                 <TableCell className="text-right">
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    disabled={!isSuperAdmin}
-                    onClick={() => {
-                      toggleStaffStatus(p.id);
-                      toast.success(`${p.name}'s access restored.`);
-                    }}
-                  >
-                    Restore Login
-                  </Button>
+                  <div className="flex items-center justify-end gap-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      disabled={!isSuperAdmin}
+                      onClick={() => {
+                        toggleStaffStatus(p.id);
+                        toast.success(`${p.name}'s access restored.`);
+                      }}
+                    >
+                      Restore
+                    </Button>
+                    {isSuperAdmin && (
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={async () => {
+                        if(confirm("Are you sure you want to permanently delete this staff member?")) {
+                          await deleteStaff(p.id);
+                          toast.success("Staff deleted");
+                        }
+                      }}>
+                        <Trash2 className="size-4" />
+                      </Button>
+                    )}
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
@@ -160,6 +206,33 @@ function StaffPage() {
           </div>
         )}
       </Panel>
+
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Add Staff Member</DialogTitle>
+            <DialogDescription>Create a new profile for an employee.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2"><Label>Full Name</Label><Input value={form.name} onChange={e => setForm({...form, name: e.target.value})} placeholder="Jane Doe" /></div>
+            <div className="space-y-2"><Label>Phone Number</Label><Input value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} placeholder="+91..." /></div>
+            <div className="space-y-2"><Label>Role</Label>
+              <Select value={form.role} onValueChange={(r) => setForm({...form, role: r})}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="SUPER_ADMIN">Super Admin</SelectItem>
+                  <SelectItem value="GM">General Manager</SelectItem>
+                  <SelectItem value="FRONT_DESK">Front Desk</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="flex justify-end gap-3 pt-2">
+            <Button variant="ghost" onClick={() => setAddOpen(false)}>Cancel</Button>
+            <Button onClick={handleAdd} className="bg-brass text-gold-foreground hover:opacity-90">Add Staff</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

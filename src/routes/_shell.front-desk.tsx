@@ -12,7 +12,7 @@ import { EmptyState, KpiCard, PageHeader, Panel, Pill } from "@/components/pms/b
 import { usePms } from "@/lib/pms-store";
 import { toast } from "sonner";
 import { inr } from "@/lib/pms-data";
-import { LogIn, LogOut, Users, DoorOpen, ArrowLeftRight, ArrowUpNarrowWide } from "lucide-react";
+import { LogIn, LogOut, Users, DoorOpen, Plus } from "lucide-react";
 
 export const Route = createFileRoute("/_shell/front-desk")({
   head: () => ({
@@ -50,9 +50,31 @@ function FrontDesk() {
   const getGuestName = (guestId: string) => guests.find(g => g.id === guestId)?.name || "Unknown";
   const getRoomNum = (roomId?: string) => rooms.find(r => r.id === roomId)?.room_number || "TBD";
 
+  const [bookingOpen, setBookingOpen] = React.useState(false);
+  const [b, setB] = React.useState({
+    guestName: "", phone: "", email: "", roomId: "", date: new Date().toISOString().split('T')[0], nights: 1, baseAmount: 0, totalAmount: 0, paidAmount: 0, paymentMethod: "Credit Card"
+  });
+
+  const handleBooking = async () => {
+    if (!b.guestName || !b.roomId) return toast.error("Please fill required fields");
+    setBookingOpen(false);
+    const res = await usePms.getState().addRoomReservation(b);
+    if (res.success) toast.success("Room booked successfully");
+    else toast.error(res.error);
+  };
+
   return (
     <>
-      <PageHeader eyebrow="Operations" title="Front Desk" subtitle="Wednesday, 12 August 2026 · Shift: Morning · Agent on duty" />
+      <PageHeader 
+        eyebrow="Operations" 
+        title="Front Desk" 
+        subtitle="Manage arrivals, departures, and new walk-in room bookings" 
+        actions={
+          <Button onClick={() => setBookingOpen(true)} className="rounded-xl bg-brass text-gold-foreground shadow-brass hover:opacity-90">
+            <Plus className="mr-2 size-4" /> Book Room
+          </Button>
+        }
+      />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Today's Arrivals" value={String(arrivals.length)} icon={LogIn} tone="info" hint="Queue below" />
@@ -65,7 +87,6 @@ function FrontDesk() {
         <TabsList className="rounded-xl">
           <TabsTrigger value="checkin" className="rounded-lg">Check-In Queue</TabsTrigger>
           <TabsTrigger value="checkout" className="rounded-lg">Departures</TabsTrigger>
-          <TabsTrigger value="walkin" className="rounded-lg">Walk-in</TabsTrigger>
         </TabsList>
 
         <TabsContent value="checkin" className="mt-5">
@@ -118,26 +139,6 @@ function FrontDesk() {
                 })}
               </TableBody>
             </Table>
-            {!inHouse.length ? <div className="p-6"><EmptyState title="No in-house departures" body="All rooms have been settled." icon={LogOut} /></div> : null}
-          </Panel>
-        </TabsContent>
-
-        <TabsContent value="walkin" className="mt-5">
-          <Panel title="Walk-in booking" description="Fast workflow for guests at the desk">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2"><Label>Guest name</Label><Input value={walkIn.name} onChange={(e) => setWalkIn({ ...walkIn, name: e.target.value })} placeholder="Guest name" /></div>
-              <div className="space-y-2"><Label>Phone Number</Label><Input value={walkIn.phone} onChange={(e) => setWalkIn({ ...walkIn, phone: e.target.value })} placeholder="Phone" /></div>
-              <div className="space-y-2"><Label>Room</Label>
-                <Select value={walkIn.room} onValueChange={(v) => setWalkIn({ ...walkIn, room: v })}>
-                  <SelectTrigger><SelectValue placeholder="Vacant clean rooms" /></SelectTrigger>
-                  <SelectContent>{vacant.map((r) => <SelectItem key={r.id} value={r.id}>{r.room_number} · {inr(r.price)}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2"><Label>Nights</Label><Input type="number" min={1} value={walkIn.nights} onChange={(e) => setWalkIn({ ...walkIn, nights: e.target.value })} /></div>
-            </div>
-            <Button className="mt-4 rounded-xl bg-brass text-gold-foreground hover:opacity-90" onClick={() => {
-              toast.error("Walk-in booking directly from front desk is a premium feature, please use New Reservation");
-            }}>Check Room Availability</Button>
           </Panel>
         </TabsContent>
       </Tabs>
@@ -185,6 +186,41 @@ function FrontDesk() {
                 setSelected(null);
               }
             }}>Complete Check-In</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={bookingOpen} onOpenChange={setBookingOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>New Room Reservation</DialogTitle>
+            <DialogDescription>Book a room for a walk-in or phone reservation</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2"><Label>Guest name</Label><Input value={b.guestName} onChange={(e) => setB({ ...b, guestName: e.target.value })} placeholder="Guest name" /></div>
+            <div className="space-y-2"><Label>Phone</Label><Input value={b.phone} onChange={(e) => setB({ ...b, phone: e.target.value })} placeholder="Phone number" /></div>
+            <div className="space-y-2 sm:col-span-2"><Label>Email</Label><Input type="email" value={b.email} onChange={(e) => setB({ ...b, email: e.target.value })} placeholder="Email address" /></div>
+            <div className="space-y-2"><Label>Room</Label>
+              <Select value={b.roomId} onValueChange={(v) => {
+                const room = rooms.find(r => r.id === v);
+                if (room) setB({ ...b, roomId: v, baseAmount: room.price, totalAmount: room.price * b.nights });
+              }}>
+                <SelectTrigger><SelectValue placeholder="Select room" /></SelectTrigger>
+                <SelectContent>{vacant.map((r) => <SelectItem key={r.id} value={r.id}>{r.room_number} · {inr(r.price)}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2"><Label>Nights</Label>
+              <Input type="number" min={1} value={b.nights} onChange={(e) => {
+                const nights = parseInt(e.target.value) || 1;
+                setB({ ...b, nights, totalAmount: b.baseAmount * nights });
+              }} />
+            </div>
+            <div className="space-y-2"><Label>Total Amount</Label><Input type="number" value={b.totalAmount} onChange={(e) => setB({ ...b, totalAmount: parseFloat(e.target.value) })} /></div>
+            <div className="space-y-2"><Label>Paid Amount (Deposit)</Label><Input type="number" value={b.paidAmount} onChange={(e) => setB({ ...b, paidAmount: parseFloat(e.target.value) || 0 })} /></div>
+          </div>
+          <div className="flex justify-end gap-3 pt-4">
+            <Button variant="ghost" onClick={() => setBookingOpen(false)}>Cancel</Button>
+            <Button onClick={handleBooking} className="bg-brass text-gold-foreground hover:opacity-90">Confirm Booking</Button>
           </div>
         </DialogContent>
       </Dialog>
