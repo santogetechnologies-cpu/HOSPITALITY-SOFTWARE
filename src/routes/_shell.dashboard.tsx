@@ -57,22 +57,22 @@ function Dashboard() {
   const navigate = useNavigate();
   const [openRoom, setOpenRoom] = React.useState<Room | null>(null);
 
-  const occupied = rooms.filter((r) => r.status === "occupied").length;
-  const reserved = rooms.filter((r) => r.status === "reserved").length;
-  const vacant = rooms.filter((r) => r.status === "vacant-clean" || r.status === "vacant-dirty").length;
-  const blocked = rooms.filter((r) => ["ooo", "oos", "maintenance"].includes(r.status)).length;
+  const occupied = rooms.filter((r) => r.status === "OCCUPIED").length;
+  const reserved = rooms.filter((r) => r.status === "BOOKED").length;
+  const vacant = rooms.filter((r) => r.status === "AVAILABLE" || r.status === "DIRTY").length;
+  const blocked = rooms.filter((r) => ["OUT OF SERVICE", "MAINTENANCE"].includes(r.status)).length;
   const occPct = rooms.length > 0 ? Math.round((occupied / rooms.length) * 100) : 0;
 
-  const arrivals = reservations.filter((r) => r.status === "Confirmed" || r.status === "Tentative").slice(0, 6);
-  const departures = reservations.filter((r) => r.status === "Checked In").slice(0, 5);
+  const arrivals = reservations.filter((r) => r.resource_type === "ROOM" && (r.status === "CONFIRMED" || r.status === "PENDING")).slice(0, 6);
+  const departures = reservations.filter((r) => r.resource_type === "ROOM" && r.status === "OCCUPIED").slice(0, 5);
   const adr = 4780;
   const revenue = occupied * adr + 184000 * 0.35;
 
   const donut = [
-    { name: "Occupied", value: occupied, color: "var(--st-occupied)" },
-    { name: "Reserved", value: reserved, color: "var(--st-reserved)" },
-    { name: "Vacant", value: vacant, color: "var(--st-vacant-clean)" },
-    { name: "Out of Order", value: blocked, color: "var(--st-ooo)" },
+    { name: "Occupied", value: occupied, color: "var(--indigo-500, #6366f1)" },
+    { name: "Reserved", value: reserved, color: "var(--blue-500, #3b82f6)" },
+    { name: "Vacant", value: vacant, color: "var(--emerald-500, #10b981)" },
+    { name: "Out of Order", value: blocked, color: "var(--slate-500, #64748b)" },
   ];
 
   const safeDonut = rooms.length > 0 ? donut : [{ name: "No Rooms", value: 1, color: "var(--border)" }];
@@ -198,60 +198,64 @@ function Dashboard() {
           bodyClassName="p-0"
         >
           <ul className="divide-y divide-border">
-            {arrivals.map((r) => (
-              <li key={r.id} className="flex items-center justify-between gap-3 px-5 py-3.5">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="truncate text-sm font-semibold">{r.guest}</span>
-                    {r.vip ? <Pill tone="gold">VIP</Pill> : null}
+            {arrivals.map((r) => {
+              const guestName = guests.find(g => g.id === r.guest_id)?.name || "Unknown";
+              const roomNum = rooms.find(rm => rm.id === r.room_id)?.room_number || "TBD";
+              return (
+                <li key={r.id} className="flex items-center justify-between gap-3 px-5 py-3.5">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate text-sm font-semibold">{guestName}</span>
+                    </div>
+                    <div className="mt-0.5 text-xs text-muted-foreground">
+                      Room {roomNum} · Date: {r.booking_date}
+                    </div>
                   </div>
-                  <div className="mt-0.5 text-xs text-muted-foreground">
-                    Room {r.room} · ETA {r.eta} · {r.source}
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Button
+                      size="sm"
+                      className="rounded-lg"
+                      onClick={() => {
+                        checkIn(r.id);
+                        toast.success(`${guestName} checked in to room ${roomNum}`);
+                      }}
+                    >
+                      Check In
+                    </Button>
                   </div>
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <Pill tone={r.payment === "Paid" ? "success" : r.payment === "Partial" ? "warning" : "destructive"}>
-                    {r.payment}
-                  </Pill>
-                  <Button
-                    size="sm"
-                    className="rounded-lg"
-                    onClick={() => {
-                      checkIn(r.id);
-                      toast.success(`${r.guest} checked in to room ${r.room}`);
-                    }}
-                  >
-                    Check In
-                  </Button>
-                </div>
-              </li>
-            ))}
+                </li>
+              );
+            })}
           </ul>
         </Panel>
 
         <Panel title="Departures" description={`${departures.length} in-house checking out`} bodyClassName="p-0">
           <ul className="divide-y divide-border">
-            {departures.map((r) => (
-              <li key={r.id} className="flex items-center justify-between gap-3 px-5 py-3.5">
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-semibold">{r.guest}</div>
-                  <div className="mt-0.5 text-xs text-muted-foreground">
-                    Room {r.room} · Checkout 11:00 · Folio {inr(r.amount - r.paid)}
+            {departures.map((r) => {
+              const guestName = guests.find(g => g.id === r.guest_id)?.name || "Unknown";
+              const roomNum = rooms.find(rm => rm.id === r.room_id)?.room_number || "TBD";
+              return (
+                <li key={r.id} className="flex items-center justify-between gap-3 px-5 py-3.5">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-semibold">{guestName}</div>
+                    <div className="mt-0.5 text-xs text-muted-foreground">
+                      Room {roomNum} · Checkout 11:00
+                    </div>
                   </div>
-                </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="shrink-0 rounded-lg"
-                  onClick={() => {
-                    checkOut(r.id);
-                    toast.success(`${r.guest} checked out — room ${r.room} sent to housekeeping`);
-                  }}
-                >
-                  Check Out
-                </Button>
-              </li>
-            ))}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="shrink-0 rounded-lg"
+                    onClick={() => {
+                      checkOut(r.id);
+                      toast.success(`${guestName} checked out — room ${roomNum} sent to housekeeping`);
+                    }}
+                  >
+                    Check Out
+                  </Button>
+                </li>
+              );
+            })}
             {!departures.length ? (
               <li className="px-5 py-10 text-center text-sm text-muted-foreground">
                 All departures settled for today.
@@ -333,7 +337,7 @@ function Dashboard() {
           ))}
         </div>
         <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {(["vacant-clean", "occupied", "vacant-dirty", "reserved"] as const).map((s) => {
+          {(["AVAILABLE", "OCCUPIED", "DIRTY", "BOOKED"] as const).map((s) => {
             const count = rooms.filter((r) => r.status === s).length;
             return (
               <div key={s} className="rounded-xl border border-border p-3">
@@ -342,7 +346,7 @@ function Dashboard() {
                   <span className="font-semibold tabular-nums">{count}</span>
                 </div>
                 <div className="mt-2">
-                  <ProgressBar value={(count / rooms.length) * 100} tone={s === "occupied" ? "info" : s === "vacant-clean" ? "success" : "warning"} />
+                  <ProgressBar value={(count / (rooms.length || 1)) * 100} tone={s === "OCCUPIED" ? "info" : s === "AVAILABLE" ? "success" : "warning"} />
                 </div>
               </div>
             );

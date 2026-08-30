@@ -1,92 +1,165 @@
 import * as React from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Switch } from "@/components/ui/switch";
-import { Separator } from "@/components/ui/separator";
-import { EmptyState, KpiCard, PageHeader, Panel, Pill, ProgressBar } from "@/components/pms/bits";
+import { EmptyState, PageHeader, Panel, Pill } from "@/components/pms/bits";
 import { usePms } from "@/lib/pms-store";
-import { inr } from "@/lib/pms-data";
-import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { STAFF } from "@/lib/pms-data";
-import { Users, UserCheck, UserX, CalendarClock } from "lucide-react";
+import { Users, UserCheck, UserX, Shield } from "lucide-react";
 
 export const Route = createFileRoute("/_shell/staff")({
   head: () => ({
     meta: [
-      { title: "Staff — DRB Hotel PMS" },
-      { name: "description", content: "DRB Hotel team roster: attendance, departments, shifts and task completion." },
-      { property: "og:title", content: "DRB Hotel — Staff" },
-      { property: "og:description", content: "DRB Hotel team roster: attendance, departments, shifts and task completion." },
+      { title: "Staff Roster — DRB Hotel PMS" },
+      { name: "description", content: "Manage hotel staff access and roles." },
     ],
   }),
   component: StaffPage,
 });
 
 function StaffPage() {
-  const [dept, setDept] = React.useState("all");
-  const rows = STAFF.filter((s) => dept === "all" || s.department === dept);
-  const depts = Array.from(new Set(STAFF.map((s) => s.department)));
+  const { profiles, session, updateStaffRole, toggleStaffStatus } = usePms();
+
+  const isSuperAdmin = session?.role === "SUPER_ADMIN";
+
+  const activeStaff = profiles.filter(p => p.status === 'ACTIVE');
+  const inactiveStaff = profiles.filter(p => p.status === 'INACTIVE');
+
   return (
-    <>
-      <PageHeader eyebrow="People" title="Staff" subtitle="Morning shift in progress · 12 August 2026" />
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <KpiCard label="Total Staff" value={String(STAFF.length)} icon={Users} tone="gold" />
-        <KpiCard label="Present" value={String(STAFF.filter((s) => s.attendance === "Present").length)} icon={UserCheck} tone="success" />
-        <KpiCard label="Absent" value={String(STAFF.filter((s) => s.attendance === "Absent").length)} icon={UserX} tone="destructive" />
-        <KpiCard label="On Leave" value={String(STAFF.filter((s) => s.attendance === "On Leave").length)} tone="warning" />
-        <KpiCard label="Current Shift" value="Morning" icon={CalendarClock} tone="info" />
-      </div>
+    <div className="space-y-6 pb-12">
+      <PageHeader
+        eyebrow="Configuration"
+        title="Staff & Access"
+        subtitle="Manage employee logins and role-based permissions"
+        actions={<Pill tone="info">{activeStaff.length} active members</Pill>}
+      />
 
-      <Panel bodyClassName="p-4">
-        <Select value={dept} onValueChange={setDept}>
-          <SelectTrigger className="w-[220px]"><SelectValue /></SelectTrigger>
-          <SelectContent><SelectItem value="all">All departments</SelectItem>{depts.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
-        </Select>
-      </Panel>
-
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {rows.map((s) => (
-          <div key={s.id} className="card-premium hover-lift p-4">
-            <div className="flex items-center gap-3">
-              <span className="grid size-11 place-items-center rounded-full bg-brass text-xs font-bold text-gold-foreground">{s.name.split(" ").map((n) => n[0]).join("")}</span>
-              <div className="min-w-0"><div className="truncate text-sm font-semibold">{s.name}</div><div className="truncate text-[11px] text-muted-foreground">{s.role}</div></div>
-            </div>
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              <Pill>{s.department}</Pill>
-              <Pill tone="info">{s.shift}</Pill>
-              <Pill tone={s.attendance === "Present" ? "success" : s.attendance === "Absent" ? "destructive" : "warning"}>{s.attendance}</Pill>
-            </div>
-            <div className="mt-3"><ProgressBar value={s.tasks ? (s.done / s.tasks) * 100 : 0} tone="success" /></div>
-            <div className="mt-1.5 flex justify-between text-[11px] text-muted-foreground"><span>{s.done}/{s.tasks} tasks</span><button className="underline" onClick={() => toast.info(`Task list opened for ${s.name}`)}>View</button></div>
+      <div className="grid gap-4 sm:grid-cols-3 mb-6">
+        <Panel bodyClassName="p-4 flex items-center gap-4">
+          <div className="grid size-12 place-items-center rounded-full bg-gold/10 text-gold">
+            <Shield className="size-6" />
           </div>
-        ))}
+          <div>
+            <div className="text-2xl font-semibold tabular-nums">{profiles.filter(p => p.role === 'SUPER_ADMIN').length}</div>
+            <div className="text-xs text-muted-foreground">Super Admins</div>
+          </div>
+        </Panel>
+        <Panel bodyClassName="p-4 flex items-center gap-4">
+          <div className="grid size-12 place-items-center rounded-full bg-success/10 text-success">
+            <UserCheck className="size-6" />
+          </div>
+          <div>
+            <div className="text-2xl font-semibold tabular-nums">{activeStaff.length}</div>
+            <div className="text-xs text-muted-foreground">Active Staff</div>
+          </div>
+        </Panel>
+        <Panel bodyClassName="p-4 flex items-center gap-4">
+          <div className="grid size-12 place-items-center rounded-full bg-destructive/10 text-destructive">
+            <UserX className="size-6" />
+          </div>
+          <div>
+            <div className="text-2xl font-semibold tabular-nums">{inactiveStaff.length}</div>
+            <div className="text-xs text-muted-foreground">Revoked Access</div>
+          </div>
+        </Panel>
       </div>
 
-      <Panel title="Shift schedule" description="This week" bodyClassName="p-0">
-        <div className="scroll-slim overflow-x-auto">
-          <Table>
-            <TableHeader><TableRow><TableHead>Team member</TableHead>{["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => <TableHead key={d}>{d}</TableHead>)}</TableRow></TableHeader>
-            <TableBody>
-              {rows.slice(0, 8).map((s, i) => (
-                <TableRow key={s.id}>
-                  <TableCell className="font-medium">{s.name}</TableCell>
-                  {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d, j) => (
-                    <TableCell key={d}><Pill tone={(i + j) % 5 === 0 ? "muted" : (i + j) % 3 === 0 ? "info" : "success"}>{(i + j) % 5 === 0 ? "Off" : (i + j) % 3 === 0 ? "Evening" : "Morning"}</Pill></TableCell>
-                  ))}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+      <Panel title="Active Employees" description="Staff with current system access">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Phone</TableHead>
+              <TableHead>Role</TableHead>
+              <TableHead className="text-right">Access Control</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {activeStaff.map((p) => (
+              <TableRow key={p.id}>
+                <TableCell className="font-medium">{p.name || "Unnamed"}</TableCell>
+                <TableCell>{p.phone || "—"}</TableCell>
+                <TableCell>
+                  {isSuperAdmin && p.id !== session.username ? ( // Using username instead of ID for safety check if ID doesn't match
+                    <Select defaultValue={p.role} onValueChange={(r) => {
+                      updateStaffRole(p.id, r);
+                      toast.success(`${p.name}'s role updated to ${r}`);
+                    }}>
+                      <SelectTrigger className="w-[160px] h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="SUPER_ADMIN">Super Admin</SelectItem>
+                        <SelectItem value="GM">General Manager</SelectItem>
+                        <SelectItem value="FRONT_DESK">Front Desk</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Pill tone={p.role === 'SUPER_ADMIN' ? 'gold' : 'info'}>{p.role}</Pill>
+                  )}
+                </TableCell>
+                <TableCell className="text-right">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    disabled={!isSuperAdmin || (p.role === 'SUPER_ADMIN' && p.name === session.name)}
+                    onClick={() => {
+                      toggleStaffStatus(p.id);
+                      toast.warning(`${p.name}'s access revoked.`);
+                    }}
+                  >
+                    Revoke Login
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+        {!activeStaff.length && (
+          <div className="p-6">
+            <EmptyState title="No active staff" body="No one is currently active." icon={Users} />
+          </div>
+        )}
       </Panel>
-    </>
+
+      <Panel title="Revoked Accounts" description="Employees who can no longer log in">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Role</TableHead>
+              <TableHead className="text-right">Access Control</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {inactiveStaff.map((p) => (
+              <TableRow key={p.id} className="opacity-50 hover:opacity-100 transition-opacity">
+                <TableCell className="font-medium line-through">{p.name || "Unnamed"}</TableCell>
+                <TableCell>{p.role}</TableCell>
+                <TableCell className="text-right">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    disabled={!isSuperAdmin}
+                    onClick={() => {
+                      toggleStaffStatus(p.id);
+                      toast.success(`${p.name}'s access restored.`);
+                    }}
+                  >
+                    Restore Login
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+        {!inactiveStaff.length && (
+          <div className="p-6">
+             <EmptyState title="No revoked accounts" body="Everyone has active access." icon={UserCheck} />
+          </div>
+        )}
+      </Panel>
+    </div>
   );
 }

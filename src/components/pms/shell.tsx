@@ -220,26 +220,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
 
         <div className="border-t border-sidebar-border px-3 py-4">
-          <ul className="mb-3 space-y-1">
-            <li>
-              <Link
-                to="/help"
-                className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-sidebar-foreground/75 transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
-              >
-                <LifeBuoy className="size-[18px]" />
-                {!collapsed ? "Help & Support" : null}
-              </Link>
-            </li>
-            <li>
-              <Link
-                to="/settings"
-                className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-sidebar-foreground/75 transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
-              >
-                <Settings className="size-[18px]" />
-                {!collapsed ? "Settings" : null}
-              </Link>
-            </li>
-          </ul>
+
           <div
             className={cn(
               "flex items-center gap-3 rounded-xl bg-sidebar-accent/70 p-3",

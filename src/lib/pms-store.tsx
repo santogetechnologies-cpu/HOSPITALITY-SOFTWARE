@@ -1,24 +1,15 @@
 import * as React from "react";
 import { supabase } from "./supabase";
 import {
-  ROOMS as MOCK_ROOMS,
-  RESERVATIONS as MOCK_RESERVATIONS,
-  GUESTS as MOCK_GUESTS,
-  HK_TASKS as MOCK_HK_TASKS,
-  NOTIFICATIONS as MOCK_NOTIFICATIONS,
-  TICKETS as MOCK_TICKETS,
-  FOLIO_LINES as MOCK_FOLIO,
-  EVENTS as MOCK_EVENTS,
   type Room,
   type RoomStatus,
   type Reservation,
-  type ReservationStatus,
   type Guest,
-  type HkTask,
   type Notification,
-  type Ticket,
-  type FolioLine,
-  type EventBooking,
+  type Payment,
+  type Discount,
+  type Expense,
+  type Profile,
 } from "./pms-data";
 
 export type Role = "SUPER_ADMIN" | "GM" | "FRONT_DESK" | "PENDING";
@@ -40,7 +31,10 @@ type State = {
   rooms: Room[];
   reservations: Reservation[];
   guests: Guest[];
-  hkTasks: HkTask[];
+  payments: Payment[];
+  discounts: Discount[];
+  expenses: Expense[];
+  profiles: Profile[];
   notifications: Notification[];
   tickets: Ticket[];
   folio: FolioLine[];
@@ -55,11 +49,14 @@ const initialState: State = {
   rooms: [],
   reservations: [],
   guests: [],
-  hkTasks: [],
+  payments: [],
+  discounts: [],
+  expenses: [],
+  profiles: [],
   notifications: [],
   tickets: [],
   folio: [],
-  events: MOCK_EVENTS, // Fallback for unmigrated data
+  events: [],
   orders: [
     {
       id: "POS-1201",
@@ -110,6 +107,18 @@ type Ctx = State & {
   pushNotification: (n: Omit<Notification, "id" | "read" | "time">) => void;
   runNightAudit: () => void;
   seedDatabase: () => Promise<void>; // Added for convenience
+  addPartyHallBooking: (b: { customerName: string; phone: string; email: string; eventType: string; guests: number; date: string; startTime: string; endTime: string; baseAmount: number; advance: number; }) => Promise<{ success: boolean; error?: string }>;
+  
+  // Finance Mutators
+  settlePayment: (paymentId: string, amount: number) => Promise<void>;
+  freezePayment: (paymentId: string) => Promise<void>;
+  requestDiscount: (reservationId: string, amount: number, reason: string) => Promise<void>;
+  resolveDiscount: (discountId: string, status: "APPROVED" | "REJECTED") => Promise<void>;
+  addExpense: (amount: number, category: string, description: string) => Promise<void>;
+  
+  // Staff Mutators
+  updateStaffRole: (profileId: string, role: string) => Promise<void>;
+  toggleStaffStatus: (profileId: string) => Promise<void>;
 };
 
 const PmsContext = React.createContext<Ctx | null>(null);
@@ -124,18 +133,20 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         { data: rooms },
         { data: reservations },
         { data: guests },
-        { data: hkTasks },
-        { data: tickets },
-        { data: notifications },
-        { data: folio }
+        { data: payments },
+        { data: discounts },
+        { data: expenses },
+        { data: profiles },
+        { data: notifications }
       ] = await Promise.all([
         supabase.from('rooms').select('*'),
         supabase.from('reservations').select('*'),
         supabase.from('guests').select('*'),
-        supabase.from('hk_tasks').select('*'),
-        supabase.from('tickets').select('*'),
-        supabase.from('notifications').select('*'),
-        supabase.from('folio_lines').select('*'),
+        supabase.from('payments').select('*'),
+        supabase.from('discounts').select('*'),
+        supabase.from('expenses').select('*'),
+        supabase.from('profiles').select('*'),
+        supabase.from('notifications').select('*')
       ]);
 
       setState(s => ({
@@ -143,10 +154,11 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         rooms: (rooms as any) || [],
         reservations: (reservations as any) || [],
         guests: (guests as any) || [],
-        hkTasks: (hkTasks as any) || [],
-        tickets: (tickets as any) || [],
-        notifications: (notifications as any) || [],
-        folio: (folio as any) || []
+        payments: (payments as any) || [],
+        discounts: (discounts as any) || [],
+        expenses: (expenses as any) || [],
+        profiles: (profiles as any) || [],
+        notifications: (notifications as any) || []
       }));
     } catch (err) {
       console.error("Failed to fetch Supabase data", err);
@@ -269,13 +281,8 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
       
       // Mapped Supabase Mutators
       setRoomStatus: async (roomId, status) => {
-        // Optimistic update
         patch((s) => ({ rooms: s.rooms.map(r => r.id === roomId ? { ...r, status } : r) }));
-        const hkStatus = status === "cleaning" ? "In Progress" : status === "vacant-dirty" ? "Dirty" : status === "vacant-clean" ? "Inspected" : undefined;
-        const updates: any = { status };
-        if (hkStatus) updates.hk_status = hkStatus;
-        if (status !== 'occupied') { updates.guest = null; updates.reservationId = null; }
-        await supabase.from('rooms').update(updates).eq('id', roomId);
+        await supabase.from('rooms').update({ status }).eq('id', roomId);
       },
       
       assignGuestToRoom: async (roomId, guest) => {
@@ -283,24 +290,19 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         await supabase.from('rooms').update({ status: 'occupied', guest }).eq('id', roomId);
       },
       
-      checkIn: async (reservationId, roomNumber) => {
-        // Simplified optimistic update
-        await supabase.from('reservations').update({ status: 'Checked In', room: roomNumber }).eq('id', reservationId);
-        if (roomNumber) {
-          const res = state.reservations.find(r => r.id === reservationId);
-          await supabase.from('rooms').update({ status: 'occupied', guest: res?.guest, reservationId }).eq('number', roomNumber);
+      checkIn: async (reservationId, roomId) => {
+        await supabase.from('reservations').update({ status: 'OCCUPIED' }).eq('id', reservationId);
+        if (roomId) {
+          await supabase.from('rooms').update({ status: 'OCCUPIED' }).eq('id', roomId);
         }
         fetchData();
       },
       
       checkOut: async (reservationId) => {
         const res = state.reservations.find((r) => r.id === reservationId);
-        await supabase.from('reservations').update({ status: 'Checked Out', payment_status: 'Paid', paid: res?.amount }).eq('id', reservationId);
-        if (res?.room) {
-          await supabase.from('rooms').update({ status: 'vacant-dirty', hk_status: 'Dirty', guest: null, reservationId: null }).eq('number', res.room);
-          await supabase.from('hk_tasks').insert({
-            id: `HK-${Date.now()}`, room_id: res.room, room_type: res.roomType, checkout: "11:00 AM", kind: "Departure Clean", assignee: "Unassigned", stage: "Dirty", priority: "High"
-          });
+        await supabase.from('reservations').update({ status: 'COMPLETED' }).eq('id', reservationId);
+        if (res?.room_id) {
+          await supabase.from('rooms').update({ status: 'DIRTY' }).eq('id', res.room_id);
         }
         fetchData();
       },
@@ -404,30 +406,156 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
       runNightAudit: () => patch(() => ({ auditRun: true })),
       
       seedDatabase: async () => {
+        alert("Seeding is disabled for DRB 2.0 live mode.");
+      },
+
+      addPartyHallBooking: async (b) => {
         try {
-          // Push Guests
-          const gPromises = MOCK_GUESTS.map(g => supabase.from('guests').insert({
-            id: g.id, name: g.name, email: g.email, phone: g.phone, country: g.country, type: g.type, vip: g.vip, notes: g.notes
-          }));
-          await Promise.all(gPromises);
-          
-          // Push Rooms
-          const rmPromises = MOCK_ROOMS.map(r => supabase.from('rooms').insert({
-            id: r.id, number: r.number, floor: r.floor, floor_name: r.floorName, type: r.type, bed: r.bed, max_guests: r.maxGuests, rate: r.rate, status: r.status, hk_status: r.hkStatus, view: r.view
-          }));
-          await Promise.all(rmPromises);
-          
-          // Push Reservations
-          const resPromises = MOCK_RESERVATIONS.map(r => supabase.from('reservations').insert({
-            id: r.id, guest_id: MOCK_GUESTS.find(g => g.name === r.guest)?.id || MOCK_GUESTS[0].id, room_id: MOCK_ROOMS.find(rm => rm.number === r.room)?.id, arrival: '2026-08-12', departure: '2026-08-14', nights: r.nights, adults: r.adults, rate_plan: r.ratePlan, source: r.source, amount: r.amount, paid: r.paid, payment_status: r.payment, status: r.status, eta: r.eta, vip: r.vip
-          }));
-          await Promise.all(resPromises);
-          
+          // 1. Check for overlapping bookings
+          const startTs = new Date(`${b.date}T${b.startTime}`).toISOString();
+          const endTs = new Date(`${b.date}T${b.endTime}`).toISOString();
+
+          const { data: overlaps, error: overlapErr } = await supabase
+            .from('reservations')
+            .select('start_time, end_time')
+            .eq('resource_type', 'PARTY_HALL')
+            .eq('booking_date', b.date)
+            .not('status', 'eq', 'CANCELLED');
+
+          if (overlapErr) throw overlapErr;
+
+          const isOverlapping = overlaps?.some(r => {
+            const rStart = new Date(r.start_time).getTime();
+            const rEnd = new Date(r.end_time).getTime();
+            const bStart = new Date(startTs).getTime();
+            const bEnd = new Date(endTs).getTime();
+            return (bStart < rEnd && bEnd > rStart); // overlap condition
+          });
+
+          if (isOverlapping) {
+            return { success: false, error: "Party Hall Unavailable — Overlapping booking detected for this time slot." };
+          }
+
+          // 2. Insert Guest
+          const guestId = crypto.randomUUID();
+          const { error: gErr } = await supabase.from('guests').insert({
+            id: guestId, name: b.customerName, phone: b.phone, email: b.email
+          });
+          if (gErr) throw gErr;
+
+          // 3. Get Party Hall ID (assuming only one exists)
+          const { data: hall } = await supabase.from('party_hall').select('id').limit(1).single();
+          const hallId = hall?.id;
+
+          // 4. Create Reservation
+          const resId = crypto.randomUUID();
+          const { error: rErr } = await supabase.from('reservations').insert({
+            id: resId,
+            guest_id: guestId,
+            resource_type: 'PARTY_HALL',
+            party_hall_id: hallId,
+            event_type: b.eventType,
+            number_of_guests: b.guests,
+            booking_date: b.date,
+            start_time: startTs,
+            end_time: endTs,
+            base_amount: b.baseAmount,
+            status: 'CONFIRMED'
+          });
+          if (rErr) throw rErr;
+
+          // 5. Create Payment Record
+          const { error: pErr } = await supabase.from('payments').insert({
+            reservation_id: resId,
+            total_amount: b.baseAmount,
+            paid_amount: b.advance,
+            status: b.advance >= b.baseAmount ? 'COMPLETED' : b.advance > 0 ? 'PARTIAL' : 'PENDING',
+            payment_method: 'CASH'
+          });
+          if (pErr) throw pErr;
+
+          // Refresh data
           fetchData();
-          alert("Database seeded successfully!");
-        } catch (err) {
-          console.error("Seeding failed", err);
-          alert("Failed to seed database.");
+          return { success: true };
+        } catch (err: any) {
+          console.error("Booking error:", err);
+          return { success: false, error: err.message || "Failed to create booking" };
+        }
+      },
+
+      settlePayment: async (paymentId, amount) => {
+        const payment = state.payments.find(p => p.id === paymentId);
+        if (!payment) return;
+        const newPaid = payment.paid_amount + amount;
+        const status = newPaid >= payment.total_amount ? "COMPLETED" : "PARTIAL";
+        await supabase.from('payments').update({ paid_amount: newPaid, status }).eq('id', paymentId);
+        fetchData();
+      },
+
+      freezePayment: async (paymentId) => {
+        await supabase.from('payments').update({ status: "FROZEN" }).eq('id', paymentId);
+        fetchData();
+      },
+
+      requestDiscount: async (reservationId, amount, reason) => {
+        const id = crypto.randomUUID();
+        await supabase.from('discounts').insert({
+          id,
+          reservation_id: reservationId,
+          requested_amount: amount,
+          reason,
+          status: "PENDING",
+          requested_by: state.session?.username || "System"
+        });
+        fetchData();
+      },
+
+      resolveDiscount: async (discountId, status) => {
+        const discount = state.discounts.find(d => d.id === discountId);
+        if (!discount) return;
+        await supabase.from('discounts').update({ 
+          status, 
+          approved_by: state.session?.username || "System" 
+        }).eq('id', discountId);
+
+        // If approved, apply the discount to the payment total
+        if (status === "APPROVED") {
+          const payment = state.payments.find(p => p.reservation_id === discount.reservation_id);
+          if (payment) {
+            const newTotal = Math.max(0, payment.total_amount - discount.requested_amount);
+            const newStatus = payment.paid_amount >= newTotal ? "COMPLETED" : payment.status;
+            await supabase.from('payments').update({ 
+              total_amount: newTotal,
+              status: newStatus
+            }).eq('id', payment.id);
+          }
+        }
+        fetchData();
+      },
+
+      addExpense: async (amount, category, description) => {
+        const id = crypto.randomUUID();
+        await supabase.from('expenses').insert({
+          id,
+          amount,
+          category,
+          description,
+          recorded_by: state.session?.username || "System"
+        });
+        fetchData();
+      },
+      
+      updateStaffRole: async (profileId, role) => {
+        await supabase.from('profiles').update({ role }).eq('id', profileId);
+        fetchData();
+      },
+
+      toggleStaffStatus: async (profileId) => {
+        const profile = state.profiles.find(p => p.id === profileId);
+        if (profile) {
+          const newStatus = profile.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+          await supabase.from('profiles').update({ status: newStatus }).eq('id', profileId);
+          fetchData();
         }
       }
     };
