@@ -230,3 +230,19 @@ export const FORECAST = [
 ];
 
 export const RATE_CALENDAR_DATES = ["Mon 12", "Tue 13", "Wed 14", "Thu 15", "Fri 16", "Sat 17", "Sun 18"];
+
+export const HK_CHECKLIST = [
+  { id: "hk1", task: "Change linens and towels", required: true },
+  { id: "hk2", task: "Vacuum carpets and rugs", required: true },
+  { id: "hk3", task: "Clean and sanitize bathroom", required: true },
+  { id: "hk4", task: "Restock amenities (soap, shampoo)", required: true },
+  { id: "hk5", task: "Empty trash bins", required: true },
+  { id: "hk6", task: "Check minibar inventory", required: false },
+];
+
+export const HOUSEKEEPERS = [
+  { id: "emp1", name: "Sunita M.", status: "On Duty", assigned: 4, completed: 2 },
+  { id: "emp2", name: "Ramesh K.", status: "On Duty", assigned: 6, completed: 5 },
+  { id: "emp3", name: "Priya D.", status: "Break", assigned: 3, completed: 3 },
+  { id: "emp4", name: "Anita V.", status: "Off Duty", assigned: 0, completed: 0 },
+];
