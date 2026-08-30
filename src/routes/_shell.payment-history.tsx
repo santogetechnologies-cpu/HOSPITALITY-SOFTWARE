@@ -124,12 +124,15 @@ function PaymentHistoryPage() {
               const res = getReservation(p.reservation_id);
               const guest = res ? getGuest(res.guest_id) : null;
               const room = res ? getRoom(res.room_id) : null;
-              const balance = p.total_amount - (p.paid_amount || 0);
+              const total = Number(p.total_amount) || 0;
+              const paid = Number(p.paid_amount) || 0;
+              const balance = total - paid;
+              const folioId = String(p.id || 'FOLIO').slice(0, 10).toUpperCase();
 
               return (
                 <TableRow key={p.id}>
                   <TableCell className="font-mono text-xs font-semibold text-gold">
-                    {p.id.slice(0, 10).toUpperCase()}
+                    {folioId}
                   </TableCell>
                   <TableCell>
                     <div className="font-medium">{guest?.name || "Guest"}</div>
@@ -139,20 +142,20 @@ function PaymentHistoryPage() {
                     {res?.resource_type === 'PARTY_HALL' ? (
                       <span className="font-medium text-xs text-gold">Party Hall ({res.event_type || 'Event'})</span>
                     ) : room ? (
-                      <span className="font-medium text-xs">Room {room.room_number} ({room.room_name || 'Standard'})</span>
+                      <span className="font-medium text-xs">Room {room.room_number || (room as any)?.number} ({room.room_name || 'Standard'})</span>
                     ) : (
                       <span className="text-xs text-muted-foreground">General Booking</span>
                     )}
                   </TableCell>
-                  <TableCell className="font-medium">{inr(p.total_amount || 0)}</TableCell>
-                  <TableCell className="font-semibold text-success">{inr(p.paid_amount || 0)}</TableCell>
+                  <TableCell className="font-medium">{inr(total)}</TableCell>
+                  <TableCell className="font-semibold text-success">{inr(paid)}</TableCell>
                   <TableCell className={balance > 0 ? "font-semibold text-warning" : "text-muted-foreground"}>
                     {balance > 0 ? inr(balance) : "₹0.00"}
                   </TableCell>
                   <TableCell className="text-xs font-medium">{p.payment_method || "CASH / UPI"}</TableCell>
                   <TableCell>
                     <Pill tone={p.status === 'COMPLETED' ? 'success' : p.status === 'PARTIAL' ? 'warning' : p.status === 'FROZEN' ? 'info' : 'destructive'}>
-                      {p.status}
+                      {p.status || 'PENDING'}
                     </Pill>
                   </TableCell>
                   <TableCell className="text-right">
@@ -162,7 +165,7 @@ function PaymentHistoryPage() {
                         variant="ghost"
                         className="text-destructive hover:bg-destructive/10 hover:text-destructive"
                         onClick={async () => {
-                          if (confirm(`Are you sure you want to delete payment folio record "${p.id.slice(0, 8).toUpperCase()}"?`)) {
+                          if (confirm(`Are you sure you want to delete payment folio record "${folioId}"?`)) {
                             const delRes = await deletePayment(p.id);
                             if (delRes?.success) toast.success("Payment record deleted");
                             else toast.error(delRes?.error || "Failed to delete payment record");

@@ -69,11 +69,13 @@ function ReservationsPage() {
       const guest = getGuest(r.guest_id);
       const room = getRoom(r.room_id);
       const term = q.toLowerCase().trim();
+      const resId = String(r.id || "");
+      const rNum = String(room?.room_number || (room as any)?.number || "");
       return (
-        r.id.toLowerCase().includes(term) ||
+        resId.toLowerCase().includes(term) ||
         (guest?.name && guest.name.toLowerCase().includes(term)) ||
-        (guest?.phone && guest.phone.includes(term)) ||
-        (room?.room_number && room.room_number.toLowerCase().includes(term))
+        (guest?.phone && String(guest.phone).includes(term)) ||
+        rNum.toLowerCase().includes(term)
       );
     });
 
@@ -82,8 +84,9 @@ function ReservationsPage() {
     ? blockedRooms.filter((rm) => {
         if (!q.trim()) return true;
         const term = q.toLowerCase().trim();
-        const rNum = rm.room_number || (rm as any).number || "";
-        return rNum.toLowerCase().includes(term) || rm.status.toLowerCase().includes(term);
+        const rNum = String(rm.room_number || (rm as any)?.number || "");
+        const rStatus = String(rm.status || "");
+        return rNum.toLowerCase().includes(term) || rStatus.toLowerCase().includes(term);
       })
     : [];
 
@@ -157,7 +160,7 @@ function ReservationsPage() {
             <TableBody>
               {/* Render Blocked Room Rows */}
               {blockedRows.map((rm) => {
-                const rNum = rm.room_number || (rm as any).number;
+                const rNum = String(rm.room_number || (rm as any)?.number || rm.id);
                 return (
                   <TableRow key={rm.id} className="bg-destructive/5">
                     <TableCell className="font-mono text-xs font-semibold text-destructive">
@@ -175,7 +178,7 @@ function ReservationsPage() {
                     <TableCell className="text-xs text-muted-foreground">Active Block</TableCell>
                     <TableCell className="font-semibold text-muted-foreground">—</TableCell>
                     <TableCell>
-                      <Pill tone="destructive">{rm.status}</Pill>
+                      <Pill tone="destructive">{rm.status || "OUT OF SERVICE"}</Pill>
                     </TableCell>
                     <TableCell className="text-right">
                       <Button
@@ -195,9 +198,10 @@ function ReservationsPage() {
               {reservationRows.map((r) => {
                 const guest = getGuest(r.guest_id);
                 const room = getRoom(r.room_id);
+                const confNum = String(r.id || "RES").slice(0, 10).toUpperCase();
                 return (
                   <TableRow key={r.id}>
-                    <TableCell className="font-mono text-xs font-semibold text-gold">{r.id.slice(0, 10).toUpperCase()}</TableCell>
+                    <TableCell className="font-mono text-xs font-semibold text-gold">{confNum}</TableCell>
                     <TableCell>
                       <div className="font-medium">{guest?.name || "Guest"}</div>
                       <div className="text-[11px] text-muted-foreground">{guest?.phone || "No phone"}</div>
@@ -215,7 +219,7 @@ function ReservationsPage() {
                     <TableCell className="font-semibold">{inr(r.base_amount || 0)}</TableCell>
                     <TableCell>
                       <Pill tone={r.status === "OCCUPIED" ? "info" : r.status === "CONFIRMED" ? "success" : r.status === "COMPLETED" ? "gold" : "warning"}>
-                        {r.status}
+                        {r.status || "CONFIRMED"}
                       </Pill>
                     </TableCell>
                     <TableCell className="text-right">
@@ -232,7 +236,7 @@ function ReservationsPage() {
                             <DropdownMenuItem 
                               className="text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer"
                               onClick={async () => {
-                                if (confirm(`Are you sure you want to permanently delete reservation #${r.id.slice(0, 8).toUpperCase()} for ${guest?.name || 'Guest'}?`)) {
+                                if (confirm(`Are you sure you want to permanently delete reservation #${confNum} for ${guest?.name || 'Guest'}?`)) {
                                   const delRes = await deleteReservation(r.id);
                                   if (delRes?.success) toast.success("Reservation deleted");
                                   else toast.error(delRes?.error || "Failed to delete reservation");
