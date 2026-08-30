@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { ShieldCheck, Sparkles, BedDouble, ArrowRight, KeyRound } from "lucide-react";
 
+// DRB Hotel PMS Sign In Route
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
