@@ -35,6 +35,22 @@ function GuestsPage() {
   const [q, setQ] = React.useState("");
   const [type, setType] = React.useState("all");
   const [openId, setOpenId] = React.useState<string | null>(null);
+  
+  const [addOpen, setAddOpen] = React.useState(false);
+  const [form, setForm] = React.useState({ name: "", email: "", phone: "", country: "", type: "Individual", vip: false });
+
+  const handleAdd = async () => {
+    if (!form.name) return toast.error("Name is required");
+    const res = await addGuest(form as any);
+    if (res?.success) {
+      toast.success("Guest added successfully");
+      setAddOpen(false);
+      setForm({ name: "", email: "", phone: "", country: "", type: "Individual", vip: false });
+    } else {
+      toast.error("Failed to add guest");
+    }
+  };
+
   const guest = guests.find((g) => g.id === openId) ?? null;
   const rows = guests.filter((g) => (type === "all" || g.type === type) && (!q.trim() || g.name.toLowerCase().includes(q.toLowerCase())));
 
@@ -42,10 +58,7 @@ function GuestsPage() {
     <>
       <PageHeader eyebrow="Relationships" title="Guest Management" subtitle="Profiles, preferences and lifetime value across the property"
         actions={
-          <Button className="rounded-xl bg-brass text-gold-foreground hover:opacity-90" onClick={() => {
-            const g = addGuest({ name: "New Guest Profile", email: "new@example.com", phone: "+91 90000 00000", country: "India", lastStay: "12 Aug 2026", stays: 1, spend: 0, type: "Individual", vip: false, preferences: ["Non-smoking"], notes: "Created from the guest desk." });
-            toast.success(`Guest profile ${g.id} created`);
-          }}>Add Guest</Button>
+          <Button className="rounded-xl bg-brass text-gold-foreground hover:opacity-90" onClick={() => setAddOpen(true)}>Add Guest</Button>
         }
       />
 
@@ -145,6 +158,36 @@ function GuestsPage() {
           ) : null}
         </SheetContent>
       </Sheet>
+
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Add New Guest</DialogTitle></DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2"><Label>Full Name</Label><Input value={form.name} onChange={e => setForm({...form, name: e.target.value})} /></div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2"><Label>Email</Label><Input type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} /></div>
+              <div className="space-y-2"><Label>Phone</Label><Input value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} /></div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2"><Label>Country</Label><Input value={form.country} onChange={e => setForm({...form, country: e.target.value})} /></div>
+              <div className="space-y-2"><Label>Guest Type</Label>
+                <Select value={form.type} onValueChange={(v) => setForm({...form, type: v})}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Individual">Individual</SelectItem>
+                    <SelectItem value="Corporate">Corporate</SelectItem>
+                    <SelectItem value="Travel Agent">Travel Agent</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setAddOpen(false)}>Cancel</Button>
+            <Button onClick={handleAdd} className="bg-brass text-gold-foreground">Save Profile</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

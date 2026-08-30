@@ -10,6 +10,8 @@ import {
   type Discount,
   type Expense,
   type Profile,
+  type HkTask,
+  type Ticket
 } from "./pms-data";
 
 export type Role = "SUPER_ADMIN" | "GM" | "FRONT_DESK" | "PENDING";
@@ -37,6 +39,7 @@ type State = {
   profiles: Profile[];
   notifications: Notification[];
   tickets: Ticket[];
+  hkTasks: HkTask[];
   folio: FolioLine[];
   events: EventBooking[];
   orders: PosOrder[];
@@ -55,6 +58,7 @@ const initialState: State = {
   profiles: [],
   notifications: [],
   tickets: [],
+  hkTasks: [],
   folio: [],
   events: [],
   orders: [
@@ -97,10 +101,12 @@ type Ctx = State & {
   addRoomReservation: (booking: { guestName: string; phone: string; email: string; roomId: string; date: string; nights: number; baseAmount: number; totalAmount: number; paymentMethod: string; paidAmount: number; }) => Promise<{ success: boolean; error?: string }>;
   transferRoom: (reservationId: string, toRoom: string) => void;
   addFolioLine: (line: Omit<FolioLine, "id">) => void;
-  addTicket: (t: Omit<Ticket, "id" | "raised">) => void;
+  addTicket: (t: Omit<Ticket, "id" | "raised">) => Promise<void>;
+  setTaskStage: (taskId: string, stage: string) => Promise<void>;
+  assignTask: (taskId: string, assignee: string) => Promise<void>;
   addOrder: (o: Omit<PosOrder, "id" | "time">) => void;
   addEvent: (e: Omit<EventBooking, "id">) => void;
-  addGuest: (g: Omit<Guest, "id">) => Guest;
+  addGuest: (g: Omit<Guest, "id">) => Promise<{id: string, success: boolean}>;
   markAllRead: () => void;
   toggleRead: (id: string) => void;
   pushNotification: (n: Omit<Notification, "id" | "read" | "time">) => void;
@@ -141,7 +147,9 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         { data: discounts },
         { data: expenses },
         { data: profiles },
-        { data: notifications }
+        { data: notifications },
+        { data: hkTasks },
+        { data: tickets }
       ] = await Promise.all([
         supabase.from('rooms').select('*'),
         supabase.from('reservations').select('*'),
@@ -150,7 +158,9 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         supabase.from('discounts').select('*'),
         supabase.from('expenses').select('*'),
         supabase.from('profiles').select('*'),
-        supabase.from('notifications').select('*')
+        supabase.from('notifications').select('*'),
+        supabase.from('hk_tasks').select('*'),
+        supabase.from('tickets').select('*')
       ]);
 
       setState(s => ({
@@ -162,7 +172,9 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         discounts: (discounts as any) || [],
         expenses: (expenses as any) || [],
         profiles: (profiles as any) || [],
-        notifications: (notifications as any) || []
+        notifications: (notifications as any) || [],
+        hkTasks: (hkTasks as any) || [],
+        tickets: (tickets as any) || []
       }));
     } catch (err) {
       console.error("Failed to fetch Supabase data", err);
@@ -371,19 +383,53 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
       
       addTicket: async (t) => {
         const id = `MT-${Date.now()}`;
-        patch((s) => ({ tickets: [{ ...t, id, raised: "Just now" }, ...s.tickets] }));
-        await supabase.from('tickets').insert({ id, issue: t.issue, priority: t.priority, status: t.status });
+        await supabase.from('tickets').insert({ 
+          id, 
+          room_id: t.room_id || null, 
+          issue: t.issue, 
+          priority: t.priority, 
+          status: t.status,
+          assignee: t.assignee || 'Unassigned'
+        });
+        fetchData();
       },
       
+      setTaskStage: async (taskId, stage) => {
+        await supabase.from('hk_tasks').update({ stage }).eq('id', taskId);
+        fetchData();
+      },
+
+      assignTask: async (taskId, assignee) => {
+        await supabase.from('hk_tasks').update({ assignee }).eq('id', taskId);
+        fetchData();
+      },
+
       addOrder: (o) => patch((s) => ({ orders: [{ ...o, id: `POS-${1200 + s.orders.length + 1}`, time: "Just now" }, ...s.orders] })),
       
       addEvent: (e) => patch((s) => ({ events: [{ ...e, id: `EV-${s.events.length + 1}` }, ...s.events] })),
       
-      addGuest: (g) => {
-        const guest: Guest = { ...g, id: `G-${1100 + Math.floor(Math.random() * 800)}` };
-        patch((s) => ({ guests: [guest, ...s.guests] }));
-        supabase.from('guests').insert({ id: guest.id, name: guest.name, email: guest.email }).then();
-        return guest;
+      addGuest: async (g) => {
+        try {
+          const id = crypto.randomUUID();
+          await supabase.from('guests').insert({ 
+            id, 
+            name: g.name, 
+            email: g.email || null,
+            phone: g.phone || null,
+            country: g.country || null,
+            last_stay: new Date().toISOString().split('T')[0],
+            stays: g.stays || 0,
+            spend: g.spend || 0,
+            type: g.type || 'Individual',
+            vip: g.vip || false,
+            preferences: g.preferences || [],
+            notes: g.notes || null
+          });
+          fetchData();
+          return { id, success: true };
+        } catch (err) {
+          return { id: '', success: false };
+        }
       },
       
       markAllRead: async () => {

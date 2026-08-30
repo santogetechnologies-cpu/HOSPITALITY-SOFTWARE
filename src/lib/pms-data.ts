@@ -161,6 +161,7 @@ export type Expense = {
 };
 
 
+
 export type Profile = {
   id: string;
   name: string;
@@ -176,6 +177,30 @@ export type Notification = {
   type: string;
   read: boolean;
   time?: string;
+};
+
+export type HkTask = {
+  id: string;
+  room_id: string;
+  room?: Room;
+  roomType?: string;
+  checkout?: string;
+  kind: string;
+  assignee: string;
+  stage: string;
+  priority: string;
+  created_at?: string;
+};
+
+export type Ticket = {
+  id: string;
+  room_id: string;
+  room?: Room;
+  issue: string;
+  priority: string;
+  status: string;
+  assignee: string;
+  raised?: string;
 };
 
 export const inr = (amount: number) => {

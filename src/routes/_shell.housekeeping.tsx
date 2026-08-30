@@ -61,7 +61,7 @@ function Housekeeping() {
                   {list.map((t) => (
                     <div key={t.id} className="rounded-xl border border-border bg-card p-3 shadow-soft">
                       <div className="flex items-center justify-between">
-                        <span className="font-semibold tabular-nums">Room {t.room}</span>
+                        <span className="font-semibold tabular-nums">Room {rooms.find(r => r.id === t.room_id)?.room_number || t.room_id}</span>
                         {t.priority === "High" ? <Pill tone="destructive">High</Pill> : null}
                       </div>
                       <div className="mt-1 text-[11px] text-muted-foreground">{t.roomType}</div>
@@ -76,10 +76,10 @@ function Housekeeping() {
                         </Select>
                       </div>
                       <div className="mt-2 grid grid-cols-2 gap-1.5">
-                        <Button size="sm" variant="secondary" className="h-7 rounded-lg text-[11px]" onClick={() => { setTaskStage(t.id, "Cleaning"); toast.info(`Cleaning started · room ${t.room}`); }}>Start</Button>
-                        <Button size="sm" variant="secondary" className="h-7 rounded-lg text-[11px]" onClick={() => { setTaskStage(t.id, "Inspection"); toast.info(`Room ${t.room} awaiting inspection`); }}>Complete</Button>
-                        <Button size="sm" variant="outline" className="h-7 rounded-lg text-[11px]" onClick={() => { setTaskStage(t.id, "Ready"); toast.success(`Room ${t.room} inspected & ready`); }}>Inspect</Button>
-                        <Button size="sm" variant="outline" className="h-7 rounded-lg text-[11px]" onClick={() => { addTicket({ room: t.room, issue: "Reported during cleaning", priority: "Medium", status: "Open", assignee: "Anil Kumar" }); toast.warning(`Issue reported for room ${t.room}`); }}>Issue</Button>
+                        <Button size="sm" variant="secondary" className="h-7 rounded-lg text-[11px]" onClick={() => { setTaskStage(t.id, "Cleaning"); toast.info(`Cleaning started`); }}>Start</Button>
+                        <Button size="sm" variant="secondary" className="h-7 rounded-lg text-[11px]" onClick={() => { setTaskStage(t.id, "Inspection"); toast.info(`Awaiting inspection`); }}>Complete</Button>
+                        <Button size="sm" variant="outline" className="h-7 rounded-lg text-[11px]" onClick={() => { setTaskStage(t.id, "Ready"); toast.success(`Inspected & ready`); }}>Inspect</Button>
+                        <Button size="sm" variant="outline" className="h-7 rounded-lg text-[11px]" onClick={() => { addTicket({ room_id: t.room_id, issue: "Reported during cleaning", priority: "Medium", status: "Open", assignee: "Unassigned" }); toast.warning(`Issue reported`); }}>Issue</Button>
                       </div>
                     </div>
                   ))}

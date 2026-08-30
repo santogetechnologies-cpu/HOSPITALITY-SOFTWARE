@@ -85,12 +85,6 @@ const NAV: { section: string; items: NavItem[] }[] = [
     ],
   },
   {
-    section: "Reporting",
-    items: [
-      { to: "/reports", label: "Reports", icon: FileBarChart },
-    ],
-  },
-  {
     section: "Administration",
     items: [
       { to: "/staff", label: "Staff & Access", icon: UserCog, roles: ["SUPER_ADMIN"] },
