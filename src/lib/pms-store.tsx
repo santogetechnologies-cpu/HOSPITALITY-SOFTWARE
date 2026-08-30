@@ -21,7 +21,7 @@ import {
   type EventBooking,
 } from "./pms-data";
 
-export type Role = "manager" | "frontdesk" | "housekeeping" | "accounts" | "SUPER_ADMIN" | "PENDING";
+export type Role = "SUPER_ADMIN" | "GM" | "FRONT_DESK" | "PENDING";
 
 export type Session = { username: string; name: string; role: Role; roleLabel: string };
 
