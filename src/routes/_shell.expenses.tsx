@@ -18,6 +18,7 @@ export const Route = createFileRoute('/_shell/expenses')({
 
 function ExpensesPage() {
   const { expenses, addExpense, deleteExpense, session } = usePms();
+  const isAdmin = session?.role === "SUPER_ADMIN" || session?.role === "GM" || !session;
   const [open, setOpen] = React.useState(false);
   
   const [amount, setAmount] = React.useState("");
@@ -120,20 +121,24 @@ function ExpensesPage() {
                   - {inr(e.amount)}
                 </TableCell>
                 <TableCell className="text-right">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                    onClick={async () => {
-                      if (confirm(`Are you sure you want to delete expense "${e.description}" (-${inr(e.amount)})?`)) {
-                        const delRes = await deleteExpense(e.id);
-                        if (delRes?.success) toast.success("Expense deleted");
-                        else toast.error(delRes?.error || "Failed to delete expense");
-                      }
-                    }}
-                  >
-                    Delete
-                  </Button>
+                  {isAdmin ? (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      onClick={async () => {
+                        if (confirm(`Are you sure you want to delete expense "${e.description}" (-${inr(e.amount)})?`)) {
+                          const delRes = await deleteExpense(e.id);
+                          if (delRes?.success) toast.success("Expense deleted");
+                          else toast.error(delRes?.error || "Failed to delete expense");
+                        }
+                      }}
+                    >
+                      Delete
+                    </Button>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">—</span>
+                  )}
                 </TableCell>
               </TableRow>
             ))}

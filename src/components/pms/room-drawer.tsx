@@ -28,7 +28,8 @@ export function RoomDrawer({
   room: Room | null;
   onOpenChange: (open: boolean) => void;
   }) {
-  const { rooms, reservations, guests, setRoomStatus, deleteRoom } = usePms();
+  const { rooms, reservations, guests, setRoomStatus, deleteRoom, session } = usePms();
+  const isAdmin = session?.role === "SUPER_ADMIN" || session?.role === "GM" || !session;
   const navigate = useNavigate();
 
   const live = room ? rooms.find((r) => r.id === room.id) ?? room : null;
@@ -150,22 +151,24 @@ export function RoomDrawer({
                 </div>
               )}
 
-              <div className="pt-2 border-t border-border">
-                <Button
-                  variant="outline"
-                  className="w-full text-destructive hover:bg-destructive/10 hover:text-destructive"
-                  onClick={async () => {
-                    if (confirm(`Are you sure you want to permanently delete Room ${roomNum}?`)) {
-                      onOpenChange(false);
-                      const res = await deleteRoom(live.id);
-                      if (res?.success) toast.success(`Room ${roomNum} deleted`);
-                      else toast.error(res?.error || "Failed to delete room");
-                    }
-                  }}
-                >
-                  Delete Room
-                </Button>
-              </div>
+              {isAdmin && (
+                <div className="pt-2 border-t border-border">
+                  <Button
+                    variant="outline"
+                    className="w-full text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    onClick={async () => {
+                      if (confirm(`Are you sure you want to permanently delete Room ${roomNum}?`)) {
+                        onOpenChange(false);
+                        const res = await deleteRoom(live.id);
+                        if (res?.success) toast.success(`Room ${roomNum} deleted`);
+                        else toast.error(res?.error || "Failed to delete room");
+                      }
+                    }}
+                  >
+                    Delete Room
+                  </Button>
+                </div>
+              )}
             </div>
           </>
         ) : null}

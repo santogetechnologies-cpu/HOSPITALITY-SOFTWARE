@@ -124,6 +124,7 @@ type Ctx = State & {
   // Deletion Mutators
   deleteGuest: (id: string) => Promise<{ success: boolean; error?: string }>;
   deleteRoom: (id: string) => Promise<{ success: boolean; error?: string }>;
+  deleteReservation: (id: string) => Promise<{ success: boolean; error?: string }>;
   deletePayment: (id: string) => Promise<{ success: boolean; error?: string }>;
   deleteExpense: (id: string) => Promise<{ success: boolean; error?: string }>;
 
@@ -694,6 +695,26 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
       
       deleteGuest: async (id) => {
         try {
+          // 1. Find all reservations for this guest
+          const guestRes = state.reservations.filter(r => r.guest_id === id);
+          const resIds = guestRes.map(r => r.id);
+          
+          if (resIds.length > 0) {
+            // Delete payments, discounts, folio lines for these reservations
+            await supabase.from('payments').delete().in('reservation_id', resIds);
+            await supabase.from('discounts').delete().in('reservation_id', resIds);
+            await supabase.from('folio_lines').delete().in('reservation_id', resIds);
+            // Reset any active room status to AVAILABLE
+            for (const r of guestRes) {
+              if (r.room_id) {
+                await supabase.from('rooms').update({ status: 'AVAILABLE' }).eq('id', r.room_id);
+              }
+            }
+            // Delete reservations
+            await supabase.from('reservations').delete().eq('guest_id', id);
+          }
+
+          // Delete the guest profile
           const { error } = await supabase.from('guests').delete().eq('id', id);
           if (error) throw error;
           await fetchData();
@@ -706,6 +727,11 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
 
       deleteRoom: async (id) => {
         try {
+          // Unlink reservations from this room and delete tasks
+          await supabase.from('reservations').update({ room_id: null }).eq('room_id', id);
+          await supabase.from('hk_tasks').delete().eq('room_id', id);
+          await supabase.from('tickets').delete().eq('room_id', id);
+
           const { error } = await supabase.from('rooms').delete().eq('id', id);
           if (error) throw error;
           await fetchData();
@@ -713,6 +739,27 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         } catch (err: any) {
           console.error("deleteRoom error:", err);
           return { success: false, error: err.message || "Failed to delete room" };
+        }
+      },
+
+      deleteReservation: async (id) => {
+        try {
+          const res = state.reservations.find(r => r.id === id);
+          if (res?.room_id) {
+            await supabase.from('rooms').update({ status: 'AVAILABLE' }).eq('id', res.room_id);
+          }
+          // Delete dependent records
+          await supabase.from('payments').delete().eq('reservation_id', id);
+          await supabase.from('discounts').delete().eq('reservation_id', id);
+          await supabase.from('folio_lines').delete().eq('reservation_id', id);
+
+          const { error } = await supabase.from('reservations').delete().eq('id', id);
+          if (error) throw error;
+          await fetchData();
+          return { success: true };
+        } catch (err: any) {
+          console.error("deleteReservation error:", err);
+          return { success: false, error: err.message || "Failed to delete reservation" };
         }
       },
 

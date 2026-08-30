@@ -46,7 +46,8 @@ export const Route = createFileRoute("/_shell/rooms")({
 const DATES = ["12 Aug", "13 Aug", "14 Aug", "15 Aug", "16 Aug", "17 Aug", "18 Aug"];
 
 function RoomsPage() {
-  const { rooms, reservations, transferRoom, guests, deleteRoom } = usePms();
+  const { rooms, reservations, transferRoom, guests, deleteRoom, session } = usePms();
+  const isAdmin = session?.role === "SUPER_ADMIN" || session?.role === "GM" || !session;
   const [openRoom, setOpenRoom] = React.useState<Room | null>(null);
   const [q, setQ] = React.useState("");
   const [status, setStatus] = React.useState<string>("all");
@@ -321,21 +322,23 @@ function RoomsPage() {
                         <Button size="sm" variant="ghost" onClick={() => setOpenRoom(r)}>
                           Open
                         </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                          onClick={async () => {
-                            const rNum = r.room_number || (r as any).number;
-                            if (confirm(`Are you sure you want to delete Room ${rNum}?`)) {
-                              const res = await deleteRoom(r.id);
-                              if (res?.success) toast.success(`Room ${rNum} deleted`);
-                              else toast.error(res?.error || "Failed to delete room");
-                            }
-                          }}
-                        >
-                          Delete
-                        </Button>
+                        {isAdmin && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                            onClick={async () => {
+                              const rNum = r.room_number || (r as any).number;
+                              if (confirm(`Are you sure you want to delete Room ${rNum}?`)) {
+                                const res = await deleteRoom(r.id);
+                                if (res?.success) toast.success(`Room ${rNum} deleted`);
+                                else toast.error(res?.error || "Failed to delete room");
+                              }
+                            }}
+                          >
+                            Delete
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>

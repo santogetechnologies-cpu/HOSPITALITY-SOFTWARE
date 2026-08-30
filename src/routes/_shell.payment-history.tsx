@@ -15,7 +15,8 @@ export const Route = createFileRoute('/_shell/payment-history')({
 })
 
 function PaymentHistoryPage() {
-  const { payments, reservations, guests, rooms, deletePayment } = usePms();
+  const { payments, reservations, guests, rooms, deletePayment, session } = usePms();
+  const isAdmin = session?.role === "SUPER_ADMIN" || session?.role === "GM" || !session;
   const [q, setQ] = React.useState("");
   const [filter, setFilter] = React.useState<string>("all");
 
@@ -155,20 +156,24 @@ function PaymentHistoryPage() {
                     </Pill>
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                      onClick={async () => {
-                        if (confirm(`Are you sure you want to delete payment folio record "${p.id.slice(0, 8).toUpperCase()}"?`)) {
-                          const delRes = await deletePayment(p.id);
-                          if (delRes?.success) toast.success("Payment record deleted");
-                          else toast.error(delRes?.error || "Failed to delete payment record");
-                        }
-                      }}
-                    >
-                      Delete
-                    </Button>
+                    {isAdmin ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        onClick={async () => {
+                          if (confirm(`Are you sure you want to delete payment folio record "${p.id.slice(0, 8).toUpperCase()}"?`)) {
+                            const delRes = await deletePayment(p.id);
+                            if (delRes?.success) toast.success("Payment record deleted");
+                            else toast.error(delRes?.error || "Failed to delete payment record");
+                          }
+                        }}
+                      >
+                        Delete
+                      </Button>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
                   </TableCell>
                 </TableRow>
               );

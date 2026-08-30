@@ -31,7 +31,8 @@ export const Route = createFileRoute("/_shell/guests")({
 });
 
 function GuestsPage() {
-  const { guests, addGuest, deleteGuest } = usePms();
+  const { guests, addGuest, deleteGuest, session } = usePms();
+  const isAdmin = session?.role === "SUPER_ADMIN" || session?.role === "GM" || !session;
   const [q, setQ] = React.useState("");
   const [type, setType] = React.useState("all");
   const [openId, setOpenId] = React.useState<string | null>(null);
@@ -139,21 +140,22 @@ function GuestsPage() {
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">
                       <Button size="sm" variant="ghost" onClick={() => setOpenId(g.id)}>Profile</Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                        onClick={async () => {
-                          if (confirm(`Are you sure you want to delete guest profile "${g.name}"?`)) {
-                            const res = await usePms.getState?.() || {};
-                            const delRes = await deleteGuest(g.id);
-                            if (delRes?.success) toast.success("Guest deleted");
-                            else toast.error(delRes?.error || "Failed to delete guest");
-                          }
-                        }}
-                      >
-                        Delete
-                      </Button>
+                      {isAdmin && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                          onClick={async () => {
+                            if (confirm(`Are you sure you want to delete guest profile "${g.name}" and all associated booking records?`)) {
+                              const delRes = await deleteGuest(g.id);
+                              if (delRes?.success) toast.success("Guest deleted");
+                              else toast.error(delRes?.error || "Failed to delete guest");
+                            }
+                          }}
+                        >
+                          Delete
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>

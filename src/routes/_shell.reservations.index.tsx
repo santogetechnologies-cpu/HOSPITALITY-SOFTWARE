@@ -29,7 +29,8 @@ export const Route = createFileRoute("/_shell/reservations/")({
 const TABS = ["All", "CONFIRMED", "OCCUPIED", "PENDING", "BLOCKED", "COMPLETED", "CANCELLED"] as const;
 
 function ReservationsPage() {
-  const { reservations, guests, rooms, checkIn, checkOut, setReservationStatus, setRoomStatus } = usePms();
+  const { reservations, guests, rooms, checkIn, checkOut, setReservationStatus, setRoomStatus, deleteReservation, session } = usePms();
+  const isAdmin = session?.role === "SUPER_ADMIN" || session?.role === "GM" || !session;
   const navigate = useNavigate();
   const [tab, setTab] = React.useState<string>("All");
   const [q, setQ] = React.useState("");
@@ -227,6 +228,20 @@ function ReservationsPage() {
                           <DropdownMenuItem onClick={() => { checkOut(r.id); toast.success("Checked out"); }}>Check out</DropdownMenuItem>
                           <DropdownMenuItem onClick={() => { setReservationStatus(r.id, "CONFIRMED"); toast.success("Confirmed"); }}>Mark Confirmed</DropdownMenuItem>
                           <DropdownMenuItem onClick={() => { setReservationStatus(r.id, "CANCELLED"); toast.warning("Cancelled"); }}>Cancel Booking</DropdownMenuItem>
+                          {isAdmin && (
+                            <DropdownMenuItem 
+                              className="text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer"
+                              onClick={async () => {
+                                if (confirm(`Are you sure you want to permanently delete reservation #${r.id.slice(0, 8).toUpperCase()} for ${guest?.name || 'Guest'}?`)) {
+                                  const delRes = await deleteReservation(r.id);
+                                  if (delRes?.success) toast.success("Reservation deleted");
+                                  else toast.error(delRes?.error || "Failed to delete reservation");
+                                }
+                              }}
+                            >
+                              <Trash2 className="size-3.5 mr-2" /> Delete Reservation
+                            </DropdownMenuItem>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
