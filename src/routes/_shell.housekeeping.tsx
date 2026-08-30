@@ -33,7 +33,8 @@ const STAGES = ["Dirty", "Assigned", "Cleaning", "Inspection", "Ready"] as const
 
 function Housekeeping() {
   const { hkTasks, rooms, setTaskStage, assignTask, addTicket } = usePms();
-  const [checked, setChecked] = React.useState<string[]>(HK_CHECKLIST.slice(0, 3));
+  const checkTasks = HK_CHECKLIST.map(c => c.task);
+  const [checked, setChecked] = React.useState<string[]>(checkTasks.slice(0, 3));
 
   return (
     <>
@@ -71,7 +72,7 @@ function Housekeeping() {
                           <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="Unassigned">Unassigned</SelectItem>
-                            {HOUSEKEEPERS.map((h) => <SelectItem key={h} value={h}>{h}</SelectItem>)}
+                            {HOUSEKEEPERS.map((h) => <SelectItem key={h.id} value={h.name}>{h.name}</SelectItem>)}
                           </SelectContent>
                         </Select>
                       </div>
@@ -94,7 +95,8 @@ function Housekeeping() {
       <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
         <Panel title="Attendant workload" description="Assignments for the morning shift">
           <div className="grid gap-4 sm:grid-cols-2">
-            {HOUSEKEEPERS.map((h) => {
+            {HOUSEKEEPERS.map((hkObj) => {
+              const h = hkObj.name;
               const assigned = hkTasks.filter((t) => t.assignee === h);
               const done = assigned.filter((t) => t.stage === "Ready").length;
               return (
@@ -112,7 +114,7 @@ function Housekeeping() {
         </Panel>
         <Panel title="Room checklist" description="Standard departure clean">
           <ul className="space-y-2">
-            {HK_CHECKLIST.map((c) => (
+            {checkTasks.map((c) => (
               <li key={c}>
                 <label className="flex items-center gap-3 rounded-xl border border-border px-3 py-2.5 text-sm">
                   <Checkbox checked={checked.includes(c)} onCheckedChange={() => setChecked((s) => (s.includes(c) ? s.filter((x) => x !== c) : [...s, c]))} />
@@ -121,7 +123,7 @@ function Housekeeping() {
               </li>
             ))}
           </ul>
-          <Button className="mt-4 w-full rounded-xl bg-brass text-gold-foreground hover:opacity-90" onClick={() => toast.success(`Checklist submitted · ${checked.length}/${HK_CHECKLIST.length} complete`)}>Submit checklist</Button>
+          <Button className="mt-4 w-full rounded-xl bg-brass text-gold-foreground hover:opacity-90" onClick={() => toast.success(`Checklist submitted · ${checked.length}/${checkTasks.length} complete`)}>Submit checklist</Button>
         </Panel>
       </div>
     </>
