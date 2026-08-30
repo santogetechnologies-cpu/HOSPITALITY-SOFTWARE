@@ -26,6 +26,7 @@ import {
   PartyPopper,
   ClipboardCheck,
   ChevronRight,
+  Network,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePms, type Role } from "@/lib/pms-store";
@@ -87,6 +88,12 @@ const NAV: { section: string; items: NavItem[] }[] = [
       { to: "/reports", label: "Reports", icon: FileBarChart },
       { to: "/compliance", label: "Compliance", icon: ShieldCheck, roles: ["manager", "accounts"] },
       { to: "/notifications", label: "Notifications", icon: Bell },
+    ],
+  },
+  {
+    section: "System",
+    items: [
+      { to: "/system-workflow", label: "System Workflow", icon: Network, roles: ["SUPER_ADMIN"] },
     ],
   },
 ];

@@ -30,6 +30,7 @@ import { Route as ShellSettingsRouteImport } from './routes/_shell.settings'
 import { Route as ShellStaffRouteImport } from './routes/_shell.staff'
 import { Route as ShellReservationsIndexRouteImport } from './routes/_shell.reservations.index'
 import { Route as ShellReservationsNewRouteImport } from './routes/_shell.reservations.new'
+import { Route as ShellSystemWorkflowRouteImport } from './routes/_shell.system-workflow'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -157,6 +158,7 @@ export interface FileRoutesByFullPath {
   '/staff': typeof ShellStaffRoute
   '/reservations/new': typeof ShellReservationsNewRoute
   '/reservations/': typeof ShellReservationsIndexRoute
+  '/system-workflow': typeof ShellSystemWorkflowRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -179,6 +181,7 @@ export interface FileRoutesByTo {
   '/staff': typeof ShellStaffRoute
   '/reservations/new': typeof ShellReservationsNewRoute
   '/reservations': typeof ShellReservationsIndexRoute
+  '/system-workflow': typeof ShellSystemWorkflowRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -203,6 +206,7 @@ export interface FileRoutesById {
   '/_shell/staff': typeof ShellStaffRoute
   '/_shell/reservations/new': typeof ShellReservationsNewRoute
   '/_shell/reservations/': typeof ShellReservationsIndexRoute
+  '/_shell/system-workflow': typeof ShellSystemWorkflowRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -227,6 +231,7 @@ export interface FileRouteTypes {
     | '/staff'
     | '/reservations/new'
     | '/reservations/'
+    | '/system-workflow'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -249,6 +254,7 @@ export interface FileRouteTypes {
     | '/staff'
     | '/reservations/new'
     | '/reservations'
+    | '/system-workflow'
   id:
     | '__root__'
     | '/'
@@ -428,6 +434,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShellReservationsNewRouteImport
       parentRoute: typeof ShellRoute
     }
+    '/_shell/system-workflow': {
+      id: '/_shell/system-workflow'
+      path: '/system-workflow'
+      fullPath: '/system-workflow'
+      preLoaderRoute: typeof ShellSystemWorkflowRouteImport
+      parentRoute: typeof ShellRoute
+    }
   }
 }
 
@@ -451,6 +464,7 @@ interface ShellRouteChildren {
   ShellStaffRoute: typeof ShellStaffRoute
   ShellReservationsNewRoute: typeof ShellReservationsNewRoute
   ShellReservationsIndexRoute: typeof ShellReservationsIndexRoute
+  ShellSystemWorkflowRoute: typeof ShellSystemWorkflowRoute
 }
 
 const ShellRouteChildren: ShellRouteChildren = {
@@ -473,6 +487,7 @@ const ShellRouteChildren: ShellRouteChildren = {
   ShellStaffRoute: ShellStaffRoute,
   ShellReservationsNewRoute: ShellReservationsNewRoute,
   ShellReservationsIndexRoute: ShellReservationsIndexRoute,
+  ShellSystemWorkflowRoute: ShellSystemWorkflowRoute,
 }
 
 const ShellRouteWithChildren = ShellRoute._addFileChildren(ShellRouteChildren)
