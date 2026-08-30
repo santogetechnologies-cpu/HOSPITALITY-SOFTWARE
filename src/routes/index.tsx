@@ -3,7 +3,7 @@ import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { DEMO_ACCOUNTS, usePms, useHydrated } from "@/lib/pms-store";
+import { usePms, useHydrated } from "@/lib/pms-store";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { ShieldCheck, Sparkles, BedDouble, ArrowRight, KeyRound } from "lucide-react";
@@ -62,12 +62,6 @@ function LoginPage() {
       description: `Signed in as ${s.roleLabel}`,
     });
     void navigate({ to: "/dashboard" });
-  };
-
-  const fill = (u: string) => {
-    setUsername(u);
-    setPassword("demo123");
-    setError(null);
   };
 
   return (
@@ -192,37 +186,6 @@ function LoginPage() {
           </form>
 
           <div className="mt-8">
-            <div className="mb-3 flex items-center gap-2">
-              <KeyRound className="size-3.5 text-gold" />
-              <span className="eyebrow">Demo accounts</span>
-            </div>
-            <ul className="space-y-2">
-              {DEMO_ACCOUNTS.map((a) => (
-                <li key={a.username}>
-                  <button
-                    type="button"
-                    onClick={() => fill(a.username)}
-                    className={cn(
-                      "flex w-full items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3 text-left transition-all hover:-translate-y-0.5 hover:border-gold/60 hover:shadow-soft",
-                      username === a.username && "border-gold/70 shadow-soft",
-                    )}
-                  >
-                    <span className="min-w-0">
-                      <span className="block text-sm font-semibold">{a.roleLabel}</span>
-                      <span className="block truncate text-[11px] text-muted-foreground">
-                        {a.blurb}
-                      </span>
-                    </span>
-                    <span className="shrink-0 text-right">
-                      <span className="block font-mono text-xs">{a.username}</span>
-                      <span className="block font-mono text-[10px] text-muted-foreground">
-                        demo123
-                      </span>
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
             <p className="mt-4 text-center text-[11px] text-muted-foreground">
               Trouble signing in? Visit <Link to="/help" className="underline">Help & Support</Link>.
             </p>
