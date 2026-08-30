@@ -47,14 +47,14 @@ function LoginPage() {
     setError(null);
     setLoading(true);
     
-    const s = isSignUp 
+    const { session: s, error: authError } = isSignUp 
       ? await signUp(username, password)
       : await login(username, password);
       
     setLoading(false);
     
     if (!s) {
-      setError("Invalid credentials or error during authentication.");
+      setError(authError || "Invalid credentials or error during authentication.");
       return;
     }
     

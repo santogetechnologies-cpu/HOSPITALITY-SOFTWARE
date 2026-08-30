@@ -88,9 +88,9 @@ const initialState: State = {
 };
 
 type Ctx = State & {
-  login: (email: string, password: string) => Promise<Session | null>;
+  login: (email: string, password: string) => Promise<{ session: Session | null; error: string | null }>;
   logout: () => Promise<void>;
-  signUp: (email: string, password: string) => Promise<Session | null>;
+  signUp: (email: string, password: string) => Promise<{ session: Session | null; error: string | null }>;
   setRoomStatus: (roomId: string, status: RoomStatus) => void;
   assignGuestToRoom: (roomId: string, guest: string) => void;
   checkIn: (reservationId: string, roomNumber?: string) => void;
@@ -224,7 +224,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error || !data.user) {
           console.error("Supabase Login Error:", error);
-          return null;
+          return { session: null, error: error?.message || "Invalid credentials." };
         }
         
         let role = data.user.user_metadata?.role || "SUPER_ADMIN";
@@ -239,7 +239,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
           role: role as Role,
           roleLabel: role === "SUPER_ADMIN" ? "Super Admin" : role,
         };
-        return session;
+        return { session, error: null };
       },
       signUp: async (email, password) => {
         const role = "SUPER_ADMIN";
@@ -250,7 +250,9 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             data: { role, name: email.split("@")[0] }
           }
         });
-        if (error || !data.user) return null;
+        if (error || !data.user) {
+           return { session: null, error: error?.message || "Registration failed." };
+        }
 
         const session: Session = {
           username: data.user.email || "",
@@ -258,7 +260,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
           role: role as Role,
           roleLabel: "Super Admin",
         };
-        return session;
+        return { session, error: null };
       },
       logout: async () => {
         await supabase.auth.signOut();

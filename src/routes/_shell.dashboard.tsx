@@ -61,7 +61,7 @@ function Dashboard() {
   const reserved = rooms.filter((r) => r.status === "reserved").length;
   const vacant = rooms.filter((r) => r.status === "vacant-clean" || r.status === "vacant-dirty").length;
   const blocked = rooms.filter((r) => ["ooo", "oos", "maintenance"].includes(r.status)).length;
-  const occPct = Math.round((occupied / rooms.length) * 100);
+  const occPct = rooms.length > 0 ? Math.round((occupied / rooms.length) * 100) : 0;
 
   const arrivals = reservations.filter((r) => r.status === "Confirmed" || r.status === "Tentative").slice(0, 6);
   const departures = reservations.filter((r) => r.status === "Checked In").slice(0, 5);
@@ -74,6 +74,8 @@ function Dashboard() {
     { name: "Vacant", value: vacant, color: "var(--st-vacant-clean)" },
     { name: "Out of Order", value: blocked, color: "var(--st-ooo)" },
   ];
+
+  const safeDonut = rooms.length > 0 ? donut : [{ name: "No Rooms", value: 1, color: "var(--border)" }];
 
   const hour = 9;
   const greeting = hour < 12 ? "Good Morning" : hour < 17 ? "Good Afternoon" : "Good Evening";
@@ -151,8 +153,8 @@ function Dashboard() {
             <div className="relative h-[190px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie data={donut} dataKey="value" innerRadius={58} outerRadius={82} paddingAngle={3} stroke="none">
-                    {donut.map((d) => (
+                  <Pie data={safeDonut} dataKey="value" innerRadius={58} outerRadius={82} paddingAngle={3} stroke="none">
+                    {safeDonut.map((d) => (
                       <Cell key={d.name} fill={d.color} />
                     ))}
                   </Pie>
