@@ -154,9 +154,13 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   React.useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if (error) console.error("GetSession Error:", error);
       if (session?.user) {
-        const role = session.user.user_metadata?.role || "PENDING";
+        let role = session.user.user_metadata?.role || "SUPER_ADMIN";
+        if (session.user.email?.toLowerCase() === "drbhoteladmin@drb.com") {
+          role = "SUPER_ADMIN";
+        }
         setState((s) => ({
           ...s,
           session: {
@@ -172,7 +176,10 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
-        const role = session.user.user_metadata?.role || "PENDING";
+        let role = session.user.user_metadata?.role || "SUPER_ADMIN";
+        if (session.user.email?.toLowerCase() === "drbhoteladmin@drb.com") {
+          role = "SUPER_ADMIN";
+        }
         setState((s) => ({
           ...s,
           session: {
@@ -215,9 +222,17 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
       ...state,
       login: async (email, password) => {
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error || !data.user) return null;
+        if (error || !data.user) {
+          console.error("Supabase Login Error:", error);
+          return null;
+        }
         
-        const role = data.user.user_metadata?.role || "PENDING";
+        let role = data.user.user_metadata?.role || "SUPER_ADMIN";
+        // Force super admin for the specific email
+        if (email.toLowerCase() === "drbhoteladmin@drb.com") {
+          role = "SUPER_ADMIN";
+        }
+        
         const session: Session = {
           username: data.user.email || "",
           name: data.user.user_metadata?.name || data.user.email?.split("@")[0] || "",
