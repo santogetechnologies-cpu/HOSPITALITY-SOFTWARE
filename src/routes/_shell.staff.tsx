@@ -26,8 +26,8 @@ function StaffPage() {
 
   const isSuperAdmin = session?.role === "SUPER_ADMIN";
 
-  const activeStaff = profiles.filter(p => p.status === 'ACTIVE');
-  const inactiveStaff = profiles.filter(p => p.status !== 'ACTIVE');
+  const activeStaff = profiles.filter(p => (p.status || 'ACTIVE').toUpperCase() === 'ACTIVE');
+  const inactiveStaff = profiles.filter(p => (p.status || 'ACTIVE').toUpperCase() !== 'ACTIVE');
 
   // Add staff modal
   const [addOpen, setAddOpen] = React.useState(false);

@@ -633,10 +633,17 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             requested_amount: amount,
             reason,
             status: "PENDING",
-            requested_by: state.session?.username || "System"
+            requested_by: state.session?.name || state.session?.username || "Staff"
           });
           if (error) throw error;
-          fetchData();
+
+          // Freeze payment for this reservation until discount is resolved
+          const payment = state.payments.find(p => p.reservation_id === reservationId);
+          if (payment) {
+            await supabase.from('payments').update({ status: 'FROZEN' }).eq('id', payment.id);
+          }
+
+          await fetchData();
           return { success: true };
         } catch (err: any) {
           console.error("Discount error:", err);
@@ -648,25 +655,46 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         try {
           const discount = state.discounts.find(d => d.id === discountId);
           if (!discount) return { success: false, error: "Discount request not found" };
+
+          const approver = state.session?.name || state.session?.username || "Super Admin";
           const { error } = await supabase.from('discounts').update({ 
             status, 
-            approved_by: state.session?.username || "System" 
+            approved_by: approver
           }).eq('id', discountId);
           if (error) throw error;
 
-          // If approved, apply the discount to the payment total
-          if (status === "APPROVED") {
-            const payment = state.payments.find(p => p.reservation_id === discount.reservation_id);
-            if (payment) {
-              const newTotal = Math.max(0, payment.total_amount - discount.requested_amount);
-              const newStatus = payment.paid_amount >= newTotal ? "COMPLETED" : payment.status;
+          const payment = state.payments.find(p => p.reservation_id === discount.reservation_id);
+          const reservation = state.reservations.find(r => r.id === discount.reservation_id);
+
+          if (payment) {
+            if (status === "APPROVED") {
+              // Apply discounted amount: newTotal = original_total - discount
+              const originalTotal = Number(payment.total_amount) || Number(reservation?.base_amount) || 0;
+              const newTotal = Math.max(0, originalTotal - Number(discount.requested_amount));
+              const paid = Number(payment.paid_amount) || 0;
+              const newStatus = paid >= newTotal ? "COMPLETED" : (paid > 0 ? "PARTIAL" : "PENDING");
+
               await supabase.from('payments').update({ 
                 total_amount: newTotal,
                 status: newStatus
               }).eq('id', payment.id);
+
+              if (reservation) {
+                await supabase.from('reservations').update({ base_amount: newTotal }).eq('id', reservation.id);
+              }
+            } else {
+              // REJECTED: Restore payment with original amount and unfreeze
+              const total = Number(payment.total_amount) || 0;
+              const paid = Number(payment.paid_amount) || 0;
+              const originalStatus = paid >= total ? "COMPLETED" : (paid > 0 ? "PARTIAL" : "PENDING");
+
+              await supabase.from('payments').update({ 
+                status: originalStatus
+              }).eq('id', payment.id);
             }
           }
-          fetchData();
+
+          await fetchData();
           return { success: true };
         } catch (err: any) {
           console.error("Resolve discount error:", err);

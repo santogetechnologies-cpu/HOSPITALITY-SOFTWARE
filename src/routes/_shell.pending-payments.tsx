@@ -208,16 +208,27 @@ function PendingPaymentsPage() {
                   {inr(item.balance)}
                 </TableCell>
                 <TableCell className="text-right">
-                  <Button 
-                    size="sm" 
-                    className="bg-brass text-gold-foreground hover:opacity-90 shadow-sm"
-                    onClick={() => {
-                      setSelectedItem(item);
-                      setCollectionAmount(String(item.balance));
-                    }}
-                  >
-                    Collect Balance
-                  </Button>
+                  {item.stage === 'FROZEN' || item.status === 'FROZEN' ? (
+                    <Button 
+                      size="sm" 
+                      variant="outline" 
+                      disabled
+                      className="opacity-70 cursor-not-allowed text-xs text-warning border-warning/30"
+                    >
+                      🔒 Frozen (Pending Approval)
+                    </Button>
+                  ) : (
+                    <Button 
+                      size="sm" 
+                      className="bg-brass text-gold-foreground hover:opacity-90 shadow-sm"
+                      onClick={() => {
+                        setSelectedItem(item);
+                        setCollectionAmount(String(item.balance));
+                      }}
+                    >
+                      Collect Balance
+                    </Button>
+                  )}
                 </TableCell>
               </TableRow>
             ))}

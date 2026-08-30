@@ -214,27 +214,40 @@ function DiscountsPage() {
               {pending.map((d) => {
                 const res = getReservation(d.reservation_id);
                 const guest = res ? getGuestName(res.guest_id) : "Unknown";
+                const originalTotal = Number(res?.base_amount) || 0;
+                const discountAmt = Number(d.requested_amount) || 0;
+                const newPayable = Math.max(0, originalTotal - discountAmt);
+
                 return (
-                  <TableRow key={d.id}>
+                  <TableRow key={d.id} className="bg-warning/5">
                     <TableCell className="font-medium">
-                      <div>{guest}</div>
-                      <div className="text-xs text-muted-foreground">Folio: {d.reservation_id}</div>
+                      <div className="font-semibold">{guest}</div>
+                      <div className="text-xs text-muted-foreground font-mono">Folio: {String(d.reservation_id || '').slice(0, 10).toUpperCase()}</div>
                     </TableCell>
-                    <TableCell>{d.requested_by || "Staff"}</TableCell>
-                    <TableCell>{d.reason}</TableCell>
-                    <TableCell className="font-bold text-success">- {inr(d.requested_amount)}</TableCell>
+                    <TableCell>
+                      <span className="text-xs font-medium bg-secondary px-2 py-1 rounded">{d.requested_by || "Staff"}</span>
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-xs font-medium">{d.reason}</div>
+                      <div className="text-[11px] text-warning font-semibold mt-0.5">🔒 Folio Payment FROZEN</div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-xs text-muted-foreground line-through">{inr(originalTotal)}</div>
+                      <div className="font-bold text-success">- {inr(discountAmt)}</div>
+                      <div className="text-xs font-semibold text-gold mt-0.5">New Total: {inr(newPayable)}</div>
+                    </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
-                        <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" onClick={async () => {
+                        <Button size="sm" variant="outline" className="text-destructive hover:bg-destructive/10" onClick={async () => {
                           const r = await resolveDiscount(d.id, "REJECTED");
-                          if (r?.success) toast.info("Discount request rejected");
+                          if (r?.success) toast.info(`Discount rejected. Original amount (${inr(originalTotal)}) restored and folio unfrozen.`);
                           else toast.error(r?.error || "Action failed");
                         }}>Reject</Button>
-                        <Button size="sm" className="bg-success text-success-foreground hover:opacity-90" onClick={async () => {
+                        <Button size="sm" className="bg-brass text-gold-foreground hover:opacity-90 font-medium" onClick={async () => {
                           const r = await resolveDiscount(d.id, "APPROVED");
-                          if (r?.success) toast.success("Discount approved and applied to folio!");
+                          if (r?.success) toast.success(`Discount approved! New folio amount updated to ${inr(newPayable)}`);
                           else toast.error(r?.error || "Action failed");
-                        }}>Approve & Deduct</Button>
+                        }}>Approve ({inr(newPayable)})</Button>
                       </div>
                     </TableCell>
                   </TableRow>
