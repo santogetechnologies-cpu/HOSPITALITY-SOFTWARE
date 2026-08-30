@@ -46,7 +46,7 @@ export const Route = createFileRoute("/_shell/rooms")({
 const DATES = ["12 Aug", "13 Aug", "14 Aug", "15 Aug", "16 Aug", "17 Aug", "18 Aug"];
 
 function RoomsPage() {
-  const { rooms, reservations, transferRoom, guests } = usePms();
+  const { rooms, reservations, transferRoom, guests, deleteRoom } = usePms();
   const [openRoom, setOpenRoom] = React.useState<Room | null>(null);
   const [q, setQ] = React.useState("");
   const [status, setStatus] = React.useState<string>("all");
@@ -317,9 +317,26 @@ function RoomsPage() {
                     <TableCell>{r.status === 'DIRTY' ? 'Dirty' : 'Clean'}</TableCell>
                     <TableCell className="text-right font-medium">{inr(r.price || (r as any).rate || 0)}</TableCell>
                     <TableCell className="text-right">
-                      <Button size="sm" variant="ghost">
-                        Open
-                      </Button>
+                      <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                        <Button size="sm" variant="ghost" onClick={() => setOpenRoom(r)}>
+                          Open
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                          onClick={async () => {
+                            const rNum = r.room_number || (r as any).number;
+                            if (confirm(`Are you sure you want to delete Room ${rNum}?`)) {
+                              const res = await deleteRoom(r.id);
+                              if (res?.success) toast.success(`Room ${rNum} deleted`);
+                              else toast.error(res?.error || "Failed to delete room");
+                            }
+                          }}
+                        >
+                          Delete
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

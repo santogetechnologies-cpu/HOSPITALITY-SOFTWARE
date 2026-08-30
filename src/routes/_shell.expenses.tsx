@@ -17,7 +17,7 @@ export const Route = createFileRoute('/_shell/expenses')({
 })
 
 function ExpensesPage() {
-  const { expenses, addExpense, session } = usePms();
+  const { expenses, addExpense, deleteExpense, session } = usePms();
   const [open, setOpen] = React.useState(false);
   
   const [amount, setAmount] = React.useState("");
@@ -101,7 +101,8 @@ function ExpensesPage() {
               <TableHead>Category</TableHead>
               <TableHead>Description</TableHead>
               <TableHead>Recorded By</TableHead>
-              <TableHead className="text-right">Amount</TableHead>
+              <TableHead>Amount</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -115,8 +116,24 @@ function ExpensesPage() {
                 </TableCell>
                 <TableCell>{e.description}</TableCell>
                 <TableCell className="text-xs text-muted-foreground">{e.recorded_by}</TableCell>
-                <TableCell className="text-right font-semibold text-destructive">
+                <TableCell className="font-semibold text-destructive">
                   - {inr(e.amount)}
+                </TableCell>
+                <TableCell className="text-right">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    onClick={async () => {
+                      if (confirm(`Are you sure you want to delete expense "${e.description}" (-${inr(e.amount)})?`)) {
+                        const delRes = await deleteExpense(e.id);
+                        if (delRes?.success) toast.success("Expense deleted");
+                        else toast.error(delRes?.error || "Failed to delete expense");
+                      }
+                    }}
+                  >
+                    Delete
+                  </Button>
                 </TableCell>
               </TableRow>
             ))}

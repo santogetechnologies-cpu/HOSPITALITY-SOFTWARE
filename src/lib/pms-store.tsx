@@ -121,14 +121,21 @@ type Ctx = State & {
   resolveDiscount: (discountId: string, status: "APPROVED" | "REJECTED") => Promise<{ success: boolean; error?: string }>;
   addExpense: (amount: number, category: string, description: string) => Promise<{ success: boolean; error?: string }>;
   
+  // Deletion Mutators
+  deleteGuest: (id: string) => Promise<{ success: boolean; error?: string }>;
+  deleteRoom: (id: string) => Promise<{ success: boolean; error?: string }>;
+  deletePayment: (id: string) => Promise<{ success: boolean; error?: string }>;
+  deleteExpense: (id: string) => Promise<{ success: boolean; error?: string }>;
+
   // Room Mutators
   addRoom: (number: string, type: string, floor: string, price: number) => Promise<{ success: boolean; error?: string }>;
 
   // Staff Mutators
   addStaff: (name: string, role: string, phone: string, email: string, pass: string) => Promise<{ success: boolean; error?: string }>;
   updateStaffRole: (profileId: string, role: string) => Promise<void>;
+  updateStaffPassword: (profileId: string, pass: string) => Promise<{ success: boolean; error?: string }>;
   toggleStaffStatus: (profileId: string) => Promise<void>;
-  deleteStaff: (profileId: string) => Promise<void>;
+  deleteStaff: (profileId: string) => Promise<{ success: boolean; error?: string }>;
 };
 
 const PmsContext = React.createContext<Ctx | null>(null);
@@ -340,16 +347,23 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
           });
           if (gErr) throw gErr;
 
-          // 2. Insert Reservation
+          // 2. Insert Reservation with valid ISO timestamp for start_time and end_time
           const resId = crypto.randomUUID();
+          const bookingDate = b.date || new Date().toISOString().split('T')[0];
+          const nights = Number(b.nights) || 1;
+          const startTs = new Date(`${bookingDate}T14:00:00`).toISOString();
+          const endDateObj = new Date(`${bookingDate}T11:00:00`);
+          endDateObj.setDate(endDateObj.getDate() + nights);
+          const endTs = endDateObj.toISOString();
+
           const { error: rErr } = await supabase.from('reservations').insert({
             id: resId,
             guest_id: guestId,
             room_id: b.roomId,
             resource_type: 'ROOM',
-            booking_date: b.date || new Date().toISOString().split('T')[0],
-            start_time: '14:00:00',
-            end_time: '11:00:00',
+            booking_date: bookingDate,
+            start_time: startTs,
+            end_time: endTs,
             status: 'CONFIRMED',
             base_amount: Number(b.totalAmount) || Number(b.baseAmount) || 0
           });
@@ -643,49 +657,90 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         }
       },
       
-      addStaff: async (name, role, phone, email, pass) => {
+      deleteGuest: async (id) => {
         try {
-          // Use a secondary client so we don't clobber the current admin's session
-          const { createClient } = await import('@supabase/supabase-js');
-          const tempClient = createClient("https://znxeifvdrjkgqyrrnaxu.supabase.co", "sb_publishable_rEkA1iNEbIjSaixi7n8eIg_BUcZLMFV", {
-            auth: { persistSession: false, autoRefreshToken: false }
-          });
-          
-          let userId = crypto.randomUUID();
-          let authFailed = false;
-          let authErrorStr = "";
-
-          const { data, error } = await tempClient.auth.signUp({
-            email, password: pass,
-            options: { data: { role, name } }
-          });
-          
-          if (error) {
-            authFailed = true;
-            authErrorStr = error.message;
-            if (!error.message.includes("Database error")) {
-              return { success: false, error: error.message };
-            }
-          } else if (data.user) {
-            userId = data.user.id;
-          }
-          
-          // Upsert to handle trigger vs manual insert
-          await supabase.from('profiles').upsert({ id: userId, name, role, phone, status: 'ACTIVE' });
-          fetchData();
-          
-          if (authFailed) {
-            return { success: true, error: `Profile created, but login creation failed: ${authErrorStr}` };
-          }
+          const { error } = await supabase.from('guests').delete().eq('id', id);
+          if (error) throw error;
+          await fetchData();
           return { success: true };
         } catch (err: any) {
-          return { success: false, error: err.message || "Failed to create staff login" };
+          console.error("deleteGuest error:", err);
+          return { success: false, error: err.message || "Failed to delete guest" };
+        }
+      },
+
+      deleteRoom: async (id) => {
+        try {
+          const { error } = await supabase.from('rooms').delete().eq('id', id);
+          if (error) throw error;
+          await fetchData();
+          return { success: true };
+        } catch (err: any) {
+          console.error("deleteRoom error:", err);
+          return { success: false, error: err.message || "Failed to delete room" };
+        }
+      },
+
+      deletePayment: async (id) => {
+        try {
+          const { error } = await supabase.from('payments').delete().eq('id', id);
+          if (error) throw error;
+          await fetchData();
+          return { success: true };
+        } catch (err: any) {
+          console.error("deletePayment error:", err);
+          return { success: false, error: err.message || "Failed to delete payment" };
+        }
+      },
+
+      deleteExpense: async (id) => {
+        try {
+          const { error } = await supabase.from('expenses').delete().eq('id', id);
+          if (error) throw error;
+          await fetchData();
+          return { success: true };
+        } catch (err: any) {
+          console.error("deleteExpense error:", err);
+          return { success: false, error: err.message || "Failed to delete expense" };
+        }
+      },
+
+      addStaff: async (name, role, phone, email, pass) => {
+        try {
+          const userId = crypto.randomUUID();
+          const { error: pErr } = await supabase.from('profiles').upsert({
+            id: userId,
+            name,
+            role: role || 'FRONT_DESK',
+            phone: phone || null,
+            email: email || null,
+            pin: pass || null,
+            status: 'ACTIVE'
+          });
+          if (pErr) throw pErr;
+          
+          await fetchData();
+          return { success: true };
+        } catch (err: any) {
+          console.error("addStaff error:", err);
+          return { success: false, error: err.message || "Failed to create staff profile" };
         }
       },
       
       updateStaffRole: async (profileId, role) => {
         await supabase.from('profiles').update({ role }).eq('id', profileId);
         fetchData();
+      },
+
+      updateStaffPassword: async (profileId, pass) => {
+        try {
+          const { error } = await supabase.from('profiles').update({ pin: pass }).eq('id', profileId);
+          if (error) throw error;
+          await fetchData();
+          return { success: true };
+        } catch (err: any) {
+          return { success: false, error: err.message || "Failed to update password" };
+        }
       },
 
       toggleStaffStatus: async (profileId) => {
@@ -698,8 +753,14 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
       },
 
       deleteStaff: async (profileId) => {
-        await supabase.from('profiles').delete().eq('id', profileId);
-        fetchData();
+        try {
+          const { error } = await supabase.from('profiles').delete().eq('id', profileId);
+          if (error) throw error;
+          await fetchData();
+          return { success: true };
+        } catch (err: any) {
+          return { success: false, error: err.message || "Failed to delete staff member" };
+        }
       },
 
       addRoom: async (number, type, floor, price) => {

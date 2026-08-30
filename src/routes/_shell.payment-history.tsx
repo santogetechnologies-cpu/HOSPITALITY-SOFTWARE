@@ -8,12 +8,14 @@ import { usePms } from '@/lib/pms-store'
 import { inr } from '@/lib/pms-data'
 import { Banknote, Search, CreditCard, CheckCircle2, Clock, ShieldAlert } from 'lucide-react'
 
+import { Button } from '@/components/ui/button'
+
 export const Route = createFileRoute('/_shell/payment-history')({
   component: PaymentHistoryPage,
 })
 
 function PaymentHistoryPage() {
-  const { payments, reservations, guests, rooms } = usePms();
+  const { payments, reservations, guests, rooms, deletePayment } = usePms();
   const [q, setQ] = React.useState("");
   const [filter, setFilter] = React.useState<string>("all");
 
@@ -113,6 +115,7 @@ function PaymentHistoryPage() {
               <TableHead>Balance</TableHead>
               <TableHead>Payment Method</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -150,6 +153,22 @@ function PaymentHistoryPage() {
                     <Pill tone={p.status === 'COMPLETED' ? 'success' : p.status === 'PARTIAL' ? 'warning' : p.status === 'FROZEN' ? 'info' : 'destructive'}>
                       {p.status}
                     </Pill>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      onClick={async () => {
+                        if (confirm(`Are you sure you want to delete payment folio record "${p.id.slice(0, 8).toUpperCase()}"?`)) {
+                          const delRes = await deletePayment(p.id);
+                          if (delRes?.success) toast.success("Payment record deleted");
+                          else toast.error(delRes?.error || "Failed to delete payment record");
+                        }
+                      }}
+                    >
+                      Delete
+                    </Button>
                   </TableCell>
                 </TableRow>
               );

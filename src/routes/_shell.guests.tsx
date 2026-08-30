@@ -31,7 +31,7 @@ export const Route = createFileRoute("/_shell/guests")({
 });
 
 function GuestsPage() {
-  const { guests, addGuest } = usePms();
+  const { guests, addGuest, deleteGuest } = usePms();
   const [q, setQ] = React.useState("");
   const [type, setType] = React.useState("all");
   const [openId, setOpenId] = React.useState<string | null>(null);
@@ -136,7 +136,26 @@ function GuestsPage() {
                   <TableCell className="tabular-nums">{inr(g.spend || 0)}</TableCell>
                   <TableCell><Pill>{g.type || "Individual"}</Pill></TableCell>
                   <TableCell>{g.vip ? <Pill tone="gold">VIP</Pill> : "—"}</TableCell>
-                  <TableCell className="text-right"><Button size="sm" variant="ghost" onClick={() => setOpenId(g.id)}>Profile</Button></TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <Button size="sm" variant="ghost" onClick={() => setOpenId(g.id)}>Profile</Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        onClick={async () => {
+                          if (confirm(`Are you sure you want to delete guest profile "${g.name}"?`)) {
+                            const res = await usePms.getState?.() || {};
+                            const delRes = await deleteGuest(g.id);
+                            if (delRes?.success) toast.success("Guest deleted");
+                            else toast.error(delRes?.error || "Failed to delete guest");
+                          }
+                        }}
+                      >
+                        Delete
+                      </Button>
+                    </div>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
