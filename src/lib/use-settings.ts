@@ -1,8 +1,14 @@
 import * as React from 'react';
 
+export type RoomTypeConfig = {
+  id: string;
+  name: string;
+  basePrice: number;
+};
+
 type SettingsState = {
   floors: string[];
-  roomTypes: { id: string; name: string; basePrice: number }[];
+  roomTypes: RoomTypeConfig[];
 };
 
 const DEFAULT_SETTINGS: SettingsState = {
@@ -10,34 +16,38 @@ const DEFAULT_SETTINGS: SettingsState = {
   roomTypes: [
     { id: "rt1", name: "Standard Room", basePrice: 2500 },
     { id: "rt2", name: "Deluxe King", basePrice: 4500 },
-    { id: "rt3", name: "Executive Suite", basePrice: 8000 }
+    { id: "rt3", name: "Executive Suite", basePrice: 8000 },
+    { id: "rt4", name: "Presidential Suite", basePrice: 15000 },
   ]
 };
 
 export function useSettings() {
-  const [settings, setSettings] = React.useState<SettingsState>(DEFAULT_SETTINGS);
-
-  React.useEffect(() => {
-    const saved = localStorage.getItem("drb_pms_settings");
-    if (saved) {
-      try {
-        setSettings(JSON.parse(saved));
-      } catch (e) {
-        console.error("Failed to parse settings", e);
+  const [settings, setSettings] = React.useState<SettingsState>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("drb_pms_settings");
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch (e) {
+          console.error("Failed to parse settings", e);
+        }
       }
-    } else {
-      localStorage.setItem("drb_pms_settings", JSON.stringify(DEFAULT_SETTINGS));
     }
-  }, []);
+    return DEFAULT_SETTINGS;
+  });
 
   const saveSettings = (newSettings: SettingsState) => {
     setSettings(newSettings);
-    localStorage.setItem("drb_pms_settings", JSON.stringify(newSettings));
+    if (typeof window !== "undefined") {
+      localStorage.setItem("drb_pms_settings", JSON.stringify(newSettings));
+    }
   };
 
   const addFloor = (floor: string) => {
-    if (settings.floors.includes(floor)) return;
-    saveSettings({ ...settings, floors: [...settings.floors, floor] });
+    const trimmed = floor.trim();
+    if (!trimmed || settings.floors.includes(trimmed)) return false;
+    saveSettings({ ...settings, floors: [...settings.floors, trimmed] });
+    return true;
   };
 
   const removeFloor = (floor: string) => {
@@ -45,8 +55,11 @@ export function useSettings() {
   };
 
   const addRoomType = (name: string, basePrice: number) => {
-    const newType = { id: crypto.randomUUID(), name, basePrice };
+    const trimmed = name.trim();
+    if (!trimmed) return false;
+    const newType = { id: crypto.randomUUID(), name: trimmed, basePrice: Number(basePrice) || 0 };
     saveSettings({ ...settings, roomTypes: [...settings.roomTypes, newType] });
+    return true;
   };
 
   const removeRoomType = (id: string) => {
@@ -55,3 +68,4 @@ export function useSettings() {
 
   return { settings, saveSettings, addFloor, removeFloor, addRoomType, removeRoomType };
 }
+

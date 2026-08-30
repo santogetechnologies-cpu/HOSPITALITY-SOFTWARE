@@ -115,14 +115,14 @@ type Ctx = State & {
   addPartyHallBooking: (b: { customerName: string; phone: string; email: string; eventType: string; guests: number; date: string; startTime: string; endTime: string; baseAmount: number; advance: number; }) => Promise<{ success: boolean; error?: string }>;
   
   // Finance Mutators
-  settlePayment: (paymentId: string, amount: number) => Promise<void>;
-  freezePayment: (paymentId: string) => Promise<void>;
-  requestDiscount: (reservationId: string, amount: number, reason: string) => Promise<void>;
-  resolveDiscount: (discountId: string, status: "APPROVED" | "REJECTED") => Promise<void>;
-  addExpense: (amount: number, category: string, description: string) => Promise<void>;
+  settlePayment: (paymentId: string, amount: number) => Promise<{ success: boolean; error?: string }>;
+  freezePayment: (paymentId: string) => Promise<{ success: boolean; error?: string }>;
+  requestDiscount: (reservationId: string, amount: number, reason: string) => Promise<{ success: boolean; error?: string }>;
+  resolveDiscount: (discountId: string, status: "APPROVED" | "REJECTED") => Promise<{ success: boolean; error?: string }>;
+  addExpense: (amount: number, category: string, description: string) => Promise<{ success: boolean; error?: string }>;
   
   // Room Mutators
-  addRoom: (number: string, type: string, floor: string, price: number) => Promise<void>;
+  addRoom: (number: string, type: string, floor: string, price: number) => Promise<{ success: boolean; error?: string }>;
 
   // Staff Mutators
   addStaff: (name: string, role: string, phone: string, email: string, pass: string) => Promise<{ success: boolean; error?: string }>;
@@ -532,65 +532,100 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
       },
 
       settlePayment: async (paymentId, amount) => {
-        const payment = state.payments.find(p => p.id === paymentId);
-        if (!payment) return;
-        const newPaid = payment.paid_amount + amount;
-        const status = newPaid >= payment.total_amount ? "COMPLETED" : "PARTIAL";
-        await supabase.from('payments').update({ paid_amount: newPaid, status }).eq('id', paymentId);
-        fetchData();
+        try {
+          const payment = state.payments.find(p => p.id === paymentId);
+          if (!payment) return { success: false, error: "Payment record not found" };
+          const newPaid = (payment.paid_amount || 0) + amount;
+          const status = newPaid >= payment.total_amount ? "COMPLETED" : "PARTIAL";
+          const { error } = await supabase.from('payments').update({ paid_amount: newPaid, status }).eq('id', paymentId);
+          if (error) throw error;
+          fetchData();
+          return { success: true };
+        } catch (err: any) {
+          console.error("Settle payment error:", err);
+          return { success: false, error: err.message || "Failed to settle payment" };
+        }
       },
 
       freezePayment: async (paymentId) => {
-        await supabase.from('payments').update({ status: "FROZEN" }).eq('id', paymentId);
-        fetchData();
+        try {
+          const { error } = await supabase.from('payments').update({ status: "FROZEN" }).eq('id', paymentId);
+          if (error) throw error;
+          fetchData();
+          return { success: true };
+        } catch (err: any) {
+          console.error("Freeze payment error:", err);
+          return { success: false, error: err.message || "Failed to freeze account" };
+        }
       },
 
       requestDiscount: async (reservationId, amount, reason) => {
-        const id = crypto.randomUUID();
-        await supabase.from('discounts').insert({
-          id,
-          reservation_id: reservationId,
-          requested_amount: amount,
-          reason,
-          status: "PENDING",
-          requested_by: state.session?.username || "System"
-        });
-        fetchData();
+        try {
+          const id = crypto.randomUUID();
+          const { error } = await supabase.from('discounts').insert({
+            id,
+            reservation_id: reservationId,
+            requested_amount: amount,
+            reason,
+            status: "PENDING",
+            requested_by: state.session?.username || "System"
+          });
+          if (error) throw error;
+          fetchData();
+          return { success: true };
+        } catch (err: any) {
+          console.error("Discount error:", err);
+          return { success: false, error: err.message || "Failed to request discount" };
+        }
       },
 
       resolveDiscount: async (discountId, status) => {
-        const discount = state.discounts.find(d => d.id === discountId);
-        if (!discount) return;
-        await supabase.from('discounts').update({ 
-          status, 
-          approved_by: state.session?.username || "System" 
-        }).eq('id', discountId);
+        try {
+          const discount = state.discounts.find(d => d.id === discountId);
+          if (!discount) return { success: false, error: "Discount request not found" };
+          const { error } = await supabase.from('discounts').update({ 
+            status, 
+            approved_by: state.session?.username || "System" 
+          }).eq('id', discountId);
+          if (error) throw error;
 
-        // If approved, apply the discount to the payment total
-        if (status === "APPROVED") {
-          const payment = state.payments.find(p => p.reservation_id === discount.reservation_id);
-          if (payment) {
-            const newTotal = Math.max(0, payment.total_amount - discount.requested_amount);
-            const newStatus = payment.paid_amount >= newTotal ? "COMPLETED" : payment.status;
-            await supabase.from('payments').update({ 
-              total_amount: newTotal,
-              status: newStatus
-            }).eq('id', payment.id);
+          // If approved, apply the discount to the payment total
+          if (status === "APPROVED") {
+            const payment = state.payments.find(p => p.reservation_id === discount.reservation_id);
+            if (payment) {
+              const newTotal = Math.max(0, payment.total_amount - discount.requested_amount);
+              const newStatus = payment.paid_amount >= newTotal ? "COMPLETED" : payment.status;
+              await supabase.from('payments').update({ 
+                total_amount: newTotal,
+                status: newStatus
+              }).eq('id', payment.id);
+            }
           }
+          fetchData();
+          return { success: true };
+        } catch (err: any) {
+          console.error("Resolve discount error:", err);
+          return { success: false, error: err.message || "Failed to update discount" };
         }
-        fetchData();
       },
 
       addExpense: async (amount, category, description) => {
-        const id = crypto.randomUUID();
-        await supabase.from('expenses').insert({
-          id,
-          amount,
-          category,
-          description,
-          recorded_by: state.session?.username || "System"
-        });
-        fetchData();
+        try {
+          const id = crypto.randomUUID();
+          const { error } = await supabase.from('expenses').insert({
+            id,
+            amount,
+            category,
+            description,
+            recorded_by: state.session?.username || "System"
+          });
+          if (error) throw error;
+          fetchData();
+          return { success: true };
+        } catch (err: any) {
+          console.error("Expense error:", err);
+          return { success: false, error: err.message || "Failed to record expense" };
+        }
       },
       
       addStaff: async (name, role, phone, email, pass) => {
@@ -653,22 +688,28 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
       },
 
       addRoom: async (number, type, floor, price) => {
-        const id = `room-${Date.now()}`;
-        const { error } = await supabase.from('rooms').insert({
-          id,
-          number,
-          floor: parseInt(floor) || 1,
-          type,
-          rate: price,
-          status: 'vacant-clean',
-          created_at: new Date().toISOString()
-        });
-        if (error) {
-          console.error("Error creating room", error);
-          return { success: false, error: error.message };
+        try {
+          const id = crypto.randomUUID();
+          const { error } = await supabase.from('rooms').insert({
+            id,
+            room_number: String(number),
+            room_name: type || "Standard Room",
+            floor: String(floor || "1"),
+            price: Number(price) || 0,
+            status: 'AVAILABLE',
+            capacity: 2,
+            is_active: true
+          });
+          if (error) {
+            console.error("Error creating room:", error);
+            return { success: false, error: error.message };
+          }
+          fetchData();
+          return { success: true };
+        } catch (err: any) {
+          console.error("Room insert exception:", err);
+          return { success: false, error: err.message || "Failed to create room" };
         }
-        fetchData();
-        return { success: true };
       }
     };
   }, [state, fetchData]);

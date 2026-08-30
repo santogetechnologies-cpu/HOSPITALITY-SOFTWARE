@@ -33,22 +33,65 @@ function SettingsPage() {
   const { rooms, addRoom } = usePms();
   const { settings, addFloor, removeFloor, addRoomType, removeRoomType } = useSettings();
   
-  const [active, setActive] = React.useState("Hotel Profile");
+  const [active, setActive] = React.useState("Rooms");
   
   const [addRoomOpen, setAddRoomOpen] = React.useState(false);
   const [r, setR] = React.useState({ number: "", type: "", floor: "", price: 0 });
   const [newFloor, setNewFloor] = React.useState("");
   const [newType, setNewType] = React.useState({ name: "", price: "" });
 
+  // When opening add room modal, ensure default selection
+  React.useEffect(() => {
+    if (addRoomOpen) {
+      const defFloor = settings.floors[0] || "1";
+      const defType = settings.roomTypes[0]?.name || "Standard Room";
+      const defPrice = settings.roomTypes[0]?.basePrice || 2500;
+      setR({
+        number: "",
+        floor: defFloor,
+        type: defType,
+        price: defPrice
+      });
+    }
+  }, [addRoomOpen, settings]);
+
   const handleAddRoom = async () => {
-    if (!r.number || !r.price) return toast.error("Number and Price are required");
-    const res = await addRoom(r.number, r.type, r.floor, r.price);
+    if (!r.number.trim()) return toast.error("Please enter a room number (e.g. 101)");
+    if (!r.price || r.price <= 0) return toast.error("Please enter a valid room rate");
+    
+    const floorToSave = r.floor || settings.floors[0] || "1";
+    const typeToSave = r.type || settings.roomTypes[0]?.name || "Standard Room";
+
+    const res = await addRoom(r.number.trim(), typeToSave, floorToSave, r.price);
     if (res?.success) {
-      toast.success(`Room ${r.number} added successfully`);
+      toast.success(`Room ${r.number.trim()} created successfully!`);
       setAddRoomOpen(false);
       setR({ number: "", type: "", floor: "", price: 0 });
-    } else if (res?.error) {
-      toast.error(res.error);
+    } else {
+      toast.error(res?.error || "Failed to create room");
+    }
+  };
+
+  const handleCreateFloor = () => {
+    if (!newFloor.trim()) return toast.error("Please enter floor number or name");
+    const ok = addFloor(newFloor.trim());
+    if (ok) {
+      toast.success(`Floor "${newFloor.trim()}" added`);
+      setNewFloor("");
+    } else {
+      toast.error("Floor already exists or invalid");
+    }
+  };
+
+  const handleCreateRoomType = () => {
+    if (!newType.name.trim()) return toast.error("Please enter a category name");
+    const price = parseFloat(newType.price) || 0;
+    const ok = addRoomType(newType.name.trim(), price);
+    if (ok) {
+      toast.success(`Room Category "${newType.name.trim()}" added`);
+      setNewType({ name: "", price: "" });
+    } else {
+      toast.error("Failed to add category");
     }
   };
 
@@ -63,7 +106,7 @@ function SettingsPage() {
             ))}
           </ul>
         </Panel>
-        <Panel title={active} description="Changes are stored in this demo session only">
+        <Panel title={active} description={active === "Rooms" ? "Configure floors, room categories, and physical room keys" : "General property configuration"}>
           {active === "Hotel Profile" ? (
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2"><Label>Hotel name</Label><Input defaultValue="DRB Hotel" /></div>
@@ -76,30 +119,36 @@ function SettingsPage() {
           ) : active === "Rooms" ? (
             <div className="space-y-8">
               <div className="grid gap-6 md:grid-cols-2">
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2 font-medium"><Layers className="size-4" /> Configured Floors</div>
+                <div className="space-y-4 rounded-xl border border-border p-4 bg-secondary/20">
+                  <div className="flex items-center gap-2 font-semibold"><Layers className="size-4 text-gold" /> Configured Floors</div>
                   <div className="flex flex-wrap gap-2">
                     {settings.floors.map(f => (
-                      <Pill key={f} tone="secondary" className="cursor-pointer hover:bg-destructive/10" onClick={() => removeFloor(f)}>{f} &times;</Pill>
+                      <span key={f} className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-card border border-border">
+                        Floor {f}
+                        <button type="button" className="text-muted-foreground hover:text-destructive font-bold ml-1" onClick={() => removeFloor(f)}>&times;</button>
+                      </span>
                     ))}
                   </div>
-                  <div className="flex gap-2">
-                    <Input value={newFloor} onChange={e => setNewFloor(e.target.value)} placeholder="New floor..." className="h-8" />
-                    <Button size="sm" onClick={() => { if(newFloor) { addFloor(newFloor); setNewFloor(""); } }}>Add</Button>
+                  <div className="flex gap-2 pt-2">
+                    <Input value={newFloor} onChange={e => setNewFloor(e.target.value)} placeholder="e.g. 6, Mezzanine" className="h-9" onKeyDown={e => { if (e.key === 'Enter') handleCreateFloor(); }} />
+                    <Button size="sm" onClick={handleCreateFloor} className="bg-brass text-gold-foreground">Add Floor</Button>
                   </div>
                 </div>
                 
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2 font-medium"><Building2 className="size-4" /> Room Types</div>
+                <div className="space-y-4 rounded-xl border border-border p-4 bg-secondary/20">
+                  <div className="flex items-center gap-2 font-semibold"><Building2 className="size-4 text-gold" /> Room Categories & Base Rates</div>
                   <div className="flex flex-wrap gap-2">
                     {settings.roomTypes.map(t => (
-                      <Pill key={t.id} tone="secondary" className="cursor-pointer hover:bg-destructive/10" onClick={() => removeRoomType(t.id)}>{t.name} ({inr(t.basePrice)}) &times;</Pill>
+                      <span key={t.id} className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-card border border-border">
+                        {t.name} ({inr(t.basePrice)})
+                        <button type="button" className="text-muted-foreground hover:text-destructive font-bold ml-1" onClick={() => removeRoomType(t.id)}>&times;</button>
+                      </span>
                     ))}
                   </div>
-                  <div className="flex gap-2">
-                    <Input value={newType.name} onChange={e => setNewType({...newType, name: e.target.value})} placeholder="Type name..." className="h-8 w-1/2" />
-                    <Input type="number" value={newType.price} onChange={e => setNewType({...newType, price: e.target.value})} placeholder="Base ₹" className="h-8 w-1/4" />
-                    <Button size="sm" onClick={() => { if(newType.name) { addRoomType(newType.name, parseFloat(newType.price)||0); setNewType({name: "", price: ""}); } }}>Add</Button>
+                  <div className="grid grid-cols-[1.4fr_1fr_auto] gap-2 pt-2">
+                    <Input value={newType.name} onChange={e => setNewType({...newType, name: e.target.value})} placeholder="Category Name" className="h-9" />
+                    <Input type="number" value={newType.price} onChange={e => setNewType({...newType, price: e.target.value})} placeholder="Base ₹" className="h-9" />
+                    <Button size="sm" onClick={handleCreateRoomType} className="bg-brass text-gold-foreground">Add</Button>
                   </div>
                 </div>
               </div>
@@ -108,15 +157,45 @@ function SettingsPage() {
 
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
-                  <div className="font-medium">Active Rooms</div>
+                  <div>
+                    <h3 className="font-semibold text-base">Active Room Inventory ({rooms.length} Keys)</h3>
+                    <p className="text-xs text-muted-foreground">Synchronized in real-time with your Supabase database.</p>
+                  </div>
                   <Button onClick={() => setAddRoomOpen(true)} className="rounded-xl bg-brass text-gold-foreground shadow-brass hover:opacity-90">
                     <Plus className="mr-2 size-4" /> Add Room
                   </Button>
                 </div>
                 <Table>
-                  <TableHeader><TableRow><TableHead>Room</TableHead><TableHead>Type</TableHead><TableHead>Floor</TableHead><TableHead className="text-right">Rate</TableHead></TableRow></TableHeader>
-                  <TableBody>{rooms.map((room) => <TableRow key={room.id}><TableCell>{room.room_number || (room as any).number}</TableCell><TableCell>{room.room_type_id || (room as any).type || "Room"}</TableCell><TableCell>{room.floor}</TableCell><TableCell className="text-right">{inr(room.price || (room as any).rate)}</TableCell></TableRow>)}</TableBody>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Room Number</TableHead>
+                      <TableHead>Category / Type</TableHead>
+                      <TableHead>Floor</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Base Rate</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {rooms.map((room) => (
+                      <TableRow key={room.id}>
+                        <TableCell className="font-bold">Room {room.room_number || (room as any).number}</TableCell>
+                        <TableCell>{room.room_name || room.room_type_id || (room as any).type || "Standard Room"}</TableCell>
+                        <TableCell>Floor {room.floor || "1"}</TableCell>
+                        <TableCell>
+                          <Pill tone={room.status === 'AVAILABLE' ? 'success' : room.status === 'OCCUPIED' ? 'info' : 'warning'}>
+                            {room.status || "AVAILABLE"}
+                          </Pill>
+                        </TableCell>
+                        <TableCell className="text-right font-semibold">{inr(room.price || (room as any).rate || 0)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
                 </Table>
+                {!rooms.length && (
+                  <div className="p-6 text-center text-sm text-muted-foreground">
+                    No rooms currently in database. Click "Add Room" to create one!
+                  </div>
+                )}
               </div>
             </div>
           ) : (
@@ -132,38 +211,54 @@ function SettingsPage() {
           )}
         </Panel>
       </div>
+
       <Dialog open={addRoomOpen} onOpenChange={setAddRoomOpen}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Add New Room</DialogTitle>
-            <DialogDescription>Configure a new room to be booked.</DialogDescription>
+            <DialogTitle>Add New Room Key</DialogTitle>
+            <DialogDescription>Configure and register a room in the live database.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="space-y-2"><Label>Room Number</Label><Input value={r.number} onChange={e => setR({...r, number: e.target.value})} placeholder="e.g. 101" /></div>
-            <div className="space-y-2"><Label>Floor</Label>
+            <div className="space-y-2">
+              <Label>Room Number / Key ID *</Label>
+              <Input value={r.number} onChange={e => setR({...r, number: e.target.value})} placeholder="e.g. 101, 204, Suite-A" />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Floor *</Label>
               <Select value={r.floor} onValueChange={v => setR({...r, floor: v})}>
-                <SelectTrigger><SelectValue placeholder="Select floor..." /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Select Floor..." /></SelectTrigger>
                 <SelectContent>
-                  {settings.floors.map(f => <SelectItem key={f} value={f}>{f}</SelectItem>)}
+                  {settings.floors.map(f => <SelectItem key={f} value={f}>Floor {f}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2"><Label>Room Category</Label>
+
+            <div className="space-y-2">
+              <Label>Room Category *</Label>
               <Select value={r.type} onValueChange={v => {
                 const rt = settings.roomTypes.find(t => t.name === v);
                 setR({...r, type: v, price: rt ? rt.basePrice : r.price});
               }}>
-                <SelectTrigger><SelectValue placeholder="Select type..." /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Select Category..." /></SelectTrigger>
                 <SelectContent>
-                  {settings.roomTypes.map(rt => <SelectItem key={rt.id} value={rt.name}>{rt.name}</SelectItem>)}
+                  {settings.roomTypes.map(rt => (
+                    <SelectItem key={rt.id} value={rt.name}>
+                      {rt.name} ({inr(rt.basePrice)})
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2"><Label>Base Rate (₹)</Label><Input type="number" value={r.price} onChange={e => setR({...r, price: parseFloat(e.target.value)})} /></div>
+
+            <div className="space-y-2">
+              <Label>Nightly Rate (₹) *</Label>
+              <Input type="number" value={r.price} onChange={e => setR({...r, price: parseFloat(e.target.value) || 0})} placeholder="0.00" />
+            </div>
           </div>
           <div className="flex justify-end gap-3 pt-2">
             <Button variant="ghost" onClick={() => setAddRoomOpen(false)}>Cancel</Button>
-            <Button onClick={handleAddRoom} className="bg-brass text-gold-foreground hover:opacity-90">Add Room</Button>
+            <Button onClick={handleAddRoom} className="bg-brass text-gold-foreground hover:opacity-90">Create Room Key</Button>
           </div>
         </DialogContent>
       </Dialog>

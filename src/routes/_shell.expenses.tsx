@@ -64,17 +64,25 @@ function ExpensesPage() {
                 </div>
                 <Button 
                   className="w-full bg-brass text-gold-foreground hover:opacity-90 mt-4"
-                  onClick={() => {
+                  onClick={async () => {
                     const amt = parseFloat(amount);
-                    if (isNaN(amt) || amt <= 0 || !description) {
-                      toast.error("Please fill all fields correctly.");
+                    if (isNaN(amt) || amt <= 0) {
+                      toast.error("Please enter a valid expense amount.");
                       return;
                     }
-                    addExpense(amt, category, description);
-                    toast.success("Expense logged.");
-                    setOpen(false);
-                    setAmount("");
-                    setDescription("");
+                    if (!description.trim()) {
+                      toast.error("Please provide an expense description.");
+                      return;
+                    }
+                    const res = await addExpense(amt, category, description.trim());
+                    if (res?.success) {
+                      toast.success("Expense record logged successfully.");
+                      setOpen(false);
+                      setAmount("");
+                      setDescription("");
+                    } else {
+                      toast.error(res?.error || "Failed to log expense");
+                    }
                   }}
                 >
                   Save Record

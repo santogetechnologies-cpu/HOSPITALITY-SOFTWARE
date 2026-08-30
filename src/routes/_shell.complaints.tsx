@@ -75,8 +75,8 @@ function ComplaintsPage() {
             <Select value={form.room_id} onValueChange={(v) => setForm({...form, room_id: v})}>
               <SelectTrigger><SelectValue placeholder="Select Room (Optional)" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="">General Property</SelectItem>
-                {rooms.map(r => <SelectItem key={r.id} value={r.id}>Room {r.room_number}</SelectItem>)}
+                <SelectItem value="general">General Property / Common Area</SelectItem>
+                {rooms.map(r => <SelectItem key={r.id} value={r.id}>Room {r.room_number || (r as any).number}</SelectItem>)}
               </SelectContent>
             </Select>
             <Input placeholder="Issue description..." value={form.issue} onChange={(e) => setForm({...form, issue: e.target.value})} />
