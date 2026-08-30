@@ -113,14 +113,23 @@ export function KpiCard({
   );
 }
 
+export function getSafeStatusMeta(status?: string) {
+  if (!status) return STATUS_META.AVAILABLE;
+  const upper = status.toUpperCase() as RoomStatus;
+  if (STATUS_META[upper]) return STATUS_META[upper];
+  if (upper === "VACANT-CLEAN" as any) return STATUS_META.AVAILABLE;
+  if (upper === "VACANT-DIRTY" as any) return STATUS_META.DIRTY;
+  return STATUS_META.AVAILABLE;
+}
+
 export function StatusBadge({
   status,
   size = "md",
 }: {
-  status: RoomStatus;
+  status?: string;
   size?: "sm" | "md";
 }) {
-  const m = STATUS_META[status];
+  const m = getSafeStatusMeta(status);
   return (
     <span
       className={cn(
@@ -166,8 +175,9 @@ export function Pill({
 }
 
 /** Miniature room illustration built from tokens — no external assets. */
-export function RoomGlyph({ status, type }: { status: RoomStatus; type: string }) {
-  const m = STATUS_META[status];
+export function RoomGlyph({ status, type }: { status?: string; type?: string }) {
+  const m = getSafeStatusMeta(status);
+  const typeLabel = (type || "Room").split(" ")[0];
   return (
     <div
       className={cn(
@@ -183,7 +193,7 @@ export function RoomGlyph({ status, type }: { status: RoomStatus; type: string }
         <span className={cn("h-4 w-2 rounded-sm", m.dot)} />
       </div>
       <span className={cn("absolute right-2 top-2 text-[9px] font-semibold uppercase", m.text)}>
-        {type.split(" ")[0]}
+        {typeLabel}
       </span>
     </div>
   );
@@ -198,7 +208,10 @@ export function RoomCard({
   onClick?: () => void;
   compact?: boolean;
 }) {
-  const m = STATUS_META[room.status];
+  const m = getSafeStatusMeta(room.status);
+  const roomNum = room.number || (room as any).room_number || "—";
+  const roomType = room.type || (room as any).room_name || "Standard Room";
+
   if (compact) {
     return (
       <button
@@ -207,9 +220,9 @@ export function RoomCard({
           "group flex flex-col items-center gap-1 rounded-xl border border-border bg-card p-2 text-center transition-all hover:-translate-y-0.5 hover:shadow-soft",
         )}
       >
-        <span className="text-sm font-semibold tabular-nums">{room.number}</span>
+        <span className="text-sm font-semibold tabular-nums">{roomNum}</span>
         <span className={cn("size-2.5 rounded-full", m.dot)} />
-        <span className="text-[9px] text-muted-foreground">{m.label.split(" ")[0]}</span>
+        <span className={cn("text-[9px] text-muted-foreground")}>{m.label.split(" ")[0]}</span>
       </button>
     );
   }
@@ -218,43 +231,19 @@ export function RoomCard({
       onClick={onClick}
       className="card-premium hover-lift group w-full p-3 text-left"
     >
-      <RoomGlyph status={room.status} type={room.type} />
+      <RoomGlyph status={room.status} type={roomType} />
       <div className="mt-3 flex items-start justify-between gap-2">
         <div>
-          <div className="text-lg font-semibold leading-none tabular-nums">{room.number}</div>
-          <div className="mt-1 text-xs text-muted-foreground">{room.type}</div>
+          <div className="text-lg font-semibold leading-none tabular-nums">Room {roomNum}</div>
+          <div className="mt-1 text-xs text-muted-foreground">{roomType}</div>
         </div>
         <span className={cn("mt-1 size-2.5 shrink-0 rounded-full", m.dot)} />
       </div>
       <div className="mt-3">
         <StatusBadge status={room.status} size="sm" />
       </div>
-      {room.guest ? (
-        <div className="mt-3 truncate rounded-lg bg-secondary px-2 py-1.5 text-xs font-medium">
-          {room.guest}
-        </div>
-      ) : null}
       <dl className="mt-3 space-y-1 text-[11px] text-muted-foreground">
         <div className="flex items-center gap-1.5">
-          <BedDouble className="size-3" /> {room.bed} · Floor {room.floor}
-        </div>
-        <div className="flex items-center gap-1.5">
-          <Users className="size-3" /> {room.maxGuests} guests
-          <Wifi className="ml-2 size-3" />
-          {room.amenities.includes("Minibar") ? <span>Minibar</span> : null}
-        </div>
-        {room.checkIn ? (
-          <div className="flex items-center gap-1.5">
-            <Clock className="size-3" /> {room.checkIn} → {room.checkOut}
-          </div>
-        ) : null}
-        <div className="flex items-center gap-1.5">
-          {room.housekeeper ? (
-            <>
-              <Sparkles className="size-3" /> {room.housekeeper} · {room.hkStatus}
-            </>
-          ) : room.status === "maintenance" || room.status === "ooo" ? (
-            <>
               <Wrench className="size-3" /> Engineering assigned
             </>
           ) : (

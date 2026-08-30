@@ -332,37 +332,51 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         try {
           // 1. Insert Guest
           const guestId = crypto.randomUUID();
-          await supabase.from('guests').insert({
-            id: guestId, name: b.guestName, phone: b.phone, email: b.email
+          const { error: gErr } = await supabase.from('guests').insert({
+            id: guestId,
+            name: b.guestName,
+            phone: b.phone,
+            email: b.email || null,
+            last_stay: b.date || new Date().toISOString().split('T')[0]
           });
+          if (gErr) throw gErr;
 
           // 2. Insert Reservation
-          const resId = `RES-${Date.now().toString().slice(-6)}`;
-          await supabase.from('reservations').insert({
+          const resId = crypto.randomUUID();
+          const { error: rErr } = await supabase.from('reservations').insert({
             id: resId,
             guest_id: guestId,
             room_id: b.roomId,
             resource_type: 'ROOM',
-            booking_date: b.date,
+            booking_date: b.date || new Date().toISOString().split('T')[0],
             start_time: '14:00:00',
             end_time: '11:00:00',
             status: 'CONFIRMED',
-            base_amount: b.baseAmount
+            base_amount: Number(b.totalAmount) || Number(b.baseAmount) || 0
           });
+          if (rErr) throw rErr;
 
           // 3. Update Room Status
-          await supabase.from('rooms').update({ status: 'BOOKED' }).eq('id', b.roomId);
+          if (b.roomId) {
+            await supabase.from('rooms').update({ status: 'BOOKED' }).eq('id', b.roomId);
+          }
 
-          // 4. Create Payment Folio
-          await supabase.from('payments').insert({
+          // 4. Create Payment Folio (Immediately reflects in Pending Payments / Payment History)
+          const totalAmt = Number(b.totalAmount) || Number(b.baseAmount) || 0;
+          const paidAmt = Number(b.paidAmount) || 0;
+          const payStatus = paidAmt >= totalAmt && totalAmt > 0 ? 'COMPLETED' : paidAmt > 0 ? 'PARTIAL' : 'PENDING';
+          
+          const { error: pErr } = await supabase.from('payments').insert({
             id: crypto.randomUUID(),
             reservation_id: resId,
-            total_amount: b.totalAmount,
-            paid_amount: b.paidAmount,
-            status: b.paidAmount >= b.totalAmount ? 'COMPLETED' : b.paidAmount > 0 ? 'PARTIAL' : 'PENDING'
+            total_amount: totalAmt,
+            paid_amount: paidAmt,
+            status: payStatus,
+            payment_method: b.paymentMethod || 'CASH'
           });
+          if (pErr) throw pErr;
 
-          fetchData();
+          await fetchData();
           return { success: true };
         } catch (err: any) {
           console.error("Booking error:", err);

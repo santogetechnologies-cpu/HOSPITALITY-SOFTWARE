@@ -33,7 +33,7 @@ const HK_CHECKLIST = [
 ];
 
 function FrontDesk() {
-  const { reservations, rooms, checkIn, checkOut, transferRoom, addReservation, assignGuestToRoom, guests } = usePms();
+  const { reservations, rooms, checkIn, checkOut, transferRoom, addRoomReservation, assignGuestToRoom, guests } = usePms();
   const [selected, setSelected] = React.useState<string | null>(null);
   const [walkIn, setWalkIn] = React.useState({ name: "", phone: "", email: "", room: "", nights: "1", amount: "" });
   
@@ -43,7 +43,7 @@ function FrontDesk() {
   
   const res = roomReservations.find((r) => r.id === selected) ?? null;
   const resGuest = res ? guests.find(g => g.id === res.guest_id) : null;
-  const resRoom = res ? rooms.find(rm => rm.id === res.room_id) : null;
+  const resRoom = res ? rooms.find(rm => rm.id === rm.id) : null;
 
   const vacant = rooms.filter((r) => r.status === "AVAILABLE" || r.status === "DIRTY");
 
@@ -56,11 +56,19 @@ function FrontDesk() {
   });
 
   const handleBooking = async () => {
-    if (!b.guestName || !b.roomId) return toast.error("Please fill required fields");
-    setBookingOpen(false);
-    const res = await usePms.getState().addRoomReservation(b);
-    if (res.success) toast.success("Room booked successfully");
-    else toast.error(res.error);
+    if (!b.guestName.trim()) return toast.error("Please enter guest name");
+    if (!b.roomId) return toast.error("Please select a room");
+    
+    const res = await addRoomReservation(b);
+    if (res?.success) {
+      toast.success("Room booked successfully!");
+      setBookingOpen(false);
+      setB({
+        guestName: "", phone: "", email: "", roomId: "", date: new Date().toISOString().split('T')[0], nights: 1, baseAmount: 0, totalAmount: 0, paidAmount: 0, paymentMethod: "Credit Card"
+      });
+    } else {
+      toast.error(res?.error || "Failed to book room");
+    }
   };
 
   return (

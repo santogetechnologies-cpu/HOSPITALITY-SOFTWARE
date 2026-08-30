@@ -22,6 +22,7 @@ import { EmptyState, PageHeader, Panel, Pill, RoomCard, StatusBadge, StatusLegen
 import { RoomDrawer } from "@/components/pms/room-drawer";
 import { usePms } from "@/lib/pms-store";
 import { ROOM_STATUSES, STATUS_META, inr, type Room, type RoomStatus } from "@/lib/pms-data";
+import { getSafeStatusMeta } from "@/components/pms/bits";
 import { cn } from "@/lib/utils";
 import { Search, LayoutGrid, Building2, CalendarRange, Rows3, BedDouble } from "lucide-react";
 import { toast } from "sonner";
@@ -234,6 +235,7 @@ function RoomsPage() {
                 </div>
                 {rooms.map((room) => {
                   const res = reservations.filter((r) => r.room_id === room.id && r.status !== "CANCELLED");
+                  const m = getSafeStatusMeta(room.status);
                   return (
                     <div
                       key={room.id}
@@ -243,14 +245,13 @@ function RoomsPage() {
                         onClick={() => setOpenRoom(room)}
                         className="flex items-center gap-2 px-4 py-3 text-left text-sm hover:bg-accent/50"
                       >
-                        <span className={cn("size-2 rounded-full", STATUS_META[room.status].dot)} />
-                        <span className="font-semibold tabular-nums">{room.room_number}</span>
+                        <span className={cn("size-2 rounded-full", m.dot)} />
+                        <span className="font-semibold tabular-nums">{room.room_number || (room as any).number}</span>
                       </button>
                       {DATES.map((d, i) => {
                         const booking = res.find((r) => {
                           const date = new Date(r.booking_date);
-                          // mock check: if booking date matches current column date roughly
-                          return i === 0; // Temp bypass for tape chart
+                          return i === 0;
                         });
                         return (
                           <div key={d} className={cn("relative border-l border-border px-1 py-2", i === 0 && "bg-gold/5")}>
@@ -306,15 +307,15 @@ function RoomsPage() {
               <TableBody>
                 {filtered.map((r) => (
                   <TableRow key={r.id} className="cursor-pointer" onClick={() => setOpenRoom(r)}>
-                    <TableCell className="font-semibold tabular-nums">{r.room_number}</TableCell>
-                    <TableCell>{r.room_name || "Room"}</TableCell>
+                    <TableCell className="font-semibold tabular-nums">{r.room_number || (r as any).number}</TableCell>
+                    <TableCell>{r.room_name || (r as any).type || "Room"}</TableCell>
                     <TableCell>{r.floor}</TableCell>
                     <TableCell>
                       <StatusBadge status={r.status} size="sm" />
                     </TableCell>
                     <TableCell>{getGuestName(r.id) ?? "—"}</TableCell>
                     <TableCell>{r.status === 'DIRTY' ? 'Dirty' : 'Clean'}</TableCell>
-                    <TableCell className="text-right font-medium">{inr(r.price)}</TableCell>
+                    <TableCell className="text-right font-medium">{inr(r.price || (r as any).rate || 0)}</TableCell>
                     <TableCell className="text-right">
                       <Button size="sm" variant="ghost">
                         Open
@@ -344,7 +345,7 @@ function RoomsPage() {
 }
 
 function FloorTile({ room, onClick }: { room: Room; onClick: () => void }) {
-  const m = STATUS_META[room.status as RoomStatus];
+  const m = getSafeStatusMeta(room.status);
   return (
     <button
       onClick={onClick}
@@ -355,10 +356,10 @@ function FloorTile({ room, onClick }: { room: Room; onClick: () => void }) {
       )}
     >
       <div className="flex items-center justify-between">
-        <span className="text-base font-semibold tabular-nums">{room.room_number}</span>
+        <span className="text-base font-semibold tabular-nums">{room.room_number || (room as any).number}</span>
         <span className={cn("size-2.5 rounded-full", m.dot)} />
       </div>
-      <div className="mt-1 truncate text-[11px] text-muted-foreground">{room.room_name || "Room"}</div>
+      <div className="mt-1 truncate text-[11px] text-muted-foreground">{room.room_name || (room as any).type || "Room"}</div>
       <div className="mt-2 truncate text-[11px] font-medium">{m.label}</div>
     </button>
   );
