@@ -88,6 +88,7 @@ function SettingsPage() {
             </div>
           )}
         </Panel>
+      </div>
       <Dialog open={addRoomOpen} onOpenChange={setAddRoomOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
