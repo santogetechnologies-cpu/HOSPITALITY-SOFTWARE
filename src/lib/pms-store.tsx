@@ -379,13 +379,23 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
           const paidAmt = Number(b.paidAmount) || 0;
           const payStatus = paidAmt >= totalAmt && totalAmt > 0 ? 'COMPLETED' : paidAmt > 0 ? 'PARTIAL' : 'PENDING';
           
+          let method: 'CASH' | 'UPI' | 'CARD' | 'BANK_TRANSFER' | 'OTHER' = 'CASH';
+          if (b.paymentMethod) {
+            const m = b.paymentMethod.toUpperCase().trim();
+            if (m.includes('CARD') || m.includes('CREDIT') || m.includes('DEBIT')) method = 'CARD';
+            else if (m.includes('UPI') || m.includes('GPAY') || m.includes('PHONEPE') || m.includes('PAYTM')) method = 'UPI';
+            else if (m.includes('BANK') || m.includes('TRANSFER') || m.includes('NEFT')) method = 'BANK_TRANSFER';
+            else if (m.includes('CASH')) method = 'CASH';
+            else method = 'OTHER';
+          }
+
           const { error: pErr } = await supabase.from('payments').insert({
             id: crypto.randomUUID(),
             reservation_id: resId,
             total_amount: totalAmt,
             paid_amount: paidAmt,
             status: payStatus,
-            payment_method: b.paymentMethod || 'CASH'
+            payment_method: method
           });
           if (pErr) throw pErr;
 

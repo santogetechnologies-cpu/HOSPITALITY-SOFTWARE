@@ -52,7 +52,7 @@ function FrontDesk() {
 
   const [bookingOpen, setBookingOpen] = React.useState(false);
   const [b, setB] = React.useState({
-    guestName: "", phone: "", email: "", roomId: "", date: new Date().toISOString().split('T')[0], nights: 1, baseAmount: 0, totalAmount: 0, paidAmount: 0, paymentMethod: "Credit Card"
+    guestName: "", phone: "", email: "", roomId: "", date: new Date().toISOString().split('T')[0], nights: 1, baseAmount: 0, totalAmount: 0, paidAmount: 0, paymentMethod: "CASH"
   });
 
   const handleBooking = async () => {
@@ -64,7 +64,7 @@ function FrontDesk() {
       toast.success("Room booked successfully!");
       setBookingOpen(false);
       setB({
-        guestName: "", phone: "", email: "", roomId: "", date: new Date().toISOString().split('T')[0], nights: 1, baseAmount: 0, totalAmount: 0, paidAmount: 0, paymentMethod: "Credit Card"
+        guestName: "", phone: "", email: "", roomId: "", date: new Date().toISOString().split('T')[0], nights: 1, baseAmount: 0, totalAmount: 0, paidAmount: 0, paymentMethod: "CASH"
       });
     } else {
       toast.error(res?.error || "Failed to book room");
@@ -226,6 +226,18 @@ function FrontDesk() {
             </div>
             <div className="space-y-2"><Label>Total Amount</Label><Input type="number" value={b.totalAmount} onChange={(e) => setB({ ...b, totalAmount: parseFloat(e.target.value) })} /></div>
             <div className="space-y-2"><Label>Paid Amount (Deposit)</Label><Input type="number" value={b.paidAmount} onChange={(e) => setB({ ...b, paidAmount: parseFloat(e.target.value) || 0 })} /></div>
+            <div className="space-y-2 sm:col-span-2"><Label>Payment Method</Label>
+              <Select value={b.paymentMethod} onValueChange={(v) => setB({ ...b, paymentMethod: v })}>
+                <SelectTrigger><SelectValue placeholder="Payment Method" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="CASH">Cash</SelectItem>
+                  <SelectItem value="UPI">UPI / QR (GPay, PhonePe, Paytm)</SelectItem>
+                  <SelectItem value="CARD">Credit / Debit Card</SelectItem>
+                  <SelectItem value="BANK_TRANSFER">Bank Transfer / NEFT</SelectItem>
+                  <SelectItem value="OTHER">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <div className="flex justify-end gap-3 pt-4">
             <Button variant="ghost" onClick={() => setBookingOpen(false)}>Cancel</Button>
