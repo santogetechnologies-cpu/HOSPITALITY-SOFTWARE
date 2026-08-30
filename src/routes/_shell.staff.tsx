@@ -30,14 +30,18 @@ function StaffPage() {
   const inactiveStaff = profiles.filter(p => p.status === 'INACTIVE');
 
   const [addOpen, setAddOpen] = React.useState(false);
-  const [form, setForm] = React.useState({ name: "", phone: "", role: "FRONT_DESK" });
+  const [form, setForm] = React.useState({ name: "", phone: "", role: "FRONT_DESK", email: "", password: "" });
 
   const handleAdd = async () => {
-    if (!form.name || !form.role) return toast.error("Please fill required fields");
-    await addStaff(form.name, form.role, form.phone);
-    setAddOpen(false);
-    toast.success("Staff member added successfully");
-    setForm({ name: "", phone: "", role: "FRONT_DESK" });
+    if (!form.name || !form.role || !form.email || !form.password) return toast.error("Please fill required fields (Name, Email, Password)");
+    const res = await addStaff(form.name, form.role, form.phone, form.email, form.password);
+    if (res?.success) {
+      setAddOpen(false);
+      toast.success("Staff member created and login enabled");
+      setForm({ name: "", phone: "", role: "FRONT_DESK", email: "", password: "" });
+    } else {
+      toast.error(res?.error || "Failed to create staff");
+    }
   };
 
   return (
@@ -215,6 +219,8 @@ function StaffPage() {
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="space-y-2"><Label>Full Name</Label><Input value={form.name} onChange={e => setForm({...form, name: e.target.value})} placeholder="Jane Doe" /></div>
+            <div className="space-y-2"><Label>Email Login</Label><Input type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} placeholder="jane@drb.com" /></div>
+            <div className="space-y-2"><Label>Password</Label><Input type="password" value={form.password} onChange={e => setForm({...form, password: e.target.value})} placeholder="Secure password" /></div>
             <div className="space-y-2"><Label>Phone Number</Label><Input value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} placeholder="+91..." /></div>
             <div className="space-y-2"><Label>Role</Label>
               <Select value={form.role} onValueChange={(r) => setForm({...form, role: r})}>

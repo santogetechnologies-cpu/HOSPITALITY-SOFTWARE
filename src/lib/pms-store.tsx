@@ -115,8 +115,11 @@ type Ctx = State & {
   resolveDiscount: (discountId: string, status: "APPROVED" | "REJECTED") => Promise<void>;
   addExpense: (amount: number, category: string, description: string) => Promise<void>;
   
+  // Room Mutators
+  addRoom: (number: string, type: string, floor: string, price: number) => Promise<void>;
+
   // Staff Mutators
-  addStaff: (name: string, role: string, phone: string) => Promise<void>;
+  addStaff: (name: string, role: string, phone: string, email: string, pass: string) => Promise<{ success: boolean; error?: string }>;
   updateStaffRole: (profileId: string, role: string) => Promise<void>;
   toggleStaffStatus: (profileId: string) => Promise<void>;
   deleteStaff: (profileId: string) => Promise<void>;
@@ -544,10 +547,32 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         fetchData();
       },
       
-      addStaff: async (name, role, phone) => {
-        const id = crypto.randomUUID();
-        await supabase.from('profiles').insert({ id, name, role, phone, status: 'ACTIVE' });
-        fetchData();
+      addStaff: async (name, role, phone, email, pass) => {
+        try {
+          // Use a secondary client so we don't clobber the current admin's session
+          const { createClient } = await import('@supabase/supabase-js');
+          const tempClient = createClient("https://znxeifvdrjkgqyrrnaxu.supabase.co", "sb_publishable_rEkA1iNEbIjSaixi7n8eIg_BUcZLMFV", {
+            auth: { persistSession: false, autoRefreshToken: false }
+          });
+          
+          const { data, error } = await tempClient.auth.signUp({
+            email, password: pass,
+            options: { data: { role, name } }
+          });
+          
+          if (error) return { success: false, error: error.message };
+          
+          // Profiles are automatically created via triggers on auth.users in Supabase usually,
+          // but if we need to insert manually here (because trigger is absent), we use the returned user ID.
+          const userId = data.user?.id || crypto.randomUUID();
+          
+          // Upsert to handle trigger vs manual insert
+          await supabase.from('profiles').upsert({ id: userId, name, role, phone, status: 'ACTIVE' });
+          fetchData();
+          return { success: true };
+        } catch (err: any) {
+          return { success: false, error: err.message || "Failed to create staff login" };
+        }
       },
       
       updateStaffRole: async (profileId, role) => {
@@ -566,6 +591,20 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
 
       deleteStaff: async (profileId) => {
         await supabase.from('profiles').delete().eq('id', profileId);
+        fetchData();
+      },
+
+      addRoom: async (number, type, floor, price) => {
+        const id = `room-${Date.now()}`;
+        await supabase.from('rooms').insert({
+          id,
+          number,
+          floor: parseInt(floor) || 1,
+          type,
+          rate: price,
+          status: 'vacant-clean',
+          created_at: new Date().toISOString()
+        });
         fetchData();
       }
     };
