@@ -570,15 +570,40 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         }
       },
 
-      settlePayment: async (paymentId, amount) => {
+      settlePayment: async (paymentId, amount, method = 'CASH') => {
         try {
-          const payment = state.payments.find(p => p.id === paymentId);
-          if (!payment) return { success: false, error: "Payment record not found" };
+          let payment = state.payments.find(p => p.id === paymentId);
+          if (!payment) {
+            // Check if it's a reservation ID without a payment record yet
+            const res = state.reservations.find(r => r.id === paymentId);
+            if (res) {
+              const payId = crypto.randomUUID();
+              const totalAmt = Number(res.base_amount) || 0;
+              const paidAmt = Number(amount) || 0;
+              const status = paidAmt >= totalAmt ? "COMPLETED" : "PARTIAL";
+              const { error } = await supabase.from('payments').insert({
+                id: payId,
+                reservation_id: res.id,
+                total_amount: totalAmt,
+                paid_amount: paidAmt,
+                status,
+                payment_method: method || 'CASH'
+              });
+              if (error) throw error;
+              await fetchData();
+              return { success: true };
+            }
+            return { success: false, error: "Payment record not found" };
+          }
           const newPaid = (payment.paid_amount || 0) + amount;
-          const status = newPaid >= payment.total_amount ? "COMPLETED" : "PARTIAL";
-          const { error } = await supabase.from('payments').update({ paid_amount: newPaid, status }).eq('id', paymentId);
+          const status = newPaid >= (payment.total_amount || 0) ? "COMPLETED" : "PARTIAL";
+          const { error } = await supabase.from('payments').update({ 
+            paid_amount: newPaid, 
+            status,
+            payment_method: method || payment.payment_method || 'CASH'
+          }).eq('id', payment.id);
           if (error) throw error;
-          fetchData();
+          await fetchData();
           return { success: true };
         } catch (err: any) {
           console.error("Settle payment error:", err);

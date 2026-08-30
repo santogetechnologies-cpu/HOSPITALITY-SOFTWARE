@@ -36,7 +36,6 @@ function LoginPage() {
   const [password, setPassword] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
-  const [isSignUp, setIsSignUp] = React.useState(false);
 
   React.useEffect(() => {
     if (hydrated && session) void navigate({ to: "/dashboard" });
@@ -47,9 +46,7 @@ function LoginPage() {
     setError(null);
     setLoading(true);
     
-    const { session: s, error: authError } = isSignUp 
-      ? await signUp(username, password)
-      : await login(username, password);
+    const { session: s, error: authError } = await login(username, password);
       
     setLoading(false);
     
@@ -58,7 +55,7 @@ function LoginPage() {
       return;
     }
     
-    toast.success(isSignUp ? "Account created successfully" : `Welcome back, ${s.name.split(" ")[0]}`, {
+    toast.success(`Welcome back, ${s.name.split(" ")[0]}`, {
       description: `Signed in as ${s.roleLabel}`,
     });
     void navigate({ to: "/dashboard" });
@@ -170,19 +167,9 @@ function LoginPage() {
               disabled={loading}
               className="h-11 w-full rounded-xl bg-brass text-gold-foreground shadow-brass hover:opacity-90"
             >
-              {loading ? (isSignUp ? "Creating account…" : "Signing in…") : (isSignUp ? "Create Account" : "Sign in to PMS")}
+              {loading ? "Signing in…" : "Sign in to PMS"}
               {!loading ? <ArrowRight className="ml-1 size-4" /> : null}
             </Button>
-            
-            <div className="pt-2 text-center text-sm">
-              <button 
-                type="button" 
-                onClick={() => setIsSignUp(!isSignUp)}
-                className="text-gold hover:underline"
-              >
-                {isSignUp ? "Already have an account? Sign in" : "First time? Setup Super Admin"}
-              </button>
-            </div>
           </form>
 
           <div className="mt-8">

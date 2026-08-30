@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { PageHeader, Panel, Pill, EmptyState } from '@/components/pms/bits'
+import { PageHeader, Panel, Pill, EmptyState, KpiCard } from '@/components/pms/bits'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -10,108 +10,251 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { usePms } from '@/lib/pms-store'
 import { inr, Payment } from '@/lib/pms-data'
 import { toast } from 'sonner'
-import { CreditCard, Snowflake } from 'lucide-react'
+import { CreditCard, Banknote, Clock, AlertCircle, CheckCircle2 } from 'lucide-react'
 
 export const Route = createFileRoute('/_shell/pending-payments')({
   component: PendingPaymentsPage,
 })
 
+interface PendingItem {
+  id: string; // payment id or reservation id
+  paymentId?: string;
+  reservationId: string;
+  guestName: string;
+  guestPhone?: string;
+  resourceName: string;
+  bookingDate: string;
+  stage: 'PRE_CHECKIN' | 'IN_HOUSE' | 'CHECKED_OUT' | 'FROZEN';
+  totalAmount: number;
+  paidAmount: number;
+  balance: number;
+  status: string;
+}
+
 function PendingPaymentsPage() {
-  const { payments, reservations, guests, rooms, settlePayment, freezePayment, session } = usePms();
-  const [selectedPayment, setSelectedPayment] = React.useState<Payment | null>(null);
+  const { payments, reservations, guests, rooms, settlePayment, freezePayment } = usePms();
+  const [selectedItem, setSelectedItem] = React.useState<PendingItem | null>(null);
   const [collectionAmount, setCollectionAmount] = React.useState("");
-  const [method, setMethod] = React.useState("Cash");
+  const [method, setMethod] = React.useState<"CASH" | "UPI" | "CARD" | "BANK_TRANSFER">("CASH");
+  const [loading, setLoading] = React.useState(false);
 
-  const pending = payments.filter(p => p.status === 'PENDING' || p.status === 'PARTIAL' || p.status === 'FROZEN');
-
-  const getReservation = (id: string) => reservations.find(r => r.id === id);
   const getGuest = (id?: string) => guests.find(g => g.id === id);
   const getRoom = (roomId?: string) => rooms.find(rm => rm.id === roomId);
+
+  // Unified Pending Ledger
+  const pendingItems: PendingItem[] = React.useMemo(() => {
+    const list: PendingItem[] = [];
+    const processedResIds = new Set<string>();
+
+    // 1. Process all existing payment records with outstanding balance
+    payments.forEach((p) => {
+      const res = reservations.find(r => r.id === p.reservation_id);
+      const guest = res ? getGuest(res.guest_id) : null;
+      const room = res ? getRoom(res.room_id) : null;
+      const total = Number(p.total_amount) || 0;
+      const paid = Number(p.paid_amount) || 0;
+      const balance = total - paid;
+
+      if (balance > 0 || p.status === 'PENDING' || p.status === 'PARTIAL' || p.status === 'FROZEN') {
+        if (p.reservation_id) processedResIds.add(p.reservation_id);
+
+        let stage: PendingItem['stage'] = 'PRE_CHECKIN';
+        if (p.status === 'FROZEN') stage = 'FROZEN';
+        else if (res?.status === 'OCCUPIED') stage = 'IN_HOUSE';
+        else if (res?.status === 'COMPLETED') stage = 'CHECKED_OUT';
+        else stage = 'PRE_CHECKIN';
+
+        list.push({
+          id: p.id,
+          paymentId: p.id,
+          reservationId: p.reservation_id,
+          guestName: guest?.name || "Guest",
+          guestPhone: guest?.phone,
+          resourceName: res?.resource_type === 'PARTY_HALL' ? `Party Hall (${res.event_type || 'Event'})` : room ? `Room ${room.room_number || (room as any).number}` : 'Room Booking',
+          bookingDate: res?.booking_date || "—",
+          stage,
+          totalAmount: total,
+          paidAmount: paid,
+          balance: balance > 0 ? balance : 0,
+          status: p.status
+        });
+      }
+    });
+
+    // 2. Include any confirmed or occupied reservations that don't have a fully settled payment record yet
+    reservations.forEach((r) => {
+      if (r.status === 'CANCELLED') return;
+      if (processedResIds.has(r.id)) return;
+
+      const matchingPayment = payments.find(p => p.reservation_id === r.id);
+      const total = Number(r.base_amount) || 0;
+      const paid = matchingPayment ? Number(matchingPayment.paid_amount) || 0 : 0;
+      const balance = total - paid;
+
+      if (balance > 0) {
+        const guest = getGuest(r.guest_id);
+        const room = getRoom(r.room_id);
+        const stage: PendingItem['stage'] = r.status === 'OCCUPIED' ? 'IN_HOUSE' : r.status === 'COMPLETED' ? 'CHECKED_OUT' : 'PRE_CHECKIN';
+
+        list.push({
+          id: matchingPayment?.id || r.id,
+          paymentId: matchingPayment?.id,
+          reservationId: r.id,
+          guestName: guest?.name || "Guest",
+          guestPhone: guest?.phone,
+          resourceName: r.resource_type === 'PARTY_HALL' ? `Party Hall (${r.event_type || 'Event'})` : room ? `Room ${room.room_number || (room as any).number}` : 'Room Booking',
+          bookingDate: r.booking_date || "—",
+          stage,
+          totalAmount: total,
+          paidAmount: paid,
+          balance,
+          status: paid > 0 ? 'PARTIAL' : 'PENDING'
+        });
+      }
+    });
+
+    return list;
+  }, [payments, reservations, guests, rooms]);
+
+  const totalOutstanding = pendingItems.reduce((acc, i) => acc + i.balance, 0);
+
+  const handleCollect = async () => {
+    if (!selectedItem) return;
+    const amt = parseFloat(collectionAmount);
+    if (isNaN(amt) || amt <= 0) return toast.error("Please enter a valid collection amount");
+
+    setLoading(true);
+    const targetId = selectedItem.paymentId || selectedItem.reservationId;
+    const res = await settlePayment(targetId, amt, method as any);
+    setLoading(false);
+
+    if (res?.success) {
+      toast.success(`Collected ${inr(amt)} for ${selectedItem.guestName}`);
+      setSelectedItem(null);
+      setCollectionAmount("");
+    } else {
+      toast.error(res?.error || "Failed to record payment");
+    }
+  };
 
   return (
     <div className="space-y-6 pb-12">
       <PageHeader 
         eyebrow="Finance"
         title="Pending Folios & Collections" 
-        subtitle="Collect balances from in-house and departed guests"
-        actions={<Pill tone="warning">{pending.length} Folios Outstanding</Pill>}
+        subtitle="Collect advances, in-house folios, and post-departure dues before and after check-in"
+        actions={<Pill tone="warning">{pendingItems.length} Open Folios · {inr(totalOutstanding)} Total Due</Pill>}
       />
 
-      <Panel bodyClassName="p-0">
+      <div className="grid gap-4 sm:grid-cols-3">
+        <KpiCard
+          label="Total Outstanding Dues"
+          value={inr(totalOutstanding)}
+          icon={AlertCircle}
+          tone="warning"
+          hint={`${pendingItems.length} folios with unpaid balance`}
+        />
+        <KpiCard
+          label="Pre-Arrival Pending"
+          value={String(pendingItems.filter(i => i.stage === 'PRE_CHECKIN').length)}
+          icon={Clock}
+          tone="info"
+          hint="Advances due before check-in"
+        />
+        <KpiCard
+          label="In-House & Folio Dues"
+          value={String(pendingItems.filter(i => i.stage === 'IN_HOUSE' || i.stage === 'CHECKED_OUT').length)}
+          icon={Banknote}
+          tone="gold"
+          hint="Active guest balances"
+        />
+      </div>
+
+      <Panel title="Active Outstanding Balances" description="All pending folios across property reservations">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Folio ID</TableHead>
-              <TableHead>Guest & Resource</TableHead>
-              <TableHead>Total Amount</TableHead>
-              <TableHead>Paid</TableHead>
-              <TableHead>Balance</TableHead>
-              <TableHead>Status</TableHead>
+              <TableHead>Guest & Contact</TableHead>
+              <TableHead>Room / Resource</TableHead>
+              <TableHead>Booking Date</TableHead>
+              <TableHead>Collection Stage</TableHead>
+              <TableHead>Total Bill</TableHead>
+              <TableHead>Collected</TableHead>
+              <TableHead>Pending Balance</TableHead>
               <TableHead className="text-right">Action</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {pending.map((p) => {
-              const res = getReservation(p.reservation_id);
-              const guest = res ? getGuest(res.guest_id) : null;
-              const room = res ? getRoom(res.room_id) : null;
-              const balance = (p.total_amount || 0) - (p.paid_amount || 0);
-
-              return (
-                <TableRow key={p.id}>
-                  <TableCell className="font-mono text-xs font-semibold text-gold">{p.id.slice(0, 10).toUpperCase()}</TableCell>
-                  <TableCell>
-                    <div className="font-medium">{guest?.name || "Guest"}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {res?.resource_type === 'PARTY_HALL' ? 'Party Hall' : room ? `Room ${room.room_number || (room as any).number}` : 'General Booking'}
-                    </div>
-                  </TableCell>
-                  <TableCell>{inr(p.total_amount || 0)}</TableCell>
-                  <TableCell className="text-success">{inr(p.paid_amount || 0)}</TableCell>
-                  <TableCell className="font-bold text-warning">{inr(balance)}</TableCell>
-                  <TableCell>
-                    <Pill tone={p.status === 'FROZEN' ? 'info' : 'warning'}>{p.status}</Pill>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button 
-                      size="sm" 
-                      variant="outline" 
-                      onClick={() => {
-                        setSelectedPayment(p);
-                        setCollectionAmount(String(balance > 0 ? balance : 0));
-                      }}
-                    >
-                      Collect
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              );
-            })}
+            {pendingItems.map((item) => (
+              <TableRow key={item.id}>
+                <TableCell>
+                  <div className="font-semibold">{item.guestName}</div>
+                  <div className="text-xs text-muted-foreground">{item.guestPhone || "No phone"}</div>
+                </TableCell>
+                <TableCell className="font-medium text-xs">
+                  {item.resourceName}
+                </TableCell>
+                <TableCell className="text-xs text-muted-foreground">
+                  {item.bookingDate}
+                </TableCell>
+                <TableCell>
+                  <Pill tone={item.stage === 'PRE_CHECKIN' ? 'info' : item.stage === 'IN_HOUSE' ? 'warning' : item.stage === 'FROZEN' ? 'destructive' : 'gold'}>
+                    {item.stage === 'PRE_CHECKIN' ? 'Pre-Arrival Due' : item.stage === 'IN_HOUSE' ? 'In-House Folio' : item.stage === 'FROZEN' ? 'Frozen' : 'Departure Balance'}
+                  </Pill>
+                </TableCell>
+                <TableCell className="font-medium">{inr(item.totalAmount)}</TableCell>
+                <TableCell className="text-success font-medium">{inr(item.paidAmount)}</TableCell>
+                <TableCell className="font-bold text-warning tabular-nums">
+                  {inr(item.balance)}
+                </TableCell>
+                <TableCell className="text-right">
+                  <Button 
+                    size="sm" 
+                    className="bg-brass text-gold-foreground hover:opacity-90 shadow-sm"
+                    onClick={() => {
+                      setSelectedItem(item);
+                      setCollectionAmount(String(item.balance));
+                    }}
+                  >
+                    Collect Balance
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
           </TableBody>
         </Table>
-        {!pending.length && (
-          <div className="p-6">
-            <EmptyState title="All Clear" body="No pending folios to collect." icon={CreditCard} />
+
+        {!pendingItems.length && (
+          <div className="p-8">
+            <EmptyState title="All Folios Settled" body="There are currently no unpaid or pending balances across the property." icon={CheckCircle2} />
           </div>
         )}
       </Panel>
 
-      <Dialog open={!!selectedPayment} onOpenChange={(o) => { if (!o) setSelectedPayment(null); }}>
+      {/* Collect Balance Dialog */}
+      <Dialog open={!!selectedItem} onOpenChange={(o) => { if (!o) setSelectedItem(null); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Collect Payment</DialogTitle>
-            <DialogDescription>Record a settlement for this folio.</DialogDescription>
+            <DialogTitle>Collect Outstanding Balance</DialogTitle>
+            <DialogDescription>
+              Record settlement for {selectedItem?.guestName} ({selectedItem?.resourceName})
+            </DialogDescription>
           </DialogHeader>
-          {selectedPayment && (
+
+          {selectedItem && (
             <div className="space-y-4 pt-2">
-              <div className="flex justify-between items-center rounded-lg border border-border bg-secondary/50 p-3">
-                <span className="text-sm font-medium">Remaining Balance:</span>
-                <span className="font-bold text-base text-warning">
-                  {inr((selectedPayment.total_amount || 0) - (selectedPayment.paid_amount || 0))}
-                </span>
+              <div className="flex justify-between items-center rounded-xl border border-border bg-secondary/40 p-4">
+                <div>
+                  <div className="text-xs text-muted-foreground">Total Bill: {inr(selectedItem.totalAmount)}</div>
+                  <div className="text-xs text-success">Already Paid: {inr(selectedItem.paidAmount)}</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-[10px] uppercase font-semibold text-muted-foreground">Outstanding Due</div>
+                  <div className="text-xl font-bold text-warning">{inr(selectedItem.balance)}</div>
+                </div>
               </div>
               
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <Label>Collection Amount (₹)</Label>
                 <Input 
                   type="number" 
@@ -120,63 +263,33 @@ function PendingPaymentsPage() {
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label>Payment Method</Label>
-                <Select value={method} onValueChange={setMethod}>
+              <div className="space-y-1.5">
+                <Label>Payment Mode</Label>
+                <Select value={method} onValueChange={(v: any) => setMethod(v)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {["Cash", "UPI", "Credit Card", "Debit Card", "Bank Transfer"].map((m) => (
-                      <SelectItem key={m} value={m}>{m}</SelectItem>
-                    ))}
+                    <SelectItem value="CASH">Cash</SelectItem>
+                    <SelectItem value="UPI">UPI / QR (GPay, PhonePe, Paytm)</SelectItem>
+                    <SelectItem value="CARD">Credit / Debit Card</SelectItem>
+                    <SelectItem value="BANK_TRANSFER">Bank Transfer / NEFT</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
-              <div className="flex items-center gap-3 pt-2">
+              <div className="flex justify-end gap-2 pt-3 border-t border-border">
+                <Button variant="ghost" onClick={() => setSelectedItem(null)}>Cancel</Button>
                 <Button 
-                  className="flex-1 bg-brass text-gold-foreground hover:opacity-90"
-                  onClick={async () => {
-                    const amt = parseFloat(collectionAmount);
-                    if (isNaN(amt) || amt <= 0) {
-                      toast.error("Please enter a valid amount");
-                      return;
-                    }
-                    const res = await settlePayment(selectedPayment.id, amt);
-                    if (res?.success) {
-                      toast.success(`Collected ${inr(amt)} successfully.`);
-                      setSelectedPayment(null);
-                    } else {
-                      toast.error(res?.error || "Failed to settle payment");
-                    }
-                  }}
+                  className="bg-brass text-gold-foreground hover:opacity-90"
+                  disabled={loading}
+                  onClick={handleCollect}
                 >
-                  Confirm Payment
+                  {loading ? "Recording..." : `Confirm Collection of ${inr(parseFloat(collectionAmount) || 0)}`}
                 </Button>
-                
-                {(session?.role === 'SUPER_ADMIN' || session?.role === 'GM') && selectedPayment.status !== 'FROZEN' && (
-                  <Button 
-                    variant="outline"
-                    className="text-info hover:text-info"
-                    onClick={async () => {
-                      const res = await freezePayment(selectedPayment.id);
-                      if (res?.success) {
-                        toast.info("Folio frozen for City Ledger/Review.");
-                        setSelectedPayment(null);
-                      } else {
-                        toast.error(res?.error || "Failed to freeze folio");
-                      }
-                    }}
-                    title="Freeze for City Ledger or Dispute"
-                  >
-                    <Snowflake className="size-4 mr-2" />
-                    Freeze
-                  </Button>
-                )}
               </div>
             </div>
           )}
         </DialogContent>
       </Dialog>
     </div>
-  );
+  )
 }
