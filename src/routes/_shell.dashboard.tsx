@@ -53,66 +53,75 @@ export const Route = createFileRoute("/_shell/dashboard")({
 });
 
 function Dashboard() {
-  const { rooms, reservations, session, checkIn, checkOut, seedDatabase } = usePms();
+  const { rooms, reservations, payments, tickets, guests, session, checkIn, checkOut } = usePms();
   const navigate = useNavigate();
   const [openRoom, setOpenRoom] = React.useState<Room | null>(null);
 
   const occupied = rooms.filter((r) => r.status === "OCCUPIED").length;
   const reserved = rooms.filter((r) => r.status === "BOOKED").length;
-  const vacant = rooms.filter((r) => r.status === "AVAILABLE" || r.status === "DIRTY").length;
+  const vacant = rooms.filter((r) => r.status === "AVAILABLE").length;
+  const dirty = rooms.filter((r) => r.status === "DIRTY").length;
+  const cleaning = rooms.filter((r) => r.status === "CLEANING").length;
   const blocked = rooms.filter((r) => ["OUT OF SERVICE", "MAINTENANCE"].includes(r.status)).length;
-  const occPct = rooms.length > 0 ? Math.round((occupied / rooms.length) * 100) : 0;
+  const totalKeys = rooms.length;
+  const occPct = totalKeys > 0 ? Math.round((occupied / totalKeys) * 100) : 0;
 
   const arrivals = reservations.filter((r) => r.resource_type === "ROOM" && (r.status === "CONFIRMED" || r.status === "PENDING")).slice(0, 6);
   const departures = reservations.filter((r) => r.resource_type === "ROOM" && r.status === "OCCUPIED").slice(0, 5);
-  const adr = 4780;
-  const revenue = occupied * adr + 184000 * 0.35;
+
+  const occupiedRooms = rooms.filter(r => r.status === 'OCCUPIED');
+  const avgRoomPrice = totalKeys > 0 ? Math.round(rooms.reduce((acc, r) => acc + (r.price || (r as any).rate || 0), 0) / totalKeys) : 0;
+  const adr = occupied > 0 ? Math.round(occupiedRooms.reduce((acc, r) => acc + (r.price || (r as any).rate || 0), 0) / occupied) : avgRoomPrice;
+  const revpar = totalKeys > 0 ? Math.round((adr * occupied) / totalKeys) : 0;
+
+  const todayRevenue = payments.reduce((acc, p) => acc + (p.paid_amount || 0), 0);
+  const pendingPayments = payments.filter(p => p.status === 'PENDING' || p.status === 'PARTIAL');
+  const outstandingDues = pendingPayments.reduce((acc, p) => acc + Math.max(0, (p.total_amount || 0) - (p.paid_amount || 0)), 0);
 
   const donut = [
     { name: "Occupied", value: occupied, color: "var(--indigo-500, #6366f1)" },
     { name: "Reserved", value: reserved, color: "var(--blue-500, #3b82f6)" },
     { name: "Vacant", value: vacant, color: "var(--emerald-500, #10b981)" },
+    { name: "Dirty / Cleaning", value: dirty + cleaning, color: "var(--warning, #f59e0b)" },
     { name: "Out of Order", value: blocked, color: "var(--slate-500, #64748b)" },
   ];
 
-  const safeDonut = rooms.length > 0 ? donut : [{ name: "No Rooms", value: 1, color: "var(--border)" }];
+  const safeDonut = totalKeys > 0 ? donut : [{ name: "No Rooms", value: 1, color: "var(--border)" }];
 
-  const hour = 9;
-  const greeting = hour < 12 ? "Good Morning" : hour < 17 ? "Good Afternoon" : "Good Evening";
+  const curHour = new Date().getHours();
+  const greeting = curHour < 12 ? "Good Morning" : curHour < 17 ? "Good Afternoon" : "Good Evening";
+  const todayLong = new Date().toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
   return (
     <>
       <PageHeader
         eyebrow="DRB Hotel — Today's Operations"
-        title={`${greeting}, ${session?.name.split(" ")[0] ?? "Manager"}`}
-        subtitle="Wednesday, 12 August 2026 · Business date open · 25 keys"
+        title={`${greeting}, ${session?.name ? session.name.split(" ")[0] : "Manager"}`}
+        subtitle={`${todayLong} · Live Operations · ${totalKeys} keys`}
         actions={
           <>
-            <Button variant="outline" className="rounded-xl border-dashed border-gold text-gold hover:bg-gold/10" onClick={seedDatabase}>
-              Seed Database
-            </Button>
             <Button variant="outline" className="rounded-xl" onClick={() => void navigate({ to: "/front-desk" })}>
               Front Desk
             </Button>
             <Button
               className="rounded-xl bg-brass text-gold-foreground shadow-brass hover:opacity-90"
-              onClick={() => void navigate({ to: "/reservations/new" })}
+              onClick={() => void navigate({ to: "/front-desk" })}
             >
-              New Reservation
+              Book Room
             </Button>
           </>
         }
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="Occupancy" value={`${occPct}%`} delta="+4.2%" hint="vs yesterday" icon={PercentCircle} tone="gold" />
-        <KpiCard label="Today's Arrivals" value={String(arrivals.length)} delta="+2" hint="vs last week" icon={LogIn} tone="info" />
-        <KpiCard label="Today's Departures" value={String(departures.length)} delta="-1" hint="vs yesterday" icon={LogOut} tone="warning" />
-        <KpiCard label="Rooms Available" value={String(vacant)} hint={`${blocked} blocked`} icon={DoorOpen} tone="success" />
-        <KpiCard label="ADR" value={inr(adr)} delta="+3.1%" hint="vs last week" icon={IndianRupee} tone="gold" />
-        <KpiCard label="RevPAR" value={inr(Math.round(adr * (occPct / 100)))} delta="+6.4%" hint="vs last week" icon={TrendingUp} tone="success" />
-        <KpiCard label="Today's Revenue" value={inr(revenue)} delta="+8.7%" hint="vs yesterday" icon={Wallet} tone="info" />
-        <KpiCard label="Outstanding Dues" value={inr(148600)} delta="-2.4%" hint="12 open folios" icon={IndianRupee} tone="destructive" />
+        <KpiCard label="Occupancy" value={`${occPct}%`} hint={`${occupied} of ${totalKeys} rooms`} icon={PercentCircle} tone="gold" />
+        <KpiCard label="Today's Arrivals" value={String(arrivals.length)} hint="Queue at desk" icon={LogIn} tone="info" />
+        <KpiCard label="Today's Departures" value={String(departures.length)} hint="Folios in-house" icon={LogOut} tone="warning" />
+        <KpiCard label="Rooms Available" value={String(vacant)} hint={`${blocked} out of order`} icon={DoorOpen} tone="success" />
+        <KpiCard label="ADR" value={inr(adr)} hint="Average Daily Rate" icon={IndianRupee} tone="gold" />
+        <KpiCard label="RevPAR" value={inr(revpar)} hint="Revenue Per Room" icon={TrendingUp} tone="success" />
+        <KpiCard label="Total Revenue Collected" value={inr(todayRevenue)} hint="Settled folios" icon={Wallet} tone="info" />
+        <KpiCard label="Outstanding Dues" value={inr(outstandingDues)} hint={`${pendingPayments.length} open folios`} icon={IndianRupee} tone="destructive" />
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1.55fr_1fr]">
@@ -286,7 +295,7 @@ function Dashboard() {
 
       <Panel
         title="Room status overview"
-        description="All 25 keys — click any room to open its details"
+        description={`All ${totalKeys} keys — click any room to inspect or change its status`}
         action={<Pill tone="muted">{occupied} occupied · {vacant} vacant</Pill>}
       >
         <div className="mb-4">
@@ -316,45 +325,48 @@ function Dashboard() {
       </Panel>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Panel title="Revenue by source" description="Room nights booked this week">
-          <div className="h-[240px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={[
-                  { name: "Direct", value: 63 },
-                  { name: "Booking", value: 48 },
-                  { name: "MMT", value: 36 },
-                  { name: "Goibibo", value: 21 },
-                  { name: "Agoda", value: 17 },
-                  { name: "Corp", value: 14 },
-                ]}
-                margin={{ left: -20, top: 10 }}
-              >
-                <CartesianGrid strokeDasharray="3 6" stroke="var(--border)" vertical={false} />
-                <XAxis dataKey="name" tickLine={false} axisLine={false} fontSize={12} stroke="var(--muted-foreground)" />
-                <YAxis tickLine={false} axisLine={false} fontSize={12} stroke="var(--muted-foreground)" />
-                <RTooltip
-                  contentStyle={{ borderRadius: 12, border: "1px solid var(--border)", background: "var(--card)", fontSize: 12 }}
-                />
-                <Bar dataKey="value" name="Room nights" fill="var(--chart-1)" radius={[8, 8, 0, 0]} maxBarSize={42} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </Panel>
-        <Panel title="Shift notes" description="Handover log from the previous shift">
+        <Panel title="Active Maintenance & Front Desk Log" description="Open tickets and room alerts">
           <ul className="space-y-3 text-sm">
-            {[
-              { icon: Sparkles, text: "Suite 505 flowers refreshed for VIP arrival at 15:30." },
-              { icon: BedDouble, text: "Room 108 blocked — AC replacement scheduled 14:00." },
-              { icon: Wallet, text: "Corporate folio for Meridian Corp to be routed to city ledger." },
-              { icon: LogIn, text: "Group of 6 from MakeMyTrip arriving late (ETA 23:15)." },
-            ].map((n, i) => (
-              <li key={i} className="flex gap-3 rounded-xl border border-border bg-secondary/40 p-3">
-                <n.icon className="mt-0.5 size-4 shrink-0 text-gold" />
-                <span>{n.text}</span>
+            {tickets.filter(t => t.status !== 'RESOLVED').length > 0 ? (
+              tickets.filter(t => t.status !== 'RESOLVED').slice(0, 4).map((t) => (
+                <li key={t.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-secondary/40 p-3">
+                  <div className="flex items-center gap-3">
+                    <BedDouble className="size-4 shrink-0 text-gold" />
+                    <div>
+                      <div className="font-semibold text-foreground">{t.issue}</div>
+                      <div className="text-xs text-muted-foreground">Assigned: {t.assignee || 'Engineering'}</div>
+                    </div>
+                  </div>
+                  <Pill tone={t.priority === 'HIGH' ? 'destructive' : 'warning'}>{t.priority}</Pill>
+                </li>
+              ))
+            ) : (
+              <li className="flex gap-3 rounded-xl border border-border bg-secondary/40 p-4 text-muted-foreground">
+                <Sparkles className="mt-0.5 size-4 shrink-0 text-gold" />
+                <span>All facilities and rooms operating in pristine condition. No active maintenance alerts.</span>
               </li>
-            ))}
+            )}
           </ul>
+        </Panel>
+
+        <Panel title="Revenue Breakdown by Category" description="Split across live bookings">
+          <div className="space-y-4 p-2">
+            <div className="flex justify-between items-center text-sm border-b border-border pb-2">
+              <span className="text-muted-foreground">Room Stays & Lodging</span>
+              <span className="font-bold text-foreground">{inr(todayRevenue)}</span>
+            </div>
+            <div className="flex justify-between items-center text-sm border-b border-border pb-2">
+              <span className="text-muted-foreground">Party Hall & Banquets</span>
+              <span className="font-bold text-foreground">{inr(reservations.filter(r => r.resource_type === 'PARTY_HALL').reduce((a, b) => a + (b.base_amount || 0), 0))}</span>
+            </div>
+            <div className="flex justify-between items-center text-sm border-b border-border pb-2">
+              <span className="text-muted-foreground">Outstanding Uncollected Balance</span>
+              <span className="font-bold text-warning">{inr(outstandingDues)}</span>
+            </div>
+            <Button variant="outline" className="w-full mt-2" onClick={() => void navigate({ to: "/payment-history" })}>
+              View Full Payment Audit Ledger
+            </Button>
+          </div>
         </Panel>
       </div>
 

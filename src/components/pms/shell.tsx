@@ -102,15 +102,16 @@ const NAV: { section: string; items: NavItem[] }[] = [
 ];
 
 const QUICK_ACTIONS: { label: string; to: string; icon: React.ComponentType<{ className?: string }> }[] = [
-  { label: "New Reservation", to: "/reservations/new", icon: CalendarCheck },
-  { label: "Walk-in Guest", to: "/front-desk", icon: ConciergeBell },
-  { label: "Check-in", to: "/front-desk", icon: ClipboardCheck },
-  { label: "Check-out", to: "/front-desk", icon: ClipboardCheck },
-  { label: "Add Payment", to: "/billing", icon: Receipt },
+  { label: "New Room Booking", to: "/front-desk", icon: CalendarCheck },
+  { label: "Front Desk Check-In", to: "/front-desk", icon: ConciergeBell },
   { label: "Add Guest", to: "/guests", icon: Users },
-  { label: "Maintenance Request", to: "/housekeeping", icon: Settings },
-  { label: "Housekeeping Task", to: "/housekeeping", icon: Sparkles },
-  { label: "Expense", to: "/billing", icon: Receipt },
+  { label: "Log Expense", to: "/expenses", icon: Receipt },
+  { label: "Pending Folios", to: "/pending-payments", icon: Receipt },
+  { label: "Request Discount", to: "/discounts", icon: TrendingUp },
+  { label: "Book Party Hall", to: "/party-hall", icon: PartyPopper },
+  { label: "Issue Visitor Pass", to: "/visitors", icon: Users },
+  { label: "Log Maintenance Ticket", to: "/complaints", icon: Settings },
+  { label: "Housekeeping Tasks", to: "/housekeeping", icon: Sparkles },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -122,14 +123,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [query, setQuery] = React.useState("");
   const unread = notifications.filter((n) => !n.read).length;
 
+  const todayStr = React.useMemo(() => {
+    return new Date().toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+  }, []);
+
   const results = React.useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return { rooms: [], guests: [], reservations: [] };
     return {
-      rooms: rooms.filter((r) => r.number.includes(q) || r.type.toLowerCase().includes(q)).slice(0, 5),
-      guests: guests.filter((g) => g.name.toLowerCase().includes(q)).slice(0, 5),
+      rooms: rooms
+        .filter((r) => (r.room_number || (r as any).number || "").toLowerCase().includes(q) || (r.room_name || (r as any).type || "").toLowerCase().includes(q))
+        .slice(0, 5),
+      guests: guests.filter((g) => (g.name || "").toLowerCase().includes(q) || (g.phone || "").includes(q)).slice(0, 5),
       reservations: reservations
-        .filter((r) => r.id.toLowerCase().includes(q) || r.guest.toLowerCase().includes(q))
+        .filter((r) => {
+          const gName = guests.find(g => g.id === r.guest_id)?.name || "";
+          return r.id.toLowerCase().includes(q) || gName.toLowerCase().includes(q);
+        })
         .slice(0, 5),
     };
   }, [query, rooms, guests, reservations]);
@@ -278,7 +288,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <div className="hidden items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-xs xl:flex">
               <span className="font-semibold text-foreground">DRB Hotel</span>
               <span className="text-muted-foreground">·</span>
-              <span className="text-muted-foreground">Wed, 12 Aug 2026</span>
+              <span className="text-muted-foreground">{todayStr}</span>
             </div>
 
             <div className="ml-auto flex items-center gap-2">
@@ -371,7 +381,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </main>
 
         <footer className="border-t border-border px-6 py-4 text-xs text-muted-foreground">
-          DRB Hotel PMS · Demo environment with sample data · v2.4
+          DRB Hotel Property Management System · All rights reserved
         </footer>
       </div>
 

@@ -16,25 +16,43 @@ export const Route = createFileRoute("/_shell/reservations/")({
   head: () => ({
     meta: [
       { title: "Reservations — DRB Hotel PMS" },
-      { name: "description", content: "Manage every DRB Hotel reservation: confirmed, tentative, in-house, checked out, cancelled and waitlisted bookings." },
+      { name: "description", content: "Manage every DRB Hotel reservation: confirmed, in-house, checked out, and cancelled bookings." },
       { property: "og:title", content: "DRB Hotel — Reservations" },
-      { property: "og:description", content: "Manage every DRB Hotel reservation: confirmed, tentative, in-house, checked out, cancelled and waitlisted bookings." },
+      { property: "og:description", content: "Manage every DRB Hotel reservation: confirmed, in-house, checked out, and cancelled bookings." },
     ],
   }),
   component: ReservationsPage,
 });
 
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+
 const TABS: (ReservationStatus | "All")[] = ["All", "CONFIRMED", "OCCUPIED", "PENDING", "COMPLETED", "CANCELLED"];
 
 function ReservationsPage() {
-  const { reservations, guests, rooms, checkIn, checkOut, setReservationStatus } = usePms();
+  const { reservations, guests, rooms, checkIn, checkOut, setReservationStatus, setRoomStatus } = usePms();
   const navigate = useNavigate();
   const [tab, setTab] = React.useState<string>("All");
   const [q, setQ] = React.useState("");
   const [sortBy, setSortBy] = React.useState("arrival");
 
+  const [blockOpen, setBlockOpen] = React.useState(false);
+  const [selectedRoomToBlock, setSelectedRoomToBlock] = React.useState("");
+  const [blockStatus, setBlockStatus] = React.useState("MAINTENANCE");
+  const [blockReason, setBlockReason] = React.useState("");
+
   const getGuest = (guestId?: string) => guests.find(g => g.id === guestId);
   const getRoom = (roomId?: string) => rooms.find(rm => rm.id === roomId);
+
+  const handleBlockRoom = async () => {
+    if (!selectedRoomToBlock) return toast.error("Please select a room to block");
+    await setRoomStatus(selectedRoomToBlock, blockStatus as any);
+    const rm = rooms.find(r => r.id === selectedRoomToBlock);
+    toast.success(`Room ${rm?.room_number || ''} status updated to ${blockStatus}`);
+    setBlockOpen(false);
+    setSelectedRoomToBlock("");
+    setBlockReason("");
+  };
 
   const rows = reservations
     .filter((r) => (tab === "All" || r.status === tab))
@@ -62,9 +80,14 @@ function ReservationsPage() {
         title="Reservations"
         subtitle={`${reservations.length} total bookings on the books`}
         actions={
-          <Button className="rounded-xl bg-brass text-gold-foreground shadow-brass hover:opacity-90" onClick={() => void navigate({ to: "/front-desk" })}>
-            <CalendarPlus className="mr-1 size-4" /> New Booking
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" className="rounded-xl" onClick={() => setBlockOpen(true)}>
+              <Layers className="mr-1 size-4" /> Block Room / OOS
+            </Button>
+            <Button className="rounded-xl bg-brass text-gold-foreground shadow-brass hover:opacity-90" onClick={() => void navigate({ to: "/front-desk" })}>
+              <CalendarPlus className="mr-1 size-4" /> New Booking
+            </Button>
+          </div>
         }
       />
 
@@ -159,6 +182,65 @@ function ReservationsPage() {
         </div>
         {!rows.length && <div className="p-6"><EmptyState title="No reservations found" body="Try a different tab or clear the search filter." /></div>}
       </Panel>
+
+      <Dialog open={blockOpen} onOpenChange={setBlockOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Block Room / Out of Service</DialogTitle>
+            <DialogDescription>Change room status for maintenance or operational hold.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="space-y-2">
+              <Label>Select Room</Label>
+              <Select value={selectedRoomToBlock} onValueChange={setSelectedRoomToBlock}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose a room" />
+                </SelectTrigger>
+                <SelectContent>
+                  {rooms.map((rm) => (
+                    <SelectItem key={rm.id} value={rm.id}>
+                      Room {rm.room_number || (rm as any).number} — Floor {rm.floor || "1"} ({rm.status})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Target Status</Label>
+              <Select value={blockStatus} onValueChange={setBlockStatus}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="MAINTENANCE">Maintenance (Engineering)</SelectItem>
+                  <SelectItem value="OUT OF SERVICE">Out of Service (Blocked)</SelectItem>
+                  <SelectItem value="DIRTY">Mark Dirty (Needs Cleaning)</SelectItem>
+                  <SelectItem value="AVAILABLE">Available (Unblock / Vacant Clean)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Reason / Notes</Label>
+              <Input
+                placeholder="e.g. AC servicing, deep painting, plumbing repair"
+                value={blockReason}
+                onChange={(e) => setBlockReason(e.target.value)}
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="ghost" onClick={() => setBlockOpen(false)}>
+                Cancel
+              </Button>
+              <Button className="bg-brass text-gold-foreground hover:opacity-90" onClick={handleBlockRoom}>
+                Apply Status Change
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

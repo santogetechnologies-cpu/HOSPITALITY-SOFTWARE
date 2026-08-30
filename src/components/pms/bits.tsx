@@ -244,17 +244,23 @@ export function RoomCard({
       </div>
       <dl className="mt-3 space-y-1 text-[11px] text-muted-foreground">
         <div className="flex items-center gap-1.5">
-              <Wrench className="size-3" /> Engineering assigned
-            </>
+          <BedDouble className="size-3" /> Floor {room.floor || "1"}
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Users className="size-3" /> {room.capacity || 2} guests
+          {room.status === "MAINTENANCE" || room.status === "OUT OF SERVICE" ? (
+            <span className="ml-auto flex items-center gap-1 text-destructive">
+              <Wrench className="size-3" /> Blocked
+            </span>
           ) : (
-            <>
-              <Sparkles className="size-3" /> {room.hkStatus}
-            </>
+            <span className="ml-auto flex items-center gap-1 text-emerald-600">
+              <Sparkles className="size-3" /> Ready
+            </span>
           )}
         </div>
       </dl>
       <div className="mt-3 flex items-center justify-between border-t border-border pt-2">
-        <span className="text-sm font-semibold text-foreground">{inr(room.rate)}</span>
+        <span className="text-sm font-semibold text-foreground">{inr(room.price || (room as any).rate || 0)}</span>
         <span className="text-[10px] text-muted-foreground">per night</span>
       </div>
     </button>
