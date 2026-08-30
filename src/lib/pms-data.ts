@@ -197,3 +197,36 @@ export const EXPENSES = [
   { id: "e1", category: "Operational", amount: 1500, date: "2026-08-12", description: "Plumbing repair" },
   { id: "e2", category: "F&B Supplies", amount: 450, date: "2026-08-12", description: "Milk packets" },
 ];
+
+export const ROOM_TYPES = [
+  { type: "Standard Twin", base: 3200 },
+  { type: "Deluxe King", base: 4500 },
+  { type: "Executive Suite", base: 8500 },
+];
+
+export const MENU_CATEGORIES = ["Breakfast", "Starters", "Mains", "Drinks"];
+
+export const MENU = [
+  { category: "Breakfast", name: "Masala Dosa", price: 150 },
+  { category: "Starters", name: "Paneer Tikka", price: 300 },
+  { category: "Mains", name: "Butter Chicken", price: 450 },
+  { category: "Drinks", name: "Fresh Lime Soda", price: 90 },
+];
+
+export const OCCUPANCY_TREND = [
+  { day: "Mon", occ: 65, adr: 4500 },
+  { day: "Tue", occ: 70, adr: 4600 },
+  { day: "Wed", occ: 68, adr: 4550 },
+  { day: "Thu", occ: 85, adr: 5200 },
+  { day: "Fri", occ: 95, adr: 5800 },
+];
+
+export const FORECAST = [
+  { day: "Mon", rev: 120000 },
+  { day: "Tue", rev: 125000 },
+  { day: "Wed", rev: 122000 },
+  { day: "Thu", rev: 150000 },
+  { day: "Fri", rev: 190000 },
+];
+
+export const RATE_CALENDAR_DATES = ["Mon 12", "Tue 13", "Wed 14", "Thu 15", "Fri 16", "Sat 17", "Sun 18"];
