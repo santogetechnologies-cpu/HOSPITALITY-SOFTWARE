@@ -177,3 +177,23 @@ export type Notification = {
   read: boolean;
   time?: string;
 };
+
+export const inr = (amount: number) => {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  }).format(amount);
+};
+
+export const CHANNELS = [
+  { id: "c1", name: "Booking.com", sync: true, bookings: 4 },
+  { id: "c2", name: "Agoda", sync: true, bookings: 2 },
+  { id: "c3", name: "MakeMyTrip", sync: false, bookings: 0 },
+  { id: "c4", name: "Goibibo", sync: false, bookings: 1 },
+];
+
+export const EXPENSES = [
+  { id: "e1", category: "Operational", amount: 1500, date: "2026-08-12", description: "Plumbing repair" },
+  { id: "e2", category: "F&B Supplies", amount: 450, date: "2026-08-12", description: "Milk packets" },
+];
