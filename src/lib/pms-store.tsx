@@ -425,24 +425,29 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
       addGuest: async (g) => {
         try {
           const id = crypto.randomUUID();
-          await supabase.from('guests').insert({ 
+          const { error } = await supabase.from('guests').insert({ 
             id, 
             name: g.name, 
             email: g.email || null,
             phone: g.phone || null,
             country: g.country || null,
             last_stay: new Date().toISOString().split('T')[0],
-            stays: g.stays || 0,
-            spend: g.spend || 0,
+            stays: Number(g.stays) || 0,
+            spend: Number(g.spend) || 0,
             type: g.type || 'Individual',
-            vip: g.vip || false,
+            vip: Boolean(g.vip),
             preferences: g.preferences || [],
             notes: g.notes || null
           });
-          fetchData();
+          if (error) {
+            console.error("addGuest error:", error);
+            return { id: '', success: false, error: error.message };
+          }
+          await fetchData();
           return { id, success: true };
-        } catch (err) {
-          return { id: '', success: false };
+        } catch (err: any) {
+          console.error("addGuest catch:", err);
+          return { id: '', success: false, error: err.message };
         }
       },
       

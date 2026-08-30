@@ -37,22 +37,56 @@ function GuestsPage() {
   const [openId, setOpenId] = React.useState<string | null>(null);
   
   const [addOpen, setAddOpen] = React.useState(false);
-  const [form, setForm] = React.useState({ name: "", email: "", phone: "", country: "", type: "Individual", vip: false });
+  const [form, setForm] = React.useState({
+    name: "",
+    email: "",
+    phone: "",
+    country: "India",
+    address: "",
+    id_number: "",
+    type: "Individual",
+    vip: false,
+    notes: ""
+  });
 
   const handleAdd = async () => {
-    if (!form.name) return toast.error("Name is required");
-    const res = await addGuest(form as any);
+    if (!form.name.trim()) return toast.error("Guest full name is required");
+    const res = await addGuest({
+      name: form.name.trim(),
+      email: form.email.trim() || undefined,
+      phone: form.phone.trim() || undefined,
+      country: form.country.trim() || "India",
+      address: form.address.trim() || undefined,
+      id_number: form.id_number.trim() || undefined,
+      type: form.type,
+      vip: form.vip,
+      notes: form.notes.trim() || undefined,
+      stays: 0,
+      spend: 0,
+      preferences: []
+    } as any);
+
     if (res?.success) {
-      toast.success("Guest added successfully");
+      toast.success("Guest profile created successfully!");
       setAddOpen(false);
-      setForm({ name: "", email: "", phone: "", country: "", type: "Individual", vip: false });
+      setForm({
+        name: "",
+        email: "",
+        phone: "",
+        country: "India",
+        address: "",
+        id_number: "",
+        type: "Individual",
+        vip: false,
+        notes: ""
+      });
     } else {
-      toast.error("Failed to add guest");
+      toast.error(res?.error || "Failed to add guest profile");
     }
   };
 
   const guest = guests.find((g) => g.id === openId) ?? null;
-  const rows = guests.filter((g) => (type === "all" || g.type === type) && (!q.trim() || g.name.toLowerCase().includes(q.toLowerCase())));
+  const rows = guests.filter((g) => (type === "all" || g.type === type) && (!q.trim() || g.name.toLowerCase().includes(q.toLowerCase()) || (g.phone && g.phone.includes(q))));
 
   return (
     <>
@@ -64,7 +98,7 @@ function GuestsPage() {
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Total Guests" value={String(guests.length)} icon={Users} tone="gold" hint="Active profiles" />
-        <KpiCard label="Returning Guests" value={String(guests.filter((g) => g.stays > 3).length)} icon={Repeat} tone="info" delta="+12%" />
+        <KpiCard label="Returning Guests" value={String(guests.filter((g) => (g.stays || 0) > 1).length)} icon={Repeat} tone="info" />
         <KpiCard label="VIP Guests" value={String(guests.filter((g) => g.vip).length)} icon={Crown} tone="warning" hint="Priority handling" />
         <KpiCard label="Corporate Guests" value={String(guests.filter((g) => g.type === "Corporate").length)} icon={Building2} tone="success" hint="City ledger" />
       </div>
@@ -73,7 +107,7 @@ function GuestsPage() {
         <div className="flex flex-wrap gap-3">
           <div className="relative min-w-[220px] flex-1">
             <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input className="pl-9" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search guests" />
+            <Input className="pl-9" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search guests by name or phone" />
           </div>
           <Select value={type} onValueChange={setType}>
             <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
@@ -90,17 +124,17 @@ function GuestsPage() {
       <Panel bodyClassName="p-0">
         <div className="scroll-slim overflow-x-auto">
           <Table>
-            <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Contact</TableHead><TableHead>Country</TableHead><TableHead>Last Stay</TableHead><TableHead>Total Stays</TableHead><TableHead>Total Spend</TableHead><TableHead>Type</TableHead><TableHead>VIP</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Contact</TableHead><TableHead>Country</TableHead><TableHead>ID Number</TableHead><TableHead>Total Stays</TableHead><TableHead>Total Spend</TableHead><TableHead>Type</TableHead><TableHead>VIP</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
             <TableBody>
               {rows.map((g) => (
                 <TableRow key={g.id}>
-                  <TableCell className="font-medium">{g.name}</TableCell>
-                  <TableCell className="text-xs">{g.email}<br />{g.phone}</TableCell>
-                  <TableCell>{g.country}</TableCell>
-                  <TableCell>{g.lastStay}</TableCell>
-                  <TableCell className="tabular-nums">{g.stays}</TableCell>
-                  <TableCell className="tabular-nums">{inr(g.spend)}</TableCell>
-                  <TableCell><Pill>{g.type}</Pill></TableCell>
+                  <TableCell className="font-semibold">{g.name}</TableCell>
+                  <TableCell className="text-xs">{g.phone || "—"}<br /><span className="text-muted-foreground">{g.email || ""}</span></TableCell>
+                  <TableCell>{g.country || "India"}</TableCell>
+                  <TableCell className="font-mono text-xs">{g.id_number || "—"}</TableCell>
+                  <TableCell className="tabular-nums">{g.stays || 0}</TableCell>
+                  <TableCell className="tabular-nums">{inr(g.spend || 0)}</TableCell>
+                  <TableCell><Pill>{g.type || "Individual"}</Pill></TableCell>
                   <TableCell>{g.vip ? <Pill tone="gold">VIP</Pill> : "—"}</TableCell>
                   <TableCell className="text-right"><Button size="sm" variant="ghost" onClick={() => setOpenId(g.id)}>Profile</Button></TableCell>
                 </TableRow>
@@ -108,7 +142,7 @@ function GuestsPage() {
             </TableBody>
           </Table>
         </div>
-        {!rows.length ? <div className="p-6"><EmptyState title="No guests found" body="Try another search term." icon={Users} /></div> : null}
+        {!rows.length ? <div className="p-6"><EmptyState title="No guests found" body="Try adding a new guest above." icon={Users} /></div> : null}
       </Panel>
 
       <Sheet open={!!guest} onOpenChange={(o: boolean) => { if (!o) setOpenId(null); }}>
@@ -117,42 +151,22 @@ function GuestsPage() {
             <>
               <SheetHeader className="text-left">
                 <SheetTitle className="flex items-center gap-2 text-2xl">{guest.name}{guest.vip ? <Pill tone="gold">VIP</Pill> : null}</SheetTitle>
-                <SheetDescription>{guest.type} · {guest.country} · {guest.stays} stays · {inr(guest.spend)} lifetime</SheetDescription>
+                <SheetDescription>{guest.type || "Individual"} · {guest.country || "India"} · {guest.stays || 0} stays · {inr(guest.spend || 0)} lifetime</SheetDescription>
               </SheetHeader>
-              <div className="px-4 pb-10">
-                <Tabs defaultValue="overview">
-                  <TabsList className="flex-wrap rounded-xl">
-                    {["overview", "stays", "preferences", "billing", "communication", "feedback"].map((t) => (
-                      <TabsTrigger key={t} value={t} className="rounded-lg capitalize">{t}</TabsTrigger>
-                    ))}
-                  </TabsList>
-                  <TabsContent value="overview" className="mt-4 space-y-3 text-sm">
-                    <div className="rounded-xl border border-border p-3"><div className="eyebrow">Contact</div><div className="mt-1">{guest.email}</div><div className="text-muted-foreground">{guest.phone}</div></div>
-                    <div className="rounded-xl border border-border p-3"><div className="eyebrow">Notes</div><p className="mt-1 text-muted-foreground">{guest.notes}</p></div>
-                  </TabsContent>
-                  <TabsContent value="stays" className="mt-4 space-y-2 text-sm">
-                    {[1, 2, 3].map((i) => (
-                      <div key={i} className="flex items-center justify-between rounded-xl border border-border p-3">
-                        <div><div className="font-medium">Deluxe King · {2 + i} nights</div><div className="text-xs text-muted-foreground">{i} Aug 2026 · Direct Website</div></div>
-                        <span className="font-semibold">{inr(4500 * (2 + i))}</span>
-                      </div>
-                    ))}
-                  </TabsContent>
-                  <TabsContent value="preferences" className="mt-4">
-                    <div className="flex flex-wrap gap-2">{guest.preferences.map((p) => <Pill key={p} tone="gold">{p}</Pill>)}</div>
-                  </TabsContent>
-                  <TabsContent value="billing" className="mt-4 space-y-2 text-sm">
-                    <div className="flex justify-between rounded-xl border border-border p-3"><span>Open folio balance</span><span className="font-semibold">{inr(0)}</span></div>
-                    <div className="flex justify-between rounded-xl border border-border p-3"><span>Preferred payment</span><span className="font-semibold">Corporate card</span></div>
-                  </TabsContent>
-                  <TabsContent value="communication" className="mt-4 space-y-2 text-sm">
-                    <div className="rounded-xl border border-border p-3">Pre-arrival email sent · 09 Aug</div>
-                    <div className="rounded-xl border border-border p-3">Post-stay thank-you sent · 06 Aug</div>
-                  </TabsContent>
-                  <TabsContent value="feedback" className="mt-4 space-y-2 text-sm">
-                    <div className="rounded-xl border border-border p-3"><div className="font-medium">9.2 / 10 — “Impeccable service, superb breakfast.”</div><div className="text-xs text-muted-foreground">Complaints: none logged</div></div>
-                  </TabsContent>
-                </Tabs>
+              <div className="px-4 pb-10 space-y-4 pt-4">
+                <div className="rounded-xl border border-border p-3">
+                  <div className="text-xs font-semibold uppercase text-gold">Contact Information</div>
+                  <div className="mt-2 text-sm">{guest.email || "No email on record"}</div>
+                  <div className="text-sm text-muted-foreground">{guest.phone || "No phone"}</div>
+                  {guest.address && <div className="mt-1 text-xs text-muted-foreground">{guest.address}</div>}
+                  {guest.id_number && <div className="mt-2 font-mono text-xs">ID / Proof: {guest.id_number}</div>}
+                </div>
+                {guest.notes && (
+                  <div className="rounded-xl border border-border p-3">
+                    <div className="text-xs font-semibold uppercase text-gold">Notes & Preferences</div>
+                    <p className="mt-1 text-sm text-muted-foreground">{guest.notes}</p>
+                  </div>
+                )}
               </div>
             </>
           ) : null}
@@ -161,16 +175,35 @@ function GuestsPage() {
 
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Add New Guest</DialogTitle></DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="space-y-2"><Label>Full Name</Label><Input value={form.name} onChange={e => setForm({...form, name: e.target.value})} /></div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2"><Label>Email</Label><Input type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} /></div>
-              <div className="space-y-2"><Label>Phone</Label><Input value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} /></div>
+          <DialogHeader><DialogTitle>Add New Guest Profile</DialogTitle></DialogHeader>
+          <div className="grid gap-4 py-3">
+            <div className="space-y-1.5">
+              <Label>Full Name *</Label>
+              <Input placeholder="e.g. Rajesh Sharma" value={form.name} onChange={e => setForm({...form, name: e.target.value})} />
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2"><Label>Country</Label><Input value={form.country} onChange={e => setForm({...form, country: e.target.value})} /></div>
-              <div className="space-y-2"><Label>Guest Type</Label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label>Phone Number</Label>
+                <Input placeholder="+91 98765 43210" value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Email Address</Label>
+                <Input type="email" placeholder="guest@example.com" value={form.email} onChange={e => setForm({...form, email: e.target.value})} />
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label>ID Proof Number</Label>
+                <Input placeholder="e.g. 482910384910" value={form.id_number} onChange={e => setForm({...form, id_number: e.target.value})} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Country</Label>
+                <Input value={form.country} onChange={e => setForm({...form, country: e.target.value})} />
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label>Guest Type</Label>
                 <Select value={form.type} onValueChange={(v) => setForm({...form, type: v})}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -180,11 +213,19 @@ function GuestsPage() {
                   </SelectContent>
                 </Select>
               </div>
+              <div className="flex items-center justify-between rounded-xl border border-border p-2.5 mt-auto">
+                <Label className="text-xs">VIP Status</Label>
+                <Switch checked={form.vip} onCheckedChange={(v) => setForm({...form, vip: v})} />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Address / Notes</Label>
+              <Input placeholder="City, State, or special requests" value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} />
             </div>
           </div>
-          <div className="flex justify-end gap-2">
+          <div className="flex justify-end gap-2 pt-2">
             <Button variant="ghost" onClick={() => setAddOpen(false)}>Cancel</Button>
-            <Button onClick={handleAdd} className="bg-brass text-gold-foreground">Save Profile</Button>
+            <Button onClick={handleAdd} className="bg-brass text-gold-foreground">Save Guest</Button>
           </div>
         </DialogContent>
       </Dialog>
