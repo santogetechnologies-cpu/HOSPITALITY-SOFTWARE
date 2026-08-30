@@ -601,20 +601,32 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             auth: { persistSession: false, autoRefreshToken: false }
           });
           
+          let userId = crypto.randomUUID();
+          let authFailed = false;
+          let authErrorStr = "";
+
           const { data, error } = await tempClient.auth.signUp({
             email, password: pass,
             options: { data: { role, name } }
           });
           
-          if (error) return { success: false, error: error.message };
-          
-          // Profiles are automatically created via triggers on auth.users in Supabase usually,
-          // but if we need to insert manually here (because trigger is absent), we use the returned user ID.
-          const userId = data.user?.id || crypto.randomUUID();
+          if (error) {
+            authFailed = true;
+            authErrorStr = error.message;
+            if (!error.message.includes("Database error")) {
+              return { success: false, error: error.message };
+            }
+          } else if (data.user) {
+            userId = data.user.id;
+          }
           
           // Upsert to handle trigger vs manual insert
           await supabase.from('profiles').upsert({ id: userId, name, role, phone, status: 'ACTIVE' });
           fetchData();
+          
+          if (authFailed) {
+            return { success: true, error: `Profile created, but login creation failed: ${authErrorStr}` };
+          }
           return { success: true };
         } catch (err: any) {
           return { success: false, error: err.message || "Failed to create staff login" };

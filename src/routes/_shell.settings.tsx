@@ -98,16 +98,12 @@ function SettingsPage() {
           <div className="grid gap-4 py-4">
             <div className="space-y-2"><Label>Room Number</Label><Input value={r.number} onChange={e => setR({...r, number: e.target.value})} placeholder="e.g. 101" /></div>
             <div className="space-y-2"><Label>Floor</Label><Input value={r.floor} onChange={e => setR({...r, floor: e.target.value})} placeholder="e.g. 1" /></div>
-            <div className="space-y-2"><Label>Room Type</Label>
-              <Select value={r.type} onValueChange={(v) => {
-                const rt = ROOM_TYPES.find(x => x.type === v);
-                setR({...r, type: v, price: rt ? rt.base : r.price});
-              }}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {ROOM_TYPES.map(rt => <SelectItem key={rt.type} value={rt.type}>{rt.type}</SelectItem>)}
-                </SelectContent>
-              </Select>
+            <div className="space-y-2"><Label>Room Category</Label>
+              <Input 
+                value={r.type} 
+                onChange={e => setR({...r, type: e.target.value})} 
+                placeholder="e.g. Deluxe King, Suite, etc." 
+              />
             </div>
             <div className="space-y-2"><Label>Base Rate (₹)</Label><Input type="number" value={r.price} onChange={e => setR({...r, price: parseFloat(e.target.value)})} /></div>
           </div>

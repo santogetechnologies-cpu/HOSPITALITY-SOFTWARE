@@ -37,7 +37,8 @@ function StaffPage() {
     const res = await addStaff(form.name, form.role, form.phone, form.email, form.password);
     if (res?.success) {
       setAddOpen(false);
-      toast.success("Staff member created and login enabled");
+      if (res.error) toast.warning(res.error);
+      else toast.success("Staff member created and login enabled");
       setForm({ name: "", phone: "", role: "FRONT_DESK", email: "", password: "" });
     } else {
       toast.error(res?.error || "Failed to create staff");
