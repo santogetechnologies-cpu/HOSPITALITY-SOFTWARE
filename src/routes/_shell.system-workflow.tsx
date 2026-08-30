@@ -1,7 +1,6 @@
 import * as React from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { PageHeader } from "@/components/pms/page-header";
-import { Panel } from "@/components/ui/panel";
+import { PageHeader, Panel } from "@/components/pms/bits";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CheckCircle2, XCircle, ArrowRight, ArrowDown } from "lucide-react";
 
