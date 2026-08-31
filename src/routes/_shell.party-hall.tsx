@@ -158,13 +158,13 @@ export function PartyHallPage() {
 
   const getReservationFinancials = (r: (typeof reservations)[0]) => {
     const p = getReservationPayment(r.id);
-    const approvedDiscount = discounts
+    const approvedDiscountList = discounts
       .filter(
         (d) =>
           (d.reservation_id === r.id || d.reservation_id?.toLowerCase() === r.id.toLowerCase()) &&
           d.status === "APPROVED"
-      )
-      .reduce((sum, d) => sum + (Number(d.requested_amount) || 0), 0);
+      );
+    const approvedDiscount = approvedDiscountList.reduce((sum, d) => sum + (Number(d.requested_amount) || 0), 0);
 
     const hasPendingDiscount = discounts.some(
       (d) =>
@@ -172,15 +172,31 @@ export function PartyHallPage() {
         d.status === "PENDING"
     );
 
-    const originalAmount = Number(r.base_amount) || Number(p?.total_amount) || 0;
-    let total = Number(p?.total_amount) || originalAmount;
-    if (approvedDiscount > 0 && total >= originalAmount && originalAmount > approvedDiscount) {
-      total = Math.max(0, originalAmount - approvedDiscount);
+    const discountReasons = approvedDiscountList.map(d => d.reason).filter(Boolean);
+
+    const rawResBase = Number(r.base_amount) || 0;
+    const rawPayTotal = Number(p?.total_amount) || 0;
+
+    let originalAmount = Math.max(rawResBase, rawPayTotal);
+    let total = rawPayTotal || rawResBase || 0;
+
+    if (approvedDiscount > 0) {
+      if (rawPayTotal > 0 && rawPayTotal <= rawResBase - approvedDiscount + 1) {
+        total = rawPayTotal;
+        originalAmount = rawPayTotal + approvedDiscount;
+      } else if (rawResBase > approvedDiscount) {
+        total = Math.max(0, rawResBase - approvedDiscount);
+        originalAmount = rawResBase;
+      } else if (rawPayTotal > approvedDiscount) {
+        total = Math.max(0, rawPayTotal - approvedDiscount);
+        originalAmount = rawPayTotal;
+      }
     }
+
     const paid = Number(p?.paid_amount) || 0;
-    const balance = total - paid > 0 ? total - paid : 0;
+    const balance = Math.max(0, total - paid);
     const isPaid = balance === 0 && total > 0;
-    return { total, paid, balance, isPaid, payment: p, approvedDiscount, hasPendingDiscount };
+    return { total, paid, balance, isPaid, payment: p, approvedDiscount, hasPendingDiscount, originalAmount, discountReasons };
   };
 
   const handleNewBooking = async (e: React.FormEvent) => {

@@ -304,7 +304,7 @@ export function FrontDesk() {
               const rmNum = getRoomNum(r.room_id);
               const rm = getRoom(r.room_id);
               const isPartyHall = r.resource_type === 'PARTY_HALL';
-              const { total, paid, balance, isPaid } = getReservationFinancials(r);
+              const { total, paid, balance, isPaid, approvedDiscount, originalAmount, discountReasons } = getReservationFinancials(r);
               const timer = getStayTimerStatus(r, settings);
 
               const checkInDate = r.start_time ? new Date(r.start_time).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : r.booking_date;
@@ -519,7 +519,7 @@ export function FrontDesk() {
           </DialogHeader>
 
           {res && (() => {
-            const { total, paid, balance } = getReservationFinancials(res);
+            const { total, paid, balance, approvedDiscount, originalAmount, discountReasons } = getReservationFinancials(res);
             const isPartyHall = res.resource_type === 'PARTY_HALL';
 
             return (
