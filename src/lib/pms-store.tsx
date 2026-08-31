@@ -1068,8 +1068,8 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
           const discount = state.discounts.find(d => d.id === discountId);
           if (!discount) return { success: false, error: "Discount request not found" };
 
-          if (status === "APPROVED" && state.session && state.session.role !== "SUPER_ADMIN") {
-            return { success: false, error: "Access Denied: Only a Super Admin can approve discounts." };
+          if (status === "APPROVED" && state.session && state.session.role !== "SUPER_ADMIN" && state.session.role !== "GM") {
+            return { success: false, error: "Access Denied: Only a Super Admin or General Manager can approve discounts." };
           }
 
           const approver = state.session?.name || state.session?.username || "Super Admin";
@@ -1126,11 +1126,16 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             }
           }
 
+          // Optimistically update local store
+          set((prev) => ({
+            discounts: prev.discounts.map(d => d.id === discountId ? { ...d, status, approved_by: approver } : d)
+          }));
+
           await fetchData();
           return { success: true };
         } catch (err: any) {
           console.error("Resolve discount error:", err);
-          return { success: false, error: err.message || "Failed to update discount" };
+          return { success: false, error: err.message || "Failed to resolve discount" };
         }
       },
 

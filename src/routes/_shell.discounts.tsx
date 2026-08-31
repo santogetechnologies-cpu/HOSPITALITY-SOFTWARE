@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { usePms } from '@/lib/pms-store'
 import { inr } from '@/lib/pms-data'
 import { toast } from 'sonner'
-import { PiggyBank, Plus } from 'lucide-react'
+import { PiggyBank, Plus, CheckCircle2, XCircle, Lock, User, FileText, ArrowRight } from 'lucide-react'
 
 export const Route = createFileRoute('/_shell/discounts')({
   component: DiscountsPage,
@@ -23,6 +23,8 @@ function DiscountsPage() {
   const [percent, setPercent] = React.useState("");
   const [amount, setAmount] = React.useState("");
   const [reason, setReason] = React.useState("");
+  const [submitting, setSubmitting] = React.useState(false);
+  const [resolvingId, setResolvingId] = React.useState<string | null>(null);
 
   const pending = discounts.filter(d => d.status === 'PENDING');
   const history = discounts.filter(d => d.status !== 'PENDING');
@@ -65,28 +67,55 @@ function DiscountsPage() {
   };
 
   const handleSubmit = async () => {
+    if (submitting) return;
     const amt = parseFloat(amount);
     if (!resId) return toast.error("Please select a reservation");
     if (isNaN(amt) || amt <= 0) return toast.error("Please enter a valid discount percentage or amount");
     if (!reason.trim()) return toast.error("Please provide a reason for the discount");
 
     const reasonWithPercent = percent ? `${reason.trim()} (${percent}% off)` : reason.trim();
-    const res = await requestDiscount(resId, amt, reasonWithPercent);
-    if (res?.success) {
-      toast.success("Discount request submitted for approval");
-      setOpen(false);
-      setResId("");
-      setPercent("");
-      setAmount("");
-      setReason("");
-    } else {
-      toast.error(res?.error || "Failed to submit discount request");
+    setSubmitting(true);
+    try {
+      const res = await requestDiscount(resId, amt, reasonWithPercent);
+      if (res?.success) {
+        toast.success("Discount request submitted for approval");
+        setOpen(false);
+        setResId("");
+        setPercent("");
+        setAmount("");
+        setReason("");
+      } else {
+        toast.error(res?.error || "Failed to submit discount request");
+      }
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  const getReservation = (id: string) => reservations.find(r => r.id === id);
+  const handleResolve = async (dId: string, status: "APPROVED" | "REJECTED", originalTotal: number, newPayable: number) => {
+    if (resolvingId === dId) return;
+    setResolvingId(dId);
+    try {
+      const r = await resolveDiscount(dId, status);
+      if (r?.success) {
+        if (status === "APPROVED") {
+          toast.success(`Discount approved! New folio amount updated to ${inr(newPayable)}`);
+        } else {
+          toast.info(`Discount rejected. Original amount (${inr(originalTotal)}) restored and folio unfrozen.`);
+        }
+      } else {
+        toast.error(r?.error || "Action failed to execute. Please check permissions.");
+      }
+    } finally {
+      setResolvingId(null);
+    }
+  };
+
+  const getReservation = (id: string) => reservations.find(r => r.id === id || (r.id && id && r.id.toLowerCase() === id.toLowerCase()));
   const getGuestName = (guestId?: string) => guests.find(g => g.id === guestId)?.name || "Guest";
   const getRoomNumber = (roomId?: string) => rooms.find(r => r.id === roomId)?.room_number || "Room";
+
+  const isSuperAdminOrGM = session?.role === 'SUPER_ADMIN' || session?.role === 'GM' || !session;
 
   return (
     <div className="space-y-6 pb-12">
@@ -97,7 +126,7 @@ function DiscountsPage() {
         actions={
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-              <Button className="rounded-xl bg-brass text-gold-foreground hover:opacity-90">
+              <Button className="rounded-xl bg-brass text-gold-foreground hover:opacity-90 shadow-brass font-medium">
                 <Plus className="size-4 mr-2" /> Request Discount
               </Button>
             </DialogTrigger>
@@ -128,7 +157,7 @@ function DiscountsPage() {
                 {selectedReservation && (
                   <div className="p-3 rounded-lg bg-secondary/50 border border-border text-xs flex justify-between items-center">
                     <span className="text-muted-foreground">Original Folio Total:</span>
-                    <span className="font-bold text-sm">{inr(totalBill)}</span>
+                    <span className="font-bold text-sm text-foreground">{inr(totalBill)}</span>
                   </div>
                 )}
 
@@ -187,10 +216,11 @@ function DiscountsPage() {
                 </div>
 
                 <Button 
-                  className="w-full bg-brass text-gold-foreground hover:opacity-90 mt-2"
+                  disabled={submitting}
+                  className="w-full bg-brass text-gold-foreground hover:opacity-90 mt-2 font-medium"
                   onClick={handleSubmit}
                 >
-                  Submit Discount Request
+                  {submitting ? "Submitting Request..." : "Submit Discount Request"}
                 </Button>
               </div>
             </DialogContent>
@@ -198,63 +228,159 @@ function DiscountsPage() {
         }
       />
 
-      {(session?.role === 'SUPER_ADMIN' || session?.role === 'GM') && (
-        <Panel title="Pending Approvals" description="Review and approve discount requests before they apply to the folio">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Guest & Folio</TableHead>
-                <TableHead>Requested By</TableHead>
-                <TableHead>Reason / Details</TableHead>
-                <TableHead>Discount Amount</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {pending.map((d) => {
-                const res = getReservation(d.reservation_id);
-                const guest = res ? getGuestName(res.guest_id) : "Unknown";
-                const originalTotal = Number(res?.base_amount) || 0;
-                const discountAmt = Number(d.requested_amount) || 0;
-                const newPayable = Math.max(0, originalTotal - discountAmt);
+      {isSuperAdminOrGM && (
+        <Panel 
+          title="Pending Approvals" 
+          description="Review and approve discount requests before they apply to the folio"
+          className="p-0 overflow-hidden"
+          bodyClassName="p-0"
+        >
+          {/* Mobile Card View */}
+          <div className="block md:hidden divide-y divide-border">
+            {pending.map((d) => {
+              const res = getReservation(d.reservation_id);
+              const guest = res ? getGuestName(res.guest_id) : "Unknown Guest";
+              const originalTotal = Number(res?.base_amount) || 0;
+              const discountAmt = Number(d.requested_amount) || 0;
+              const newPayable = Math.max(0, originalTotal - discountAmt);
+              const isResolving = resolvingId === d.id;
 
-                return (
-                  <TableRow key={d.id} className="bg-warning/5">
-                    <TableCell className="font-medium">
-                      <div className="font-semibold">{guest}</div>
-                      <div className="text-xs text-muted-foreground font-mono">Folio: {String(d.reservation_id || '').slice(0, 10).toUpperCase()}</div>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-xs font-medium bg-secondary px-2 py-1 rounded">{d.requested_by || "Staff"}</span>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-xs font-medium">{d.reason}</div>
-                      <div className="text-[11px] text-warning font-semibold mt-0.5">🔒 Folio Payment FROZEN</div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-xs text-muted-foreground line-through">{inr(originalTotal)}</div>
-                      <div className="font-bold text-success">- {inr(discountAmt)}</div>
-                      <div className="text-xs font-semibold text-gold mt-0.5">New Total: {inr(newPayable)}</div>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button size="sm" variant="outline" className="text-destructive hover:bg-destructive/10" onClick={async () => {
-                          const r = await resolveDiscount(d.id, "REJECTED");
-                          if (r?.success) toast.info(`Discount rejected. Original amount (${inr(originalTotal)}) restored and folio unfrozen.`);
-                          else toast.error(r?.error || "Action failed");
-                        }}>Reject</Button>
-                        <Button size="sm" className="bg-brass text-gold-foreground hover:opacity-90 font-medium" onClick={async () => {
-                          const r = await resolveDiscount(d.id, "APPROVED");
-                          if (r?.success) toast.success(`Discount approved! New folio amount updated to ${inr(newPayable)}`);
-                          else toast.error(r?.error || "Action failed");
-                        }}>Approve ({inr(newPayable)})</Button>
+              return (
+                <div key={d.id} className="p-4 space-y-3.5 bg-card/60">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="font-bold text-sm text-foreground">{guest}</div>
+                      <div className="text-[11px] text-muted-foreground font-mono mt-0.5">
+                        Folio: #{String(d.reservation_id || '').slice(0, 10).toUpperCase()}
                       </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+                    </div>
+                    <span className="text-[10px] font-semibold bg-secondary px-2 py-0.5 rounded text-foreground">
+                      By: {d.requested_by || "Staff"}
+                    </span>
+                  </div>
+
+                  <div className="rounded-xl border border-border/80 bg-secondary/30 p-3 space-y-2">
+                    <div className="text-xs font-medium text-foreground flex items-center gap-1.5">
+                      <FileText className="size-3.5 text-gold shrink-0" />
+                      <span>{d.reason}</span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs pt-1 border-t border-border/60">
+                      <div>
+                        <div className="text-[10px] text-muted-foreground">Original Folio</div>
+                        <div className="line-through text-muted-foreground">{inr(originalTotal)}</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-[10px] text-destructive">Discount</div>
+                        <div className="font-bold text-destructive">- {inr(discountAmt)}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-[10px] text-gold font-semibold">New Payable</div>
+                        <div className="font-bold text-gold text-sm">{inr(newPayable)}</div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1 text-[10px] font-medium text-warning">
+                      <Lock className="size-3" />
+                      <span>Folio payment frozen until approval</span>
+                    </div>
+                  </div>
+
+                  {/* Actions Full Width for Mobile */}
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={isResolving}
+                      className="w-full rounded-xl border-destructive/40 text-destructive hover:bg-destructive/10 text-xs font-semibold h-9"
+                      onClick={() => handleResolve(d.id, "REJECTED", originalTotal, newPayable)}
+                    >
+                      <XCircle className="size-3.5 mr-1" />
+                      {isResolving ? "Processing..." : "Reject"}
+                    </Button>
+
+                    <Button
+                      size="sm"
+                      disabled={isResolving}
+                      className="w-full rounded-xl bg-brass text-gold-foreground hover:opacity-90 text-xs font-bold shadow-brass h-9"
+                      onClick={() => handleResolve(d.id, "APPROVED", originalTotal, newPayable)}
+                    >
+                      <CheckCircle2 className="size-3.5 mr-1" />
+                      {isResolving ? "Approving..." : `Approve (${inr(newPayable)})`}
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Desktop Table View */}
+          <div className="hidden md:block overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Guest & Folio</TableHead>
+                  <TableHead>Requested By</TableHead>
+                  <TableHead>Reason / Details</TableHead>
+                  <TableHead>Discount Amount</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pending.map((d) => {
+                  const res = getReservation(d.reservation_id);
+                  const guest = res ? getGuestName(res.guest_id) : "Unknown";
+                  const originalTotal = Number(res?.base_amount) || 0;
+                  const discountAmt = Number(d.requested_amount) || 0;
+                  const newPayable = Math.max(0, originalTotal - discountAmt);
+                  const isResolving = resolvingId === d.id;
+
+                  return (
+                    <TableRow key={d.id} className="bg-warning/5">
+                      <TableCell className="font-medium">
+                        <div className="font-semibold">{guest}</div>
+                        <div className="text-xs text-muted-foreground font-mono">Folio: {String(d.reservation_id || '').slice(0, 10).toUpperCase()}</div>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-xs font-medium bg-secondary px-2 py-1 rounded">{d.requested_by || "Staff"}</span>
+                      </TableCell>
+                      <TableCell>
+                        <div className="text-xs font-medium">{d.reason}</div>
+                        <div className="text-[11px] text-warning font-semibold mt-0.5">🔒 Folio Payment FROZEN</div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="text-xs text-muted-foreground line-through">{inr(originalTotal)}</div>
+                        <div className="font-bold text-success">- {inr(discountAmt)}</div>
+                        <div className="text-xs font-semibold text-gold mt-0.5">New Total: {inr(newPayable)}</div>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={isResolving}
+                            className="text-destructive hover:bg-destructive/10"
+                            onClick={() => handleResolve(d.id, "REJECTED", originalTotal, newPayable)}
+                          >
+                            {isResolving ? "..." : "Reject"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            disabled={isResolving}
+                            className="bg-brass text-gold-foreground hover:opacity-90 font-medium"
+                            onClick={() => handleResolve(d.id, "APPROVED", originalTotal, newPayable)}
+                          >
+                            {isResolving ? "Approving..." : `Approve (${inr(newPayable)})`}
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+
           {!pending.length && (
              <div className="p-6">
                <EmptyState title="No pending requests" body="All discount requests have been processed." icon={PiggyBank} />
@@ -263,35 +389,37 @@ function DiscountsPage() {
         </Panel>
       )}
 
-      <Panel title="Discount Audit History" description="Historical log of approved and rejected discounts">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Guest</TableHead>
-              <TableHead>Reason / Details</TableHead>
-              <TableHead>Amount</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Approver</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {history.map((d) => {
-              const res = getReservation(d.reservation_id);
-              const guest = res ? getGuestName(res.guest_id) : "Unknown";
-              return (
-                <TableRow key={d.id}>
-                  <TableCell className="font-medium">{guest}</TableCell>
-                  <TableCell>{d.reason}</TableCell>
-                  <TableCell className="font-semibold text-destructive">- {inr(d.requested_amount)}</TableCell>
-                  <TableCell>
-                    <Pill tone={d.status === 'APPROVED' ? 'success' : 'destructive'}>{d.status}</Pill>
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{d.approved_by || "System"}</TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
+      <Panel title="Discount Audit History" description="Historical log of approved and rejected discounts" className="p-0 overflow-hidden" bodyClassName="p-0">
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Guest</TableHead>
+                <TableHead>Reason / Details</TableHead>
+                <TableHead>Amount</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Approver</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {history.map((d) => {
+                const res = getReservation(d.reservation_id);
+                const guest = res ? getGuestName(res.guest_id) : "Unknown";
+                return (
+                  <TableRow key={d.id}>
+                    <TableCell className="font-medium">{guest}</TableCell>
+                    <TableCell>{d.reason}</TableCell>
+                    <TableCell className="font-semibold text-destructive">- {inr(d.requested_amount)}</TableCell>
+                    <TableCell>
+                      <Pill tone={d.status === 'APPROVED' ? 'success' : 'destructive'}>{d.status}</Pill>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{d.approved_by || "System"}</TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
         {!history.length && (
           <div className="p-6">
             <EmptyState title="No history" body="No discounts have been processed yet." icon={PiggyBank} />
