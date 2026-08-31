@@ -31,6 +31,7 @@ const SECTIONS = ["Hotel Profile", "Rooms", "Timers & Overtime Policies", "Notif
 
 function SettingsPage() {
   const { rooms, addRoom, deleteRoom, session } = usePms();
+  const isSuperAdmin = session?.role === "SUPER_ADMIN" || !session;
   const { settings, addFloor, removeFloor, addRoomType, removeRoomType, updatePolicySettings, updateHotelProfile } = useSettings();
   
   const [active, setActive] = React.useState("Rooms");
