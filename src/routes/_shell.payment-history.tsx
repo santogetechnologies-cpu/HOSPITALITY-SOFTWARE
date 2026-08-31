@@ -15,14 +15,21 @@ export const Route = createFileRoute('/_shell/payment-history')({
 })
 
 function PaymentHistoryPage() {
-  const { payments, reservations, guests, rooms, deletePayment, session } = usePms();
+  const { payments, reservations, guests, rooms, discounts, deletePayment, session } = usePms();
   const isAdmin = session?.role === "SUPER_ADMIN" || session?.role === "GM" || !session;
   const [q, setQ] = React.useState("");
   const [filter, setFilter] = React.useState<string>("all");
 
-  const getReservation = (id: string) => reservations.find(r => r.id === id);
+  const getReservation = (id: string) => reservations.find(r => r.id === id || r.id?.toLowerCase() === id.toLowerCase());
   const getGuest = (id: string) => guests.find(g => g.id === id);
   const getRoom = (roomId?: string) => rooms.find(r => r.id === roomId);
+
+  const getApprovedDiscount = (resId?: string) => {
+    if (!resId) return 0;
+    return discounts
+      .filter(d => (d.reservation_id === resId || d.reservation_id?.toLowerCase() === resId.toLowerCase()) && d.status === 'APPROVED')
+      .reduce((sum, d) => sum + (Number(d.requested_amount) || 0), 0);
+  };
 
   const totalCollected = payments.reduce((acc, p) => acc + (p.paid_amount || 0), 0);
   const completedPayments = payments.filter(p => p.status === 'COMPLETED');
@@ -58,25 +65,25 @@ function PaymentHistoryPage() {
 
       <div className="grid gap-4 sm:grid-cols-3">
         <KpiCard 
-          label="Total Collected" 
+          label="Total Revenue Collected" 
           value={inr(totalCollected)} 
           icon={Banknote} 
-          tone="success" 
-          hint={`${payments.length} total transaction folios`} 
+          tone="gold" 
+          hint="All confirmed settlements" 
         />
         <KpiCard 
-          label="Settled Folios" 
+          label="Settled Invoices" 
           value={String(completedPayments.length)} 
           icon={CheckCircle2} 
-          tone="gold" 
-          hint="100% paid and closed" 
+          tone="success" 
+          hint="Fully cleared payments" 
         />
         <KpiCard 
-          label="Partial Collections" 
+          label="Partial / Pending Folios" 
           value={String(partialPayments.length)} 
           icon={Clock} 
           tone="warning" 
-          hint="Advances with balance pending" 
+          hint="Active open balances" 
         />
       </div>
 
@@ -124,9 +131,14 @@ function PaymentHistoryPage() {
               const res = getReservation(p.reservation_id);
               const guest = res ? getGuest(res.guest_id) : null;
               const room = res ? getRoom(res.room_id) : null;
-              const total = Number(p.total_amount) || 0;
+              const approvedDiscount = getApprovedDiscount(p.reservation_id);
+              const originalAmount = Number(res?.base_amount) || Number(p.total_amount) || 0;
+              let total = Number(p.total_amount) || originalAmount;
+              if (approvedDiscount > 0 && total >= originalAmount && originalAmount > approvedDiscount) {
+                total = Math.max(0, originalAmount - approvedDiscount);
+              }
               const paid = Number(p.paid_amount) || 0;
-              const balance = total - paid;
+              const balance = Math.max(0, total - paid);
               const folioId = String(p.id || 'FOLIO').slice(0, 10).toUpperCase();
 
               return (
@@ -147,7 +159,14 @@ function PaymentHistoryPage() {
                       <span className="text-xs text-muted-foreground">General Booking</span>
                     )}
                   </TableCell>
-                  <TableCell className="font-medium">{inr(total)}</TableCell>
+                  <TableCell className="font-medium">
+                    <div>{inr(total)}</div>
+                    {approvedDiscount > 0 ? (
+                      <div className="text-[11px] text-success font-medium">
+                        -{inr(approvedDiscount)} discount applied
+                      </div>
+                    ) : null}
+                  </TableCell>
                   <TableCell className="font-semibold text-success">{inr(paid)}</TableCell>
                   <TableCell className={balance > 0 ? "font-semibold text-warning" : "text-muted-foreground"}>
                     {balance > 0 ? inr(balance) : "₹0.00"}

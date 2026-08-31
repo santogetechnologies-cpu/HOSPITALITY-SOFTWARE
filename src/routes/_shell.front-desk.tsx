@@ -28,7 +28,7 @@ export const Route = createFileRoute("/_shell/front-desk")({
 const HK_CHECKLIST = ["Keycards encoded & assigned", "Government ID scanned & verified", "Registration card signed", "Advance deposit settled"];
 
 export function FrontDesk() {
-  const { rooms, reservations, guests, payments, checkIn, checkOut, addRoomReservation, settlePayment } = usePms();
+  const { rooms, reservations, guests, payments, discounts, checkIn, checkOut, addRoomReservation, settlePayment } = usePms();
 
   const arrivals = reservations.filter((r) => r.status === "CONFIRMED" || r.status === "PENDING");
   const inHouse = reservations.filter((r) => r.status === "OCCUPIED");
@@ -47,15 +47,23 @@ export function FrontDesk() {
   const getRoom = (roomId?: string) => rooms.find((r) => r.id === roomId);
   const getRoomNum = (roomId?: string) => getRoom(roomId)?.room_number || "TBD";
 
-  const getReservationPayment = (resId: string) => payments.find((p) => p.reservation_id === resId);
+  const getReservationPayment = (resId: string) => payments.find((p) => p.reservation_id === resId || p.reservation_id?.toLowerCase() === resId.toLowerCase());
 
   const getReservationFinancials = (r: typeof reservations[0]) => {
     const p = getReservationPayment(r.id);
-    const total = Number(p?.total_amount) || Number(r.base_amount) || 0;
+    const approvedDiscount = discounts
+      .filter((d) => (d.reservation_id === r.id || d.reservation_id?.toLowerCase() === r.id.toLowerCase()) && d.status === "APPROVED")
+      .reduce((sum, d) => sum + (Number(d.requested_amount) || 0), 0);
+
+    const originalAmount = Number(r.base_amount) || Number(p?.total_amount) || 0;
+    let total = Number(p?.total_amount) || originalAmount;
+    if (approvedDiscount > 0 && total >= originalAmount && originalAmount > approvedDiscount) {
+      total = Math.max(0, originalAmount - approvedDiscount);
+    }
     const paid = Number(p?.paid_amount) || 0;
     const balance = total - paid > 0 ? total - paid : 0;
     const isPaid = balance === 0 && total > 0;
-    return { total, paid, balance, isPaid, payment: p };
+    return { total, paid, balance, isPaid, payment: p, approvedDiscount };
   };
 
   // Helper: check if a room is overlapping with any active reservation on given dates
