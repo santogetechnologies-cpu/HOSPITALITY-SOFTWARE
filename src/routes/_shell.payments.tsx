@@ -1,61 +1,82 @@
-import * as React from 'react'
-import { createFileRoute, Link } from '@tanstack/react-router'
-import { PageHeader, KpiCard, Panel, Pill, EmptyState, ProgressBar } from '@/components/pms/bits'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
-import { usePms } from '@/lib/pms-store'
-import { inr } from '@/lib/pms-data'
-import { toast } from 'sonner'
+import * as React from "react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { PageHeader, KpiCard, Panel, Pill, EmptyState, ProgressBar } from "@/components/pms/bits";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { usePms } from "@/lib/pms-store";
+import { inr } from "@/lib/pms-data";
+import { useSettings } from "@/lib/use-settings";
+import { toast } from "sonner";
 import {
   Banknote,
   CreditCard,
   Receipt,
   PiggyBank,
-  ArrowRight,
   QrCode,
   Landmark,
   CalendarDays,
   Search,
   CheckCircle2,
   Clock,
-  ShieldCheck,
   TrendingUp,
-  PercentCircle,
-  Building,
   PartyPopper,
   BedDouble,
-  DollarSign
-} from 'lucide-react'
+  DollarSign,
+  Download,
+  FileSpreadsheet,
+  Calculator,
+  ShieldCheck,
+  Building2,
+  Percent,
+  Layers,
+  Printer,
+  Sparkles,
+  ArrowUpRight,
+  ArrowDownRight
+} from "lucide-react";
 
-export const Route = createFileRoute('/_shell/payments')({
+export const Route = createFileRoute("/_shell/payments")({
   head: () => ({
     meta: [
-      { title: "Payment Dashboard — DRB Hotel PMS" },
-      { name: "description", content: "Comprehensive payment collections, settlement channels, UPI, Card, Cash, and folio ledgers." },
-      { property: "og:title", content: "DRB Hotel — Payment Dashboard" },
+      { title: "Payment Dashboard & Inflow Analytics — HOTEL DRB" },
+      { name: "description", content: "Financial audit ledger, monthly GST calculation, payment channel breakdown, and inflow analytics." },
+      { property: "og:title", content: "HOTEL DRB — Payment Dashboard & Inflow Analytics" },
     ],
   }),
   component: PaymentsDashboard,
-})
+});
 
 type Timeframe = "1D" | "1W" | "1M" | "CUSTOM";
 
+function downloadCSV(csvContent: string, filename: string) {
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.setAttribute("href", url);
+  link.setAttribute("download", filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
 function PaymentsDashboard() {
   const { payments, expenses, reservations, guests, rooms, discounts, settlePayment, session } = usePms();
-
-  const isSuperAdminOrGM = session?.role === "SUPER_ADMIN" || session?.role === "GM" || !session;
+  const { settings } = useSettings();
 
   // Timeframe filter state
   const todayStr = new Date().toISOString().split("T")[0];
-  const [timeframe, setTimeframe] = React.useState<Timeframe>("1W");
+  const [timeframe, setTimeframe] = React.useState<Timeframe>("1M");
   const [customStart, setCustomStart] = React.useState<string>(todayStr);
   const [customEnd, setCustomEnd] = React.useState<string>(todayStr);
   const [searchQuery, setSearchQuery] = React.useState<string>("");
   const [statusFilter, setStatusFilter] = React.useState<string>("all");
+  const [channelFilter, setChannelFilter] = React.useState<string>("all");
+  const [resourceFilter, setResourceFilter] = React.useState<string>("all");
 
   // Quick Collect Balance Modal State
   const [collectModalOpen, setCollectModalOpen] = React.useState(false);
@@ -71,7 +92,7 @@ function PaymentsDashboard() {
     const start = new Date();
     start.setHours(0, 0, 0, 0);
 
-    let label = "Last 7 Days";
+    let label = "This Month (30 Days)";
 
     if (timeframe === "1D") {
       label = "Today";
@@ -80,7 +101,7 @@ function PaymentsDashboard() {
       label = "Last 7 Days";
     } else if (timeframe === "1M") {
       start.setDate(start.getDate() - 29);
-      label = "Last 30 Days";
+      label = "Current Month / 30 Days";
     } else if (timeframe === "CUSTOM") {
       if (customStart) {
         const s = new Date(`${customStart}T00:00:00`);
@@ -96,159 +117,292 @@ function PaymentsDashboard() {
     return { startDate: start, endDate: end, dateRangeLabel: label };
   }, [timeframe, customStart, customEnd]);
 
-  // Filtered Payments for the selected timeframe
-  const filteredPayments = React.useMemo(() => {
-    return payments.filter((p) => {
-      const pDate = new Date(p.created_at || (p as any).date || todayStr);
-      return pDate >= startDate && pDate <= endDate;
-    });
-  }, [payments, startDate, endDate, todayStr]);
-
-  const totalCollectedInPeriod = React.useMemo(() => {
-    return filteredPayments.reduce((acc, p) => acc + (Number(p.paid_amount) || 0), 0);
-  }, [filteredPayments]);
-
-  const pendingPayments = payments.filter((p) => {
-    const total = Number(p.total_amount) || 0;
-    const paid = Number(p.paid_amount) || 0;
-    return total - paid > 0 && p.status !== "COMPLETED";
-  });
-
-  const totalPendingDues = pendingPayments.reduce(
-    (acc, p) => acc + Math.max(0, (Number(p.total_amount) || 0) - (Number(p.paid_amount) || 0)),
-    0
-  );
-
-  const filteredExpenses = React.useMemo(() => {
-    return expenses.filter((e) => {
-      const eDate = new Date(e.created_at || (e as any).date || todayStr);
-      return eDate >= startDate && eDate <= endDate;
-    });
-  }, [expenses, startDate, endDate, todayStr]);
-
-  const totalPeriodExpenses = filteredExpenses.reduce((acc, e) => acc + (Number(e.amount) || 0), 0);
-
-  // Payment Breakdown by Method
-  const paymentBreakdown = React.useMemo(() => {
-    let upi = { total: 0, count: 0 };
-    let card = { total: 0, count: 0 };
-    let cash = { total: 0, count: 0 };
-    let bankTransfer = { total: 0, count: 0 };
-    let other = { total: 0, count: 0 };
-
-    filteredPayments.forEach((p) => {
-      const amt = Number(p.paid_amount) || 0;
-      if (amt <= 0) return;
-      const method = String(p.payment_method || "CASH").toUpperCase();
-
-      if (method.includes("UPI") || method.includes("GPAY") || method.includes("PHONEPE") || method.includes("QR") || method.includes("PAYTM")) {
-        upi.total += amt;
-        upi.count += 1;
-      } else if (method.includes("CARD") || method.includes("POS") || method.includes("DEBIT") || method.includes("CREDIT")) {
-        card.total += amt;
-        card.count += 1;
-      } else if (method.includes("CASH")) {
-        cash.total += amt;
-        cash.count += 1;
-      } else if (method.includes("BANK") || method.includes("NEFT") || method.includes("RTGS") || method.includes("IMPS") || method.includes("TRANSFER")) {
-        bankTransfer.total += amt;
-        bankTransfer.count += 1;
-      } else {
-        other.total += amt;
-        other.count += 1;
-      }
-    });
-
-    return {
-      upi,
-      card,
-      cash,
-      bankTransfer,
-      other,
-      grandTotal: upi.total + card.total + cash.total + bankTransfer.total + other.total,
-    };
-  }, [filteredPayments]);
-
-  // Breakdown by Resource (Rooms vs Party Hall vs Other)
-  const resourceBreakdown = React.useMemo(() => {
-    let roomRevenue = 0;
-    let hallRevenue = 0;
-    let otherRevenue = 0;
-
-    filteredPayments.forEach((p) => {
-      const amt = Number(p.paid_amount) || 0;
-      const res = reservations.find(r => r.id === p.reservation_id || r.id?.toLowerCase() === p.reservation_id?.toLowerCase());
-      if (res?.resource_type === 'PARTY_HALL') {
-        hallRevenue += amt;
-      } else if (res?.resource_type === 'ROOM' || res?.room_id) {
-        roomRevenue += amt;
-      } else {
-        otherRevenue += amt;
-      }
-    });
-
-    return { roomRevenue, hallRevenue, otherRevenue };
-  }, [filteredPayments, reservations]);
-
-  const getReservation = (id: string) => reservations.find(r => r.id === id || r.id?.toLowerCase() === id.toLowerCase());
-  const getGuest = (id?: string) => guests.find(g => g.id === id);
-  const getRoom = (roomId?: string) => rooms.find(r => r.id === roomId);
+  // Helpers
+  const getGuest = (guestId?: string) => guests.find((g) => g.id === guestId);
+  const getRoom = (roomId?: string) => rooms.find((r) => r.id === roomId);
+  const getReservation = (resId?: string) =>
+    reservations.find((r) => r.id === resId || r.id?.toLowerCase() === resId?.toLowerCase());
 
   const getApprovedDiscount = (resId?: string) => {
     if (!resId) return 0;
     return discounts
-      .filter(d => (d.reservation_id === resId || d.reservation_id?.toLowerCase() === resId.toLowerCase()) && d.status === 'APPROVED')
+      .filter(
+        (d) =>
+          (d.reservation_id === resId || d.reservation_id?.toLowerCase() === resId?.toLowerCase()) &&
+          d.status === "APPROVED"
+      )
       .reduce((sum, d) => sum + (Number(d.requested_amount) || 0), 0);
   };
 
-  // Filtered Payments Table
-  const tablePayments = React.useMemo(() => {
-    return filteredPayments.filter((p) => {
+  // Processed Transaction Ledger
+  const transactions = React.useMemo(() => {
+    const list: any[] = [];
+    const processedResIds = new Set<string>();
+
+    payments.forEach((p) => {
+      if (p.reservation_id) processedResIds.add(p.reservation_id.toLowerCase());
       const res = getReservation(p.reservation_id);
-      const discount = getApprovedDiscount(p.reservation_id);
-      const origTotal = Number(res?.base_amount) || Number(p.total_amount) || 0;
-      let billTotal = Number(p.total_amount) || origTotal;
-      if (discount > 0 && billTotal >= origTotal && origTotal > discount) {
-        billTotal = Math.max(0, origTotal - discount);
-      }
-      const paid = Number(p.paid_amount) || 0;
-      const balance = Math.max(0, billTotal - paid);
-      const isCompleted = p.status === 'COMPLETED' || (paid >= billTotal && billTotal > 0);
-      const isPartial = !isCompleted && (p.status === 'PARTIAL' || paid > 0);
+      const resDateStr = res?.booking_date || (res?.start_time ? res.start_time.split("T")[0] : todayStr);
+      const resDate = new Date(`${resDateStr}T00:00:00`);
 
-      if (statusFilter === "completed" && !isCompleted) return false;
-      if (statusFilter === "partial" && !isPartial) return false;
-      if (statusFilter === "pending" && (isCompleted || isPartial || p.status === "FROZEN")) return false;
-      if (statusFilter === "frozen" && p.status !== "FROZEN") return false;
+      if (resDate < startDate || resDate > endDate) return;
 
-      if (!searchQuery.trim()) return true;
+      const isPartyHall = res?.resource_type === "PARTY_HALL";
+      if (resourceFilter === "rooms" && isPartyHall) return;
+      if (resourceFilter === "party_hall" && !isPartyHall) return;
+
       const guest = res ? getGuest(res.guest_id) : null;
       const room = res ? getRoom(res.room_id) : null;
-      const term = searchQuery.toLowerCase().trim();
+      const approvedDiscount = getApprovedDiscount(p.reservation_id);
 
-      return (
-        p.id.toLowerCase().includes(term) ||
-        (guest?.name && guest.name.toLowerCase().includes(term)) ||
-        (guest?.phone && guest.phone.includes(term)) ||
-        (room?.room_number && room.room_number.toLowerCase().includes(term)) ||
-        (res?.event_type && res.event_type.toLowerCase().includes(term))
-      );
+      const rawBase = Number(res?.base_amount) || Number(p.total_amount) || 0;
+      const taxableBase = Math.max(0, Math.round((Number(p.total_amount) || rawBase) / 1.05));
+      const totalGst = Math.max(0, (Number(p.total_amount) || rawBase) - taxableBase);
+      const cgst = Number((totalGst / 2).toFixed(2));
+      const sgst = Number((totalGst - cgst).toFixed(2));
+      const grandTotal = taxableBase + totalGst;
+
+      const paid = Number(p.paid_amount) || 0;
+      const balance = Math.max(0, grandTotal - paid);
+      const isPaid = balance === 0 && grandTotal > 0;
+      const isPartial = !isPaid && (p.status === "PARTIAL" || paid > 0);
+
+      // Normalize channel
+      const rawMethod = (p.payment_method || "CASH").toUpperCase();
+      let channel: "UPI" | "CARD" | "CASH" | "BANK_TRANSFER" | "OTHER" = "CASH";
+      if (rawMethod.includes("UPI") || rawMethod.includes("GPAY") || rawMethod.includes("PHONEPE") || rawMethod.includes("PAYTM") || rawMethod.includes("QR")) {
+        channel = "UPI";
+      } else if (rawMethod.includes("CARD") || rawMethod.includes("POS") || rawMethod.includes("DEBIT") || rawMethod.includes("CREDIT")) {
+        channel = "CARD";
+      } else if (rawMethod.includes("BANK") || rawMethod.includes("TRANSFER") || rawMethod.includes("NEFT") || rawMethod.includes("RTGS") || rawMethod.includes("IMPS")) {
+        channel = "BANK_TRANSFER";
+      } else if (rawMethod.includes("CASH")) {
+        channel = "CASH";
+      } else {
+        channel = "OTHER";
+      }
+
+      if (channelFilter !== "all" && channel !== channelFilter) return;
+      if (statusFilter === "settled" && !isPaid) return;
+      if (statusFilter === "partial" && !isPartial) return;
+      if (statusFilter === "pending" && (isPaid || isPartial)) return;
+
+      const searchLower = searchQuery.toLowerCase().trim();
+      const invoiceNum = `INV-${String(p.reservation_id || p.id).slice(0, 8).toUpperCase()}`;
+      if (
+        searchLower &&
+        !invoiceNum.toLowerCase().includes(searchLower) &&
+        !guest?.name?.toLowerCase().includes(searchLower) &&
+        !guest?.phone?.includes(searchLower) &&
+        !room?.room_number?.toLowerCase().includes(searchLower) &&
+        !res?.event_type?.toLowerCase().includes(searchLower)
+      ) {
+        return;
+      }
+
+      list.push({
+        id: p.id,
+        paymentId: p.id,
+        reservationId: p.reservation_id,
+        invoiceNum,
+        date: resDateStr,
+        guestName: guest?.name || "Guest",
+        guestPhone: guest?.phone || "—",
+        resourceType: isPartyHall ? "PARTY_HALL" : "ROOM",
+        resourceLabel: isPartyHall ? `Party Hall (${res?.event_type || "Banquet"})` : room ? `Room ${room.room_number} (${room.room_name || "Standard"})` : "Room Stay",
+        taxableBase,
+        cgst,
+        sgst,
+        totalGst,
+        grandTotal,
+        paid,
+        balance,
+        channel,
+        channelRaw: p.payment_method || "CASH",
+        isPaid,
+        isPartial,
+        status: isPaid ? "SETTLED" : isPartial ? "PARTIAL / ADVANCE" : "PENDING",
+      });
     });
-  }, [filteredPayments, searchQuery, statusFilter, reservations, guests, rooms, discounts]);
 
-  const handleOpenCollect = (p: typeof payments[0]) => {
-    const res = getReservation(p.reservation_id);
-    const discount = getApprovedDiscount(p.reservation_id);
-    const origTotal = Number(res?.base_amount) || Number(p.total_amount) || 0;
-    let billTotal = Number(p.total_amount) || origTotal;
-    if (discount > 0 && billTotal >= origTotal && origTotal > discount) {
-      billTotal = Math.max(0, origTotal - discount);
-    }
-    const paid = Number(p.paid_amount) || 0;
-    const balance = Math.max(0, billTotal - paid);
+    return list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [payments, reservations, guests, rooms, discounts, startDate, endDate, resourceFilter, channelFilter, statusFilter, searchQuery, todayStr]);
 
-    setSelectedPaymentForCollect(p);
-    setCollectAmount(String(balance > 0 ? balance : 0));
+  // Aggregate Financial & Inflow Metrics
+  const metrics = React.useMemo(() => {
+    let grossRevenue = 0;
+    let netTaxableTurnover = 0;
+    let totalCgst = 0;
+    let totalSgst = 0;
+    let totalGst = 0;
+    let totalInflowCollected = 0;
+    let totalOutstanding = 0;
+
+    // Channel breakdown
+    let upiTotal = 0, upiCount = 0;
+    let cardTotal = 0, cardCount = 0;
+    let cashTotal = 0, cashCount = 0;
+    let bankTotal = 0, bankCount = 0;
+    let otherTotal = 0, otherCount = 0;
+
+    // Resource breakdown
+    let roomsTaxable = 0, roomsGst = 0, roomsTotal = 0, roomsInflow = 0;
+    let partyTaxable = 0, partyGst = 0, partyTotal = 0, partyInflow = 0;
+
+    transactions.forEach((tx) => {
+      grossRevenue += tx.grandTotal;
+      netTaxableTurnover += tx.taxableBase;
+      totalCgst += tx.cgst;
+      totalSgst += tx.sgst;
+      totalGst += tx.totalGst;
+      totalInflowCollected += tx.paid;
+      totalOutstanding += tx.balance;
+
+      if (tx.channel === "UPI") {
+        upiTotal += tx.paid;
+        upiCount++;
+      } else if (tx.channel === "CARD") {
+        cardTotal += tx.paid;
+        cardCount++;
+      } else if (tx.channel === "CASH") {
+        cashTotal += tx.paid;
+        cashCount++;
+      } else if (tx.channel === "BANK_TRANSFER") {
+        bankTotal += tx.paid;
+        bankCount++;
+      } else {
+        otherTotal += tx.paid;
+        otherCount++;
+      }
+
+      if (tx.resourceType === "ROOM") {
+        roomsTaxable += tx.taxableBase;
+        roomsGst += tx.totalGst;
+        roomsTotal += tx.grandTotal;
+        roomsInflow += tx.paid;
+      } else {
+        partyTaxable += tx.taxableBase;
+        partyGst += tx.totalGst;
+        partyTotal += tx.grandTotal;
+        partyInflow += tx.paid;
+      }
+    });
+
+    // Operational expenses in timeframe
+    const totalExpenses = expenses
+      .filter((e) => {
+        const d = new Date(e.date || todayStr);
+        return d >= startDate && d <= endDate;
+      })
+      .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+
+    const netRealizedCashFlow = totalInflowCollected - totalExpenses;
+
+    return {
+      grossRevenue,
+      netTaxableTurnover,
+      totalCgst,
+      totalSgst,
+      totalGst,
+      totalInflowCollected,
+      totalOutstanding,
+      totalExpenses,
+      netRealizedCashFlow,
+      upi: { total: upiTotal, count: upiCount, pct: totalInflowCollected > 0 ? (upiTotal / totalInflowCollected) * 100 : 0 },
+      card: { total: cardTotal, count: cardCount, pct: totalInflowCollected > 0 ? (cardTotal / totalInflowCollected) * 100 : 0 },
+      cash: { total: cashTotal, count: cashCount, pct: totalInflowCollected > 0 ? (cashTotal / totalInflowCollected) * 100 : 0 },
+      bank: { total: bankTotal, count: bankCount, pct: totalInflowCollected > 0 ? (bankTotal / totalInflowCollected) * 100 : 0 },
+      other: { total: otherTotal, count: otherCount, pct: totalInflowCollected > 0 ? (otherTotal / totalInflowCollected) * 100 : 0 },
+      rooms: { taxable: roomsTaxable, gst: roomsGst, total: roomsTotal, inflow: roomsInflow, pct: totalInflowCollected > 0 ? (roomsInflow / totalInflowCollected) * 100 : 0 },
+      party: { taxable: partyTaxable, gst: partyGst, total: partyTotal, inflow: partyInflow, pct: totalInflowCollected > 0 ? (partyInflow / totalInflowCollected) * 100 : 0 },
+    };
+  }, [transactions, expenses, startDate, endDate, todayStr]);
+
+  // Export 1: Full Audit Ledger CSV
+  const handleExportAuditLedger = () => {
+    const headers = [
+      "Invoice Number",
+      "Date",
+      "Guest Name",
+      "Phone",
+      "Resource Type",
+      "Resource Details",
+      "Taxable Value (INR)",
+      "CGST 2.5% (INR)",
+      "SGST 2.5% (INR)",
+      "Total GST 5% (INR)",
+      "Gross Total (INR)",
+      "Amount Paid (INR)",
+      "Balance Due (INR)",
+      "Payment Channel",
+      "Settlement Status"
+    ];
+
+    const rows = transactions.map((tx) => [
+      `"${tx.invoiceNum}"`,
+      `"${tx.date}"`,
+      `"${tx.guestName.replace(/"/g, '""')}"`,
+      `"${tx.guestPhone}"`,
+      `"${tx.resourceType}"`,
+      `"${tx.resourceLabel.replace(/"/g, '""')}"`,
+      tx.taxableBase.toFixed(2),
+      tx.cgst.toFixed(2),
+      tx.sgst.toFixed(2),
+      tx.totalGst.toFixed(2),
+      tx.grandTotal.toFixed(2),
+      tx.paid.toFixed(2),
+      tx.balance.toFixed(2),
+      `"${tx.channel}"`,
+      `"${tx.status}"`
+    ]);
+
+    const csvString = [headers.join(","), ...rows.map((r) => r.join(","))].join("\r\n");
+    downloadCSV(csvString, `HOTEL_DRB_Audit_Ledger_${todayStr}.csv`);
+    toast.success("Audit Transaction Ledger exported successfully!");
+  };
+
+  // Export 2: GSTR-1 Monthly Tax Return CSV
+  const handleExportGSTR1 = () => {
+    const headers = [
+      "GSTIN/UIN of Recipient",
+      "Receiver Name",
+      "Invoice Number",
+      "Invoice date",
+      "Invoice Value",
+      "Place Of Supply",
+      "Reverse Charge",
+      "Applicable % of Tax Rate",
+      "Invoice Type",
+      "E-Commerce GSTIN",
+      "Rate",
+      "Taxable Value",
+      "Cess Amount"
+    ];
+
+    const rows = transactions.map((tx) => [
+      `"Unregistered"`,
+      `"${tx.guestName.replace(/"/g, '""')}"`,
+      `"${tx.invoiceNum}"`,
+      `"${tx.date}"`,
+      tx.grandTotal.toFixed(2),
+      `"33-Tamil Nadu"`,
+      `"N"`,
+      `"5%"`,
+      `"Regular"`,
+      `""`,
+      `"5.00"`,
+      tx.taxableBase.toFixed(2),
+      `"0.00"`
+    ]);
+
+    const csvString = [headers.join(","), ...rows.map((r) => r.join(","))].join("\r\n");
+    downloadCSV(csvString, `HOTEL_DRB_GSTR1_Return_${todayStr}.csv`);
+    toast.success("GSTR-1 Monthly Tax Return format exported successfully!");
+  };
+
+  const handleOpenCollectModal = (tx: any) => {
+    setSelectedPaymentForCollect(tx);
+    setCollectAmount(String(tx.balance > 0 ? tx.balance : 0));
     setCollectMethod("CASH");
     setCollectModalOpen(true);
   };
@@ -259,15 +413,15 @@ function PaymentsDashboard() {
 
     const amt = parseFloat(collectAmount);
     if (isNaN(amt) || amt <= 0) {
-      return toast.error("Please enter a valid payment amount");
+      return toast.error("Please enter a valid collection amount");
     }
 
     setSettling(true);
-    const res = await settlePayment(selectedPaymentForCollect.reservation_id, amt, collectMethod);
+    const res = await settlePayment(selectedPaymentForCollect.reservationId || selectedPaymentForCollect.paymentId, amt, collectMethod);
     setSettling(false);
 
     if (res.success) {
-      toast.success(`Collected ${inr(amt)} via ${collectMethod}!`);
+      toast.success(`Payment of ${inr(amt)} recorded via ${collectMethod}!`);
       setCollectModalOpen(false);
       setSelectedPaymentForCollect(null);
     } else {
@@ -275,33 +429,32 @@ function PaymentsDashboard() {
     }
   };
 
-  if (!isSuperAdminOrGM) {
-    return (
-      <div className="space-y-6 pb-12">
-        <PageHeader eyebrow="Finance" title="Payment Dashboard" subtitle="Financial Operations" />
-        <Panel className="p-12 text-center">
-          <EmptyState title="Manager Access Only" body="Payment analytics and financial collections dashboards are restricted to Super Administrators and General Managers." icon={Receipt} />
-        </Panel>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6 pb-12">
-      <PageHeader 
-        eyebrow="Financial Operations"
-        title="Payment Dashboard & Inflow Analytics" 
-        subtitle={`Live cash drawer, UPI settlements, card swipes, and folio collections · ${dateRangeLabel}`}
+      {/* Page Header */}
+      <PageHeader
+        eyebrow="Financial Management & Audit"
+        title="Payment Dashboard & Inflow Analytics"
+        subtitle={`Comprehensive Financial Inflow, Audit Ledger, Monthly GST Filing Calculator & Channel Analytics · ${dateRangeLabel}`}
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              className="rounded-xl border-gold/40 text-gold hover:bg-gold/10"
+              onClick={handleExportAuditLedger}
+            >
+              <FileSpreadsheet className="mr-1.5 size-4" /> Export Ledger (Excel/CSV)
+            </Button>
+            <Button
+              variant="outline"
+              className="rounded-xl border-border hover:bg-secondary"
+              onClick={handleExportGSTR1}
+            >
+              <Download className="mr-1.5 size-4 text-emerald-600" /> Export GSTR-1 Return
+            </Button>
             <Link to="/billing">
-              <Button variant="outline" className="rounded-xl">
-                <Receipt className="mr-1.5 size-4 text-gold" /> Bills Workspace
-              </Button>
-            </Link>
-            <Link to="/pending-payments">
-              <Button className="rounded-xl bg-brass text-gold-foreground hover:opacity-90 font-semibold shadow-brass">
-                <CreditCard className="mr-1.5 size-4" /> Collect Pending Dues
+              <Button className="rounded-xl bg-brass text-gold-foreground hover:opacity-90 shadow-brass">
+                <Printer className="mr-1.5 size-4" /> View Invoices & Bills
               </Button>
             </Link>
           </div>
@@ -313,7 +466,7 @@ function PaymentsDashboard() {
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <CalendarDays className="size-4 text-gold" />
-            <span className="text-xs font-semibold uppercase text-foreground">Timeframe:</span>
+            <span className="text-xs font-semibold uppercase text-foreground">Audit Period:</span>
             <div className="inline-flex rounded-xl bg-secondary/80 p-1">
               <Button
                 size="sm"
@@ -321,7 +474,7 @@ function PaymentsDashboard() {
                 className={timeframe === "1D" ? "h-7 rounded-lg bg-brass text-gold-foreground shadow-sm text-xs font-semibold" : "h-7 rounded-lg text-xs"}
                 onClick={() => setTimeframe("1D")}
               >
-                1 Day (Today)
+                Daily (Today)
               </Button>
               <Button
                 size="sm"
@@ -329,7 +482,7 @@ function PaymentsDashboard() {
                 className={timeframe === "1W" ? "h-7 rounded-lg bg-brass text-gold-foreground shadow-sm text-xs font-semibold" : "h-7 rounded-lg text-xs"}
                 onClick={() => setTimeframe("1W")}
               >
-                1 Week
+                Weekly (7 Days)
               </Button>
               <Button
                 size="sm"
@@ -337,7 +490,7 @@ function PaymentsDashboard() {
                 className={timeframe === "1M" ? "h-7 rounded-lg bg-brass text-gold-foreground shadow-sm text-xs font-semibold" : "h-7 rounded-lg text-xs"}
                 onClick={() => setTimeframe("1M")}
               >
-                1 Month
+                Monthly (Current Month)
               </Button>
               <Button
                 size="sm"
@@ -374,329 +527,485 @@ function PaymentsDashboard() {
           )}
 
           <div className="text-xs font-medium text-muted-foreground">
-            Auditing Inflow: <span className="font-semibold text-gold">{dateRangeLabel}</span>
+            Current Filter: <span className="font-semibold text-gold">{dateRangeLabel}</span>
           </div>
         </div>
       </Panel>
 
-      {/* Main KPI Row */}
+      {/* Top Level Financial Summary KPI Cards */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard 
-          label={`Collected Inflow (${dateRangeLabel})`} 
-          value={inr(totalCollectedInPeriod)} 
-          icon={Banknote} 
-          tone="success" 
-          hint={`${filteredPayments.length} transactions processed`} 
+        <KpiCard
+          label={`Total Inflow Realized (${dateRangeLabel})`}
+          value={inr(metrics.totalInflowCollected)}
+          icon={CheckCircle2}
+          tone="success"
+          hint={`Realized Inflow across all channels`}
         />
-        <KpiCard 
-          label="Total Pending Dues" 
-          value={inr(totalPendingDues)} 
-          icon={CreditCard} 
-          tone="warning" 
-          hint={`${pendingPayments.length} open folios to collect`} 
+        <KpiCard
+          label="Net Taxable Turnover"
+          value={inr(metrics.netTaxableTurnover)}
+          icon={DollarSign}
+          tone="gold"
+          hint="Gross revenue excluding taxes"
         />
-        <KpiCard 
-          label={`Operating Expenses (${dateRangeLabel})`} 
-          value={inr(totalPeriodExpenses)} 
-          icon={Receipt} 
-          tone="destructive" 
-          hint={`${filteredExpenses.length} petty cash records`} 
+        <KpiCard
+          label="Total Output GST (5%)"
+          value={inr(metrics.totalGst)}
+          icon={Calculator}
+          tone="info"
+          hint={`CGST: ${inr(metrics.totalCgst)} | SGST: ${inr(metrics.totalSgst)}`}
         />
-        <KpiCard 
-          label="Net Cash Position" 
-          value={inr(totalCollectedInPeriod - totalPeriodExpenses)} 
-          icon={DollarSign} 
-          tone={totalCollectedInPeriod - totalPeriodExpenses >= 0 ? "gold" : "destructive"} 
-          hint="Collections minus Expenses" 
+        <KpiCard
+          label="Net Cash Flow (After Expenses)"
+          value={inr(metrics.netRealizedCashFlow)}
+          icon={TrendingUp}
+          tone={metrics.netRealizedCashFlow >= 0 ? "success" : "destructive"}
+          hint={`Expenses: -${inr(metrics.totalExpenses)}`}
         />
       </div>
 
-      {/* Payment Channel Cards (UPI, Card, Cash, Bank Transfer) */}
+      {/* Monthly GST Calculation & Tax Audit Center */}
       <Panel
-        title="Payment Inflow by Collection Method"
-        description={`Exact breakdown of all received payments for ${dateRangeLabel}`}
+        title="Monthly GST Calculation & Tax Compliance Calculator"
+        subtitle={`Audit-ready Output Tax computations for DRB Hotel under GSTIN: 33ABQPD6510M4ZI (State Code: 33)`}
+        bodyClassName="p-6 space-y-6"
       >
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 pt-1">
-          {/* UPI Collections */}
-          <div className="p-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5 flex flex-col justify-between space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="size-9 rounded-lg bg-emerald-500/15 text-emerald-600 flex items-center justify-center">
-                  <QrCode className="size-5" />
-                </div>
-                <div>
-                  <div className="text-sm font-bold text-foreground">UPI / QR Codes</div>
-                  <div className="text-xs text-muted-foreground">GPay, PhonePe, Paytm</div>
-                </div>
-              </div>
-              <span className="text-xs font-semibold bg-emerald-500/15 text-emerald-600 px-2 py-0.5 rounded-full">
-                {paymentBreakdown.upi.count} txns
-              </span>
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-emerald-600 tabular-nums">
-                {inr(paymentBreakdown.upi.total)}
-              </div>
-              <div className="text-xs text-muted-foreground mt-1">
-                {totalCollectedInPeriod > 0 ? `${Math.round((paymentBreakdown.upi.total / totalCollectedInPeriod) * 100)}% of total collections` : "0% share"}
-              </div>
-            </div>
+        <div className="grid gap-6 lg:grid-cols-3">
+          {/* GST Slabs Summary Table */}
+          <div className="lg:col-span-2 rounded-xl border border-border overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-secondary/40">
+                  <TableHead>Service / SAC Category</TableHead>
+                  <TableHead className="text-center">SAC Code</TableHead>
+                  <TableHead className="text-right">Taxable Turnover (₹)</TableHead>
+                  <TableHead className="text-right">CGST (2.5%)</TableHead>
+                  <TableHead className="text-right">SGST (2.5%)</TableHead>
+                  <TableHead className="text-right font-bold">Total GST (5%)</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow>
+                  <TableCell className="font-semibold">
+                    <div className="flex items-center gap-1.5">
+                      <BedDouble className="size-4 text-gold" />
+                      <span>Room Stays & Lodging</span>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-center font-mono text-xs text-muted-foreground">996311</TableCell>
+                  <TableCell className="text-right font-mono">{inr(metrics.rooms.taxable)}</TableCell>
+                  <TableCell className="text-right font-mono text-xs">{inr(metrics.rooms.gst / 2)}</TableCell>
+                  <TableCell className="text-right font-mono text-xs">{inr(metrics.rooms.gst / 2)}</TableCell>
+                  <TableCell className="text-right font-mono font-bold text-gold">{inr(metrics.rooms.gst)}</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell className="font-semibold">
+                    <div className="flex items-center gap-1.5">
+                      <PartyPopper className="size-4 text-gold" />
+                      <span>Party Hall & Banquet Facility</span>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-center font-mono text-xs text-muted-foreground">996312</TableCell>
+                  <TableCell className="text-right font-mono">{inr(metrics.party.taxable)}</TableCell>
+                  <TableCell className="text-right font-mono text-xs">{inr(metrics.party.gst / 2)}</TableCell>
+                  <TableCell className="text-right font-mono text-xs">{inr(metrics.party.gst / 2)}</TableCell>
+                  <TableCell className="text-right font-mono font-bold text-gold">{inr(metrics.party.gst)}</TableCell>
+                </TableRow>
+                <TableRow className="bg-secondary/20 font-bold border-t-2 border-border">
+                  <TableCell colSpan={2} className="text-foreground">
+                    Total Taxable Aggregate Turnover
+                  </TableCell>
+                  <TableCell className="text-right font-mono text-foreground font-bold">{inr(metrics.netTaxableTurnover)}</TableCell>
+                  <TableCell className="text-right font-mono text-xs">{inr(metrics.totalCgst)}</TableCell>
+                  <TableCell className="text-right font-mono text-xs">{inr(metrics.totalSgst)}</TableCell>
+                  <TableCell className="text-right font-mono font-bold text-sm text-gold">{inr(metrics.totalGst)}</TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
           </div>
 
-          {/* Card Collections */}
-          <div className="p-4 rounded-xl border border-blue-500/20 bg-blue-500/5 flex flex-col justify-between space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="size-9 rounded-lg bg-blue-500/15 text-blue-600 flex items-center justify-center">
-                  <CreditCard className="size-5" />
-                </div>
-                <div>
-                  <div className="text-sm font-bold text-foreground">Card Swipes (POS)</div>
-                  <div className="text-xs text-muted-foreground">Debit / Credit POS</div>
-                </div>
-              </div>
-              <span className="text-xs font-semibold bg-blue-500/15 text-blue-600 px-2 py-0.5 rounded-full">
-                {paymentBreakdown.card.count} txns
-              </span>
-            </div>
+          {/* Tax Liability Card */}
+          <div className="rounded-xl border border-border p-5 bg-secondary/10 flex flex-col justify-between space-y-4">
             <div>
-              <div className="text-2xl font-bold text-blue-600 tabular-nums">
-                {inr(paymentBreakdown.card.total)}
+              <div className="flex items-center justify-between pb-2 border-b border-border">
+                <span className="text-xs font-bold uppercase tracking-wider text-gold">GST Return Summary</span>
+                <Pill tone="gold">GSTR-1 / 3B</Pill>
               </div>
-              <div className="text-xs text-muted-foreground mt-1">
-                {totalCollectedInPeriod > 0 ? `${Math.round((paymentBreakdown.card.total / totalCollectedInPeriod) * 100)}% of total collections` : "0% share"}
+              <div className="space-y-3 pt-3 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Gross Output Tax (5%):</span>
+                  <span className="font-bold text-foreground">{inr(metrics.totalGst)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Eligible Input Tax Credit (ITC):</span>
+                  <span className="font-semibold text-emerald-600">₹0.00</span>
+                </div>
+                <div className="flex justify-between border-t border-border pt-2 text-sm font-bold">
+                  <span>Net GST Output Payable:</span>
+                  <span className="text-gold font-mono">{inr(metrics.totalGst)}</span>
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Cash Collections */}
-          <div className="p-4 rounded-xl border border-amber-500/20 bg-amber-500/5 flex flex-col justify-between space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="size-9 rounded-lg bg-amber-500/15 text-amber-600 flex items-center justify-center">
-                  <Banknote className="size-5" />
-                </div>
-                <div>
-                  <div className="text-sm font-bold text-foreground">Cash in Drawer</div>
-                  <div className="text-xs text-muted-foreground">Physical Currency</div>
-                </div>
-              </div>
-              <span className="text-xs font-semibold bg-amber-500/15 text-amber-600 px-2 py-0.5 rounded-full">
-                {paymentBreakdown.cash.count} txns
-              </span>
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-amber-600 tabular-nums">
-                {inr(paymentBreakdown.cash.total)}
-              </div>
-              <div className="text-xs text-muted-foreground mt-1">
-                {totalCollectedInPeriod > 0 ? `${Math.round((paymentBreakdown.cash.total / totalCollectedInPeriod) * 100)}% of total collections` : "0% share"}
-              </div>
-            </div>
-          </div>
-
-          {/* Bank Transfer / Other */}
-          <div className="p-4 rounded-xl border border-purple-500/20 bg-purple-500/5 flex flex-col justify-between space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="size-9 rounded-lg bg-purple-500/15 text-purple-600 flex items-center justify-center">
-                  <Landmark className="size-5" />
-                </div>
-                <div>
-                  <div className="text-sm font-bold text-foreground">Bank Transfers</div>
-                  <div className="text-xs text-muted-foreground">NEFT, RTGS & Other</div>
-                </div>
-              </div>
-              <span className="text-xs font-semibold bg-purple-500/15 text-purple-600 px-2 py-0.5 rounded-full">
-                {paymentBreakdown.bankTransfer.count + paymentBreakdown.other.count} txns
-              </span>
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-purple-600 tabular-nums">
-                {inr(paymentBreakdown.bankTransfer.total + paymentBreakdown.other.total)}
-              </div>
-              <div className="text-xs text-muted-foreground mt-1">
-                {totalCollectedInPeriod > 0 ? `${Math.round(((paymentBreakdown.bankTransfer.total + paymentBreakdown.other.total) / totalCollectedInPeriod) * 100)}% of total collections` : "0% share"}
-              </div>
+            <div className="pt-2 border-t border-border space-y-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full text-xs font-semibold border-gold/40 text-gold hover:bg-gold/10"
+                onClick={handleExportGSTR1}
+              >
+                <Download className="mr-1.5 size-3.5" /> Download GSTR-1 CSV Return
+              </Button>
+              <p className="text-[11px] text-muted-foreground text-center">
+                *Ready for GST Portal monthly / quarterly filing upload
+              </p>
             </div>
           </div>
         </div>
       </Panel>
 
-      {/* Revenue Breakdown by Resource */}
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="p-4 rounded-xl border border-border bg-card flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="size-10 rounded-xl bg-gold/10 text-gold flex items-center justify-center">
-              <BedDouble className="size-5" />
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground">Room Stays & Lodging</div>
-              <div className="text-lg font-bold text-foreground">{inr(resourceBreakdown.roomRevenue)}</div>
-            </div>
+      {/* Payment Collections by Method (Channel Distribution) */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+            Payment Collections by Method & Channel ({dateRangeLabel})
           </div>
-          <Pill tone="gold">Rooms</Pill>
+          <div className="text-xs text-muted-foreground">
+            Total Inflow: <span className="font-bold text-emerald-600">{inr(metrics.totalInflowCollected)}</span>
+          </div>
         </div>
 
-        <div className="p-4 rounded-xl border border-border bg-card flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="size-10 rounded-xl bg-gold/10 text-gold flex items-center justify-center">
-              <PartyPopper className="size-5" />
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {/* UPI Card */}
+          <div className="rounded-2xl border border-border bg-card p-5 shadow-sm space-y-3 hover:border-gold/50 transition-colors">
+            <div className="flex items-center justify-between">
+              <div className="size-10 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center font-bold">
+                <QrCode className="size-5" />
+              </div>
+              <span className="text-xs font-mono font-bold text-purple-600 bg-purple-500/10 px-2 py-0.5 rounded-full">
+                {metrics.upi.pct.toFixed(1)}%
+              </span>
             </div>
             <div>
-              <div className="text-xs text-muted-foreground">Party Hall & Banquets</div>
-              <div className="text-lg font-bold text-foreground">{inr(resourceBreakdown.hallRevenue)}</div>
+              <div className="text-2xl font-bold text-foreground font-mono">{inr(metrics.upi.total)}</div>
+              <div className="text-xs font-semibold text-muted-foreground mt-0.5">UPI / QR (GPay, PhonePe, Paytm)</div>
+            </div>
+            <div className="pt-1 border-t border-border/60 text-xs text-muted-foreground flex justify-between">
+              <span>Transactions:</span>
+              <span className="font-semibold text-foreground">{metrics.upi.count} txns</span>
             </div>
           </div>
-          <Pill tone="info">Events</Pill>
-        </div>
 
-        <div className="p-4 rounded-xl border border-border bg-card flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="size-10 rounded-xl bg-gold/10 text-gold flex items-center justify-center">
-              <DollarSign className="size-5" />
+          {/* Card POS Card */}
+          <div className="rounded-2xl border border-border bg-card p-5 shadow-sm space-y-3 hover:border-gold/50 transition-colors">
+            <div className="flex items-center justify-between">
+              <div className="size-10 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center font-bold">
+                <CreditCard className="size-5" />
+              </div>
+              <span className="text-xs font-mono font-bold text-blue-600 bg-blue-500/10 px-2 py-0.5 rounded-full">
+                {metrics.card.pct.toFixed(1)}%
+              </span>
             </div>
             <div>
-              <div className="text-xs text-muted-foreground">F&B & Extra Folios</div>
-              <div className="text-lg font-bold text-foreground">{inr(resourceBreakdown.otherRevenue)}</div>
+              <div className="text-2xl font-bold text-foreground font-mono">{inr(metrics.card.total)}</div>
+              <div className="text-xs font-semibold text-muted-foreground mt-0.5">Card Swipes (POS Terminal)</div>
+            </div>
+            <div className="pt-1 border-t border-border/60 text-xs text-muted-foreground flex justify-between">
+              <span>Transactions:</span>
+              <span className="font-semibold text-foreground">{metrics.card.count} txns</span>
             </div>
           </div>
-          <Pill tone="success">Services</Pill>
+
+          {/* Cash in Drawer Card */}
+          <div className="rounded-2xl border border-border bg-card p-5 shadow-sm space-y-3 hover:border-gold/50 transition-colors">
+            <div className="flex items-center justify-between">
+              <div className="size-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-bold">
+                <Banknote className="size-5" />
+              </div>
+              <span className="text-xs font-mono font-bold text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                {metrics.cash.pct.toFixed(1)}%
+              </span>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-foreground font-mono">{inr(metrics.cash.total)}</div>
+              <div className="text-xs font-semibold text-muted-foreground mt-0.5">Cash in Drawer / Hand</div>
+            </div>
+            <div className="pt-1 border-t border-border/60 text-xs text-muted-foreground flex justify-between">
+              <span>Transactions:</span>
+              <span className="font-semibold text-foreground">{metrics.cash.count} txns</span>
+            </div>
+          </div>
+
+          {/* Bank Transfer Card */}
+          <div className="rounded-2xl border border-border bg-card p-5 shadow-sm space-y-3 hover:border-gold/50 transition-colors">
+            <div className="flex items-center justify-between">
+              <div className="size-10 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center font-bold">
+                <Landmark className="size-5" />
+              </div>
+              <span className="text-xs font-mono font-bold text-amber-600 bg-amber-500/10 px-2 py-0.5 rounded-full">
+                {metrics.bank.pct.toFixed(1)}%
+              </span>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-foreground font-mono">{inr(metrics.bank.total)}</div>
+              <div className="text-xs font-semibold text-muted-foreground mt-0.5">Bank Transfer / NEFT / RTGS</div>
+            </div>
+            <div className="pt-1 border-t border-border/60 text-xs text-muted-foreground flex justify-between">
+              <span>Transactions:</span>
+              <span className="font-semibold text-foreground">{metrics.bank.count} txns</span>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Payment Ledger & Folio Transactions Table */}
+      {/* Inflow by Revenue Streams & Operational Breakdown */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Panel
+          title="Revenue & Inflow by Resource Stream"
+          subtitle="Distribution between Room Stays vs Banquet / Party Hall"
+          bodyClassName="p-5 space-y-4"
+        >
+          <div className="space-y-4">
+            <div>
+              <div className="flex justify-between text-xs font-semibold mb-1.5">
+                <div className="flex items-center gap-1.5">
+                  <BedDouble className="size-4 text-gold" />
+                  <span>Rooms Lodging Revenue</span>
+                </div>
+                <span className="font-mono text-foreground font-bold">{inr(metrics.rooms.inflow)} ({metrics.rooms.pct.toFixed(1)}%)</span>
+              </div>
+              <div className="h-2.5 w-full rounded-full bg-secondary overflow-hidden">
+                <div
+                  className="h-full bg-gold rounded-full transition-all duration-500"
+                  style={{ width: `${Math.min(100, metrics.rooms.pct)}%` }}
+                />
+              </div>
+              <div className="flex justify-between text-[11px] text-muted-foreground mt-1">
+                <span>Taxable Base: {inr(metrics.rooms.taxable)}</span>
+                <span>GST (5%): {inr(metrics.rooms.gst)}</span>
+              </div>
+            </div>
+
+            <div>
+              <div className="flex justify-between text-xs font-semibold mb-1.5">
+                <div className="flex items-center gap-1.5">
+                  <PartyPopper className="size-4 text-purple-600" />
+                  <span>Party Hall & Banquets</span>
+                </div>
+                <span className="font-mono text-foreground font-bold">{inr(metrics.party.inflow)} ({metrics.party.pct.toFixed(1)}%)</span>
+              </div>
+              <div className="h-2.5 w-full rounded-full bg-secondary overflow-hidden">
+                <div
+                  className="h-full bg-purple-600 rounded-full transition-all duration-500"
+                  style={{ width: `${Math.min(100, metrics.party.pct)}%` }}
+                />
+              </div>
+              <div className="flex justify-between text-[11px] text-muted-foreground mt-1">
+                <span>Taxable Base: {inr(metrics.party.taxable)}</span>
+                <span>GST (5%): {inr(metrics.party.gst)}</span>
+              </div>
+            </div>
+          </div>
+        </Panel>
+
+        <Panel
+          title="Cash Flow & Audit Reconciliation"
+          subtitle="Operating Inflow vs Operational Expenses summary"
+          bodyClassName="p-5 space-y-4"
+        >
+          <div className="space-y-3 text-xs">
+            <div className="flex justify-between items-center p-2 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
+              <span className="font-semibold text-emerald-700">Gross Realized Cash Inflow (+)</span>
+              <span className="font-mono font-bold text-sm text-emerald-600">{inr(metrics.totalInflowCollected)}</span>
+            </div>
+            <div className="flex justify-between items-center p-2 rounded-lg bg-destructive/5 border border-destructive/20">
+              <span className="font-semibold text-destructive">Operational Expenses Deducted (-)</span>
+              <span className="font-mono font-bold text-sm text-destructive">-{inr(metrics.totalExpenses)}</span>
+            </div>
+            <div className="flex justify-between items-center p-2 rounded-lg bg-gold/5 border border-gold/20">
+              <span className="font-bold text-foreground">Net Realized Cash Balance (=)</span>
+              <span className={`font-mono font-bold text-base ${metrics.netRealizedCashFlow >= 0 ? "text-gold" : "text-destructive"}`}>
+                {inr(metrics.netRealizedCashFlow)}
+              </span>
+            </div>
+            <div className="flex justify-between items-center p-2 rounded-lg bg-secondary/40">
+              <span className="text-muted-foreground">Outstanding Accounts Receivable (Pending)</span>
+              <span className="font-mono font-bold text-amber-600">{inr(metrics.totalOutstanding)}</span>
+            </div>
+          </div>
+        </Panel>
+      </div>
+
+      {/* Comprehensive Audit & Transaction Ledger Table */}
       <Panel
-        title={`Payment Transactions (${tablePayments.length})`}
-        description={`Detailed settlement records for ${dateRangeLabel}`}
+        title="Comprehensive Audit & Transaction Ledger"
+        subtitle={`Complete itemized financial transaction entries for ${dateRangeLabel}`}
         bodyClassName="p-4 space-y-4"
       >
+        {/* Search and Filters Bar */}
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="relative min-w-[240px] flex-1">
+          <div className="relative min-w-[260px] flex-1">
             <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by Folio ID, Guest Name, Phone or Room/Event..."
+              placeholder="Search by Invoice #, Guest Name, Phone, Room or Party Hall..."
               className="pl-9"
             />
           </div>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[190px]">
-              <SelectValue placeholder="Filter Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Settlements</SelectItem>
-              <SelectItem value="completed">Settled / Completed</SelectItem>
-              <SelectItem value="partial">Partial / Advance</SelectItem>
-              <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="frozen">Frozen / Disputed</SelectItem>
-            </SelectContent>
-          </Select>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Select value={channelFilter} onValueChange={setChannelFilter}>
+              <SelectTrigger className="w-[170px]">
+                <SelectValue placeholder="Payment Method" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Payment Modes</SelectItem>
+                <SelectItem value="UPI">UPI / QR (GPay/PhonePe)</SelectItem>
+                <SelectItem value="CARD">Card Swipes (POS)</SelectItem>
+                <SelectItem value="CASH">Cash Counter</SelectItem>
+                <SelectItem value="BANK_TRANSFER">Bank Transfer / NEFT</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-[160px]">
+                <SelectValue placeholder="Settlement Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Statuses</SelectItem>
+                <SelectItem value="settled">Settled / Fully Paid</SelectItem>
+                <SelectItem value="partial">Partial / Advance</SelectItem>
+                <SelectItem value="pending">Pending / Open</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={resourceFilter} onValueChange={setResourceFilter}>
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder="Resource Type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Resources</SelectItem>
+                <SelectItem value="rooms">Room Stays</SelectItem>
+                <SelectItem value="party_hall">Party Hall</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
+        {/* Ledger Table */}
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Folio ID</TableHead>
-                <TableHead>Guest & Details</TableHead>
-                <TableHead>Booking Resource</TableHead>
-                <TableHead>Total Bill</TableHead>
-                <TableHead>Collected</TableHead>
-                <TableHead>Due Balance</TableHead>
-                <TableHead>Method</TableHead>
+                <TableHead>Invoice #</TableHead>
+                <TableHead>Date</TableHead>
+                <TableHead>Guest & Contact</TableHead>
+                <TableHead>Resource / Room</TableHead>
+                <TableHead className="text-right">Taxable Base</TableHead>
+                <TableHead className="text-right">GST (5%)</TableHead>
+                <TableHead className="text-right">Gross Total</TableHead>
+                <TableHead className="text-right">Paid (Inflow)</TableHead>
+                <TableHead className="text-right">Balance</TableHead>
+                <TableHead>Channel</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead className="text-right">Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {tablePayments.map((p) => {
-                const res = getReservation(p.reservation_id);
-                const guest = res ? getGuest(res.guest_id) : null;
-                const room = res ? getRoom(res.room_id) : null;
-                const approvedDiscount = getApprovedDiscount(p.reservation_id);
-                const originalAmount = Number(res?.base_amount) || Number(p.total_amount) || 0;
-                let total = Number(p.total_amount) || originalAmount;
-                if (approvedDiscount > 0 && total >= originalAmount && originalAmount > approvedDiscount) {
-                  total = Math.max(0, originalAmount - approvedDiscount);
-                }
-                const paid = Number(p.paid_amount) || 0;
-                const balance = Math.max(0, total - paid);
-                const folioId = String(p.id || 'FOLIO').slice(0, 10).toUpperCase();
+              {transactions.map((tx) => (
+                <TableRow key={tx.id} className="hover:bg-accent/40">
+                  <TableCell className="font-mono text-xs font-bold text-gold">
+                    {tx.invoiceNum}
+                  </TableCell>
 
-                return (
-                  <TableRow key={p.id}>
-                    <TableCell className="font-mono text-xs font-semibold text-gold">
-                      #{folioId}
-                    </TableCell>
-                    <TableCell>
-                      <div className="font-medium text-sm text-foreground">{guest?.name || "Guest"}</div>
-                      <div className="text-xs text-muted-foreground">{guest?.phone || "No phone"}</div>
-                    </TableCell>
-                    <TableCell>
-                      {res?.resource_type === 'PARTY_HALL' ? (
-                        <span className="text-xs font-semibold text-gold flex items-center gap-1">
-                          <PartyPopper className="size-3.5" /> Party Hall ({res.event_type || 'Event'})
-                        </span>
-                      ) : room ? (
-                        <span className="text-xs font-medium flex items-center gap-1">
-                          <BedDouble className="size-3.5 text-muted-foreground" /> Room {room.room_number || (room as any)?.number}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">Folio Service</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="font-medium">
-                      <div>{inr(total)}</div>
-                      {approvedDiscount > 0 && (
-                        <div className="text-[10px] text-emerald-600 font-semibold">
-                          -{inr(approvedDiscount)} discount
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell className="font-bold text-emerald-600">{inr(paid)}</TableCell>
-                    <TableCell className={balance > 0 ? "font-bold text-amber-600" : "text-muted-foreground"}>
-                      {balance > 0 ? inr(balance) : "₹0.00"}
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-xs font-semibold bg-secondary px-2 py-0.5 rounded border border-border">
-                        {p.payment_method || "CASH"}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <Pill tone={balance === 0 && total > 0 ? 'success' : balance > 0 && paid > 0 ? 'warning' : p.status === 'FROZEN' ? 'info' : 'destructive'}>
-                        {balance === 0 && total > 0 ? 'COMPLETED' : balance > 0 && paid > 0 ? 'PARTIAL' : (p.status || 'PENDING')}
-                      </Pill>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1.5">
-                        {balance > 0 && (
-                          <Button
-                            size="sm"
-                            className="h-8 rounded-lg text-xs bg-brass text-gold-foreground hover:opacity-90 font-medium"
-                            onClick={() => handleOpenCollect(p)}
-                          >
-                            Collect
-                          </Button>
-                        )}
-                        <Link to="/billing">
-                          <Button size="sm" variant="outline" className="h-8 rounded-lg text-xs">
-                            Bill
-                          </Button>
-                        </Link>
+                  <TableCell className="text-xs font-medium">
+                    {tx.date}
+                  </TableCell>
+
+                  <TableCell>
+                    <div className="font-semibold text-sm text-foreground">{tx.guestName}</div>
+                    <div className="text-xs text-muted-foreground">{tx.guestPhone}</div>
+                  </TableCell>
+
+                  <TableCell>
+                    {tx.resourceType === "PARTY_HALL" ? (
+                      <div className="flex items-center gap-1 text-xs font-semibold text-purple-600">
+                        <PartyPopper className="size-3.5" />
+                        <span>{tx.resourceLabel}</span>
                       </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
+                    ) : (
+                      <div className="flex items-center gap-1 text-xs font-medium">
+                        <BedDouble className="size-3.5 text-muted-foreground" />
+                        <span>{tx.resourceLabel}</span>
+                      </div>
+                    )}
+                  </TableCell>
+
+                  <TableCell className="text-right font-mono text-xs">
+                    {inr(tx.taxableBase)}
+                  </TableCell>
+
+                  <TableCell className="text-right font-mono text-xs text-muted-foreground">
+                    {inr(tx.totalGst)}
+                  </TableCell>
+
+                  <TableCell className="text-right font-mono font-bold text-foreground">
+                    {inr(tx.grandTotal)}
+                  </TableCell>
+
+                  <TableCell className="text-right font-mono font-bold text-emerald-600">
+                    {inr(tx.paid)}
+                  </TableCell>
+
+                  <TableCell className={`text-right font-mono ${tx.balance > 0 ? "font-bold text-amber-600" : "text-muted-foreground text-xs"}`}>
+                    {tx.balance > 0 ? inr(tx.balance) : "₹0 (Cleared)"}
+                  </TableCell>
+
+                  <TableCell>
+                    <Pill tone={tx.channel === "UPI" ? "info" : tx.channel === "CARD" ? "gold" : tx.channel === "CASH" ? "success" : "default"}>
+                      {tx.channel}
+                    </Pill>
+                  </TableCell>
+
+                  <TableCell>
+                    <Pill tone={tx.isPaid ? "success" : tx.isPartial ? "warning" : "destructive"}>
+                      {tx.status}
+                    </Pill>
+                  </TableCell>
+
+                  <TableCell className="text-right">
+                    <div className="flex items-center justify-end gap-1.5">
+                      {tx.balance > 0 && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs border-gold/40 text-gold hover:bg-gold/10"
+                          onClick={() => handleOpenCollectModal(tx)}
+                        >
+                          Collect
+                        </Button>
+                      )}
+                      <Link to="/billing">
+                        <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground hover:text-foreground">
+                          Invoice
+                        </Button>
+                      </Link>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
             </TableBody>
           </Table>
         </div>
 
-        {!tablePayments.length && (
+        {!transactions.length && (
           <div className="p-8">
-            <EmptyState title="No Payment Records Found" body="No matching payment settlements found for the selected filter." icon={Banknote} />
+            <EmptyState
+              title="No Transactions Found"
+              body="No payment or ledger entries match the selected audit timeframe and filter criteria."
+              icon={Receipt}
+            />
           </div>
         )}
       </Panel>
@@ -705,16 +1014,16 @@ function PaymentsDashboard() {
       <Dialog open={collectModalOpen} onOpenChange={setCollectModalOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Collect Outstanding Folio Payment</DialogTitle>
+            <DialogTitle>Settle Balance & Record Inflow</DialogTitle>
             <DialogDescription>
-              Record cash, UPI, card, or bank settlement against this folio balance.
+              Record payment settlement for this audit transaction entry.
             </DialogDescription>
           </DialogHeader>
 
           {selectedPaymentForCollect && (
             <form onSubmit={handleSaveCollect} className="space-y-4 pt-2">
               <div className="space-y-2">
-                <Label>Amount to Collect (₹) *</Label>
+                <Label>Amount to Settle (₹) *</Label>
                 <Input
                   type="number"
                   required
@@ -724,7 +1033,7 @@ function PaymentsDashboard() {
               </div>
 
               <div className="space-y-2">
-                <Label>Payment Method *</Label>
+                <Label>Payment Mode *</Label>
                 <Select
                   value={collectMethod}
                   onValueChange={(v: any) => setCollectMethod(v)}
