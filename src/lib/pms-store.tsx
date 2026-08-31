@@ -952,22 +952,70 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
 
       addRoom: async (number, type, floor, price) => {
         try {
+          const cleanNum = String(number).trim();
+          if (!cleanNum) {
+            return { success: false, error: "Please enter a valid room number" };
+          }
+
+          // Check local state
+          const localExists = state.rooms.find(
+            r => (r.room_number || (r as any).number)?.toString().toLowerCase() === cleanNum.toLowerCase()
+          );
+          if (localExists) {
+            return { success: false, error: `Room ${cleanNum} already exists in your inventory.` };
+          }
+
+          // Check DB for existing room record (could be inactive or duplicate)
+          const { data: dbExisting } = await supabase
+            .from('rooms')
+            .select('id, room_number, is_active')
+            .eq('room_number', cleanNum)
+            .maybeSingle();
+
+          if (dbExisting) {
+            // Reactivate / update existing room
+            const { error: upErr } = await supabase
+              .from('rooms')
+              .update({
+                room_name: type || "Standard Room",
+                floor: String(floor || "1"),
+                price: Number(price) || 0,
+                status: 'AVAILABLE',
+                is_active: true
+              })
+              .eq('id', dbExisting.id);
+
+            if (upErr) throw upErr;
+            await fetchData();
+            return { success: true };
+          }
+
           const id = crypto.randomUUID();
-          const { error } = await supabase.from('rooms').insert({
+          const newRoom = {
             id,
-            room_number: String(number),
+            room_number: cleanNum,
             room_name: type || "Standard Room",
             floor: String(floor || "1"),
             price: Number(price) || 0,
-            status: 'AVAILABLE',
+            status: 'AVAILABLE' as const,
             capacity: 2,
-            is_active: true
-          });
+            is_active: true,
+            amenities: [],
+            photos: []
+          };
+
+          setState(s => ({
+            ...s,
+            rooms: [...s.rooms, newRoom as any]
+          }));
+
+          const { error } = await supabase.from('rooms').insert(newRoom);
           if (error) {
             console.error("Error creating room:", error);
+            await fetchData();
             return { success: false, error: error.message };
           }
-          fetchData();
+          await fetchData();
           return { success: true };
         } catch (err: any) {
           console.error("Room insert exception:", err);

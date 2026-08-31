@@ -9,7 +9,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { EmptyState, PageHeader, Panel, Pill } from "@/components/pms/bits";
 import { usePms } from "@/lib/pms-store";
 import { inr } from "@/lib/pms-data";
-import { Search, MoreHorizontal, CalendarPlus, Layers, Ban, CheckCircle2, Trash2 } from "lucide-react";
+import { Search, MoreHorizontal, CalendarPlus, Layers, Ban, CheckCircle2, Trash2, CalendarDays, Calendar } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -17,7 +17,7 @@ import { Label } from "@/components/ui/label";
 export const Route = createFileRoute("/_shell/reservations/")({
   head: () => ({
     meta: [
-      { title: "Reservations — DRB Hotel PMS" },
+      { title: "Reservations & Bookings — DRB Hotel PMS" },
       { name: "description", content: "Manage every DRB Hotel reservation: confirmed, in-house, blocked, checked out, and cancelled bookings." },
       { property: "og:title", content: "DRB Hotel — Reservations" },
       { property: "og:description", content: "Manage every DRB Hotel reservation: confirmed, in-house, blocked, checked out, and cancelled bookings." },
@@ -27,6 +27,7 @@ export const Route = createFileRoute("/_shell/reservations/")({
 });
 
 const TABS = ["All", "CONFIRMED", "OCCUPIED", "PENDING", "BLOCKED", "COMPLETED", "CANCELLED"] as const;
+type Timeframe = "ALL" | "1D" | "1W" | "1M" | "CUSTOM";
 
 function ReservationsPage() {
   const { reservations, guests, rooms, checkIn, checkOut, setReservationStatus, setRoomStatus, deleteReservation, session } = usePms();
@@ -35,6 +36,12 @@ function ReservationsPage() {
   const [tab, setTab] = React.useState<string>("All");
   const [q, setQ] = React.useState("");
   const [sortBy, setSortBy] = React.useState("arrival");
+
+  // Timeframe filter state
+  const todayStr = new Date().toISOString().split("T")[0];
+  const [timeframe, setTimeframe] = React.useState<Timeframe>("ALL");
+  const [customStart, setCustomStart] = React.useState<string>(todayStr);
+  const [customEnd, setCustomEnd] = React.useState<string>(todayStr);
 
   const [blockOpen, setBlockOpen] = React.useState(false);
   const [selectedRoomToBlock, setSelectedRoomToBlock] = React.useState("");
@@ -45,6 +52,34 @@ function ReservationsPage() {
   const getRoom = (roomId?: string) => rooms.find(rm => rm.id === roomId);
 
   const blockedRooms = rooms.filter(r => r.status === "OUT OF SERVICE" || r.status === "MAINTENANCE");
+
+  // Date range filter calculation
+  const { rangeStart, rangeEnd } = React.useMemo(() => {
+    if (timeframe === "ALL") return { rangeStart: null, rangeEnd: null };
+
+    const end = new Date();
+    end.setHours(23, 59, 59, 999);
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+
+    if (timeframe === "1D") {
+      // today only
+    } else if (timeframe === "1W") {
+      start.setDate(start.getDate() - 6);
+    } else if (timeframe === "1M") {
+      start.setDate(start.getDate() - 29);
+    } else if (timeframe === "CUSTOM") {
+      if (customStart) {
+        const s = new Date(`${customStart}T00:00:00`);
+        if (!isNaN(s.getTime())) start.setTime(s.getTime());
+      }
+      if (customEnd) {
+        const e = new Date(`${customEnd}T23:59:59`);
+        if (!isNaN(e.getTime())) end.setTime(e.getTime());
+      }
+    }
+    return { rangeStart: start, rangeEnd: end };
+  }, [timeframe, customStart, customEnd]);
 
   const handleBlockRoom = async () => {
     if (!selectedRoomToBlock) return toast.error("Please select a room to block");
@@ -61,9 +96,14 @@ function ReservationsPage() {
     toast.success(`Room ${roomNum} is now unblocked and AVAILABLE for booking`);
   };
 
-  // Reservation rows
+  // Reservation rows with date & tab filtering
   const reservationRows = reservations
     .filter((r) => (tab === "All" || r.status === tab))
+    .filter((r) => {
+      if (!rangeStart || !rangeEnd) return true;
+      const rDate = new Date(r.start_time || `${r.booking_date}T00:00:00`);
+      return rDate >= rangeStart && rDate <= rangeEnd;
+    })
     .filter((r) => {
       if (!q.trim()) return true;
       const guest = getGuest(r.guest_id);
@@ -77,6 +117,12 @@ function ReservationsPage() {
         (guest?.phone && String(guest.phone).includes(term)) ||
         rNum.toLowerCase().includes(term)
       );
+    })
+    .sort((a, b) => {
+      if (sortBy === "amount") {
+        return (Number(b.base_amount) || 0) - (Number(a.base_amount) || 0);
+      }
+      return new Date(b.booking_date || 0).getTime() - new Date(a.booking_date || 0).getTime();
     });
 
   // Blocked room rows (displayed in 'All' and 'BLOCKED' tab)
@@ -96,6 +142,8 @@ function ReservationsPage() {
     return reservations.filter((r) => r.status === t).length;
   };
 
+  const totalFilteredValue = reservationRows.reduce((acc, r) => acc + (Number(r.base_amount) || 0), 0);
+
   return (
     <>
       <PageHeader
@@ -113,6 +161,85 @@ function ReservationsPage() {
           </div>
         }
       />
+
+      {/* Date & Timeframe Filter Toolbar */}
+      <Panel bodyClassName="p-4">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <CalendarDays className="size-4 text-gold" />
+            <span className="text-xs font-semibold uppercase text-foreground">Date Window:</span>
+            <div className="inline-flex rounded-xl bg-secondary/80 p-1">
+              <Button
+                size="sm"
+                variant={timeframe === "ALL" ? "default" : "ghost"}
+                className={timeframe === "ALL" ? "h-7 rounded-lg bg-brass text-gold-foreground shadow-sm text-xs font-semibold" : "h-7 rounded-lg text-xs"}
+                onClick={() => setTimeframe("ALL")}
+              >
+                All Time
+              </Button>
+              <Button
+                size="sm"
+                variant={timeframe === "1D" ? "default" : "ghost"}
+                className={timeframe === "1D" ? "h-7 rounded-lg bg-brass text-gold-foreground shadow-sm text-xs font-semibold" : "h-7 rounded-lg text-xs"}
+                onClick={() => setTimeframe("1D")}
+              >
+                1 Day (Today)
+              </Button>
+              <Button
+                size="sm"
+                variant={timeframe === "1W" ? "default" : "ghost"}
+                className={timeframe === "1W" ? "h-7 rounded-lg bg-brass text-gold-foreground shadow-sm text-xs font-semibold" : "h-7 rounded-lg text-xs"}
+                onClick={() => setTimeframe("1W")}
+              >
+                1 Week
+              </Button>
+              <Button
+                size="sm"
+                variant={timeframe === "1M" ? "default" : "ghost"}
+                className={timeframe === "1M" ? "h-7 rounded-lg bg-brass text-gold-foreground shadow-sm text-xs font-semibold" : "h-7 rounded-lg text-xs"}
+                onClick={() => setTimeframe("1M")}
+              >
+                1 Month
+              </Button>
+              <Button
+                size="sm"
+                variant={timeframe === "CUSTOM" ? "default" : "ghost"}
+                className={timeframe === "CUSTOM" ? "h-7 rounded-lg bg-brass text-gold-foreground shadow-sm text-xs font-semibold" : "h-7 rounded-lg text-xs"}
+                onClick={() => setTimeframe("CUSTOM")}
+              >
+                Custom
+              </Button>
+            </div>
+          </div>
+
+          {timeframe === "CUSTOM" && (
+            <div className="flex flex-wrap items-center gap-2 bg-secondary/50 p-1.5 rounded-xl border border-border">
+              <div className="flex items-center gap-1">
+                <Label className="text-xs text-muted-foreground">From:</Label>
+                <Input
+                  type="date"
+                  value={customStart}
+                  onChange={(e) => setCustomStart(e.target.value)}
+                  className="h-7 w-32 text-xs"
+                />
+              </div>
+              <div className="flex items-center gap-1">
+                <Label className="text-xs text-muted-foreground">To:</Label>
+                <Input
+                  type="date"
+                  value={customEnd}
+                  onChange={(e) => setCustomEnd(e.target.value)}
+                  className="h-7 w-32 text-xs"
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="text-xs font-medium text-muted-foreground">
+            Showing: <span className="font-semibold text-foreground">{reservationRows.length} bookings</span> · Total Value: <span className="font-semibold text-gold">{inr(totalFilteredValue)}</span>
+          </div>
+        </div>
+      </Panel>
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="flex-wrap rounded-xl">
@@ -151,7 +278,7 @@ function ReservationsPage() {
                 <TableHead>Confirmation #</TableHead>
                 <TableHead>Guest Name & Contact</TableHead>
                 <TableHead>Room / Resource</TableHead>
-                <TableHead>Booking Date</TableHead>
+                <TableHead>Stay Window</TableHead>
                 <TableHead>Amount</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
@@ -199,6 +326,9 @@ function ReservationsPage() {
                 const guest = getGuest(r.guest_id);
                 const room = getRoom(r.room_id);
                 const confNum = String(r.id || "RES").slice(0, 10).toUpperCase();
+                const startDateStr = r.start_time ? new Date(r.start_time).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : r.booking_date;
+                const endDateStr = r.end_time ? new Date(r.end_time).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "";
+
                 return (
                   <TableRow key={r.id}>
                     <TableCell className="font-mono text-xs font-semibold text-gold">{confNum}</TableCell>
@@ -215,7 +345,9 @@ function ReservationsPage() {
                         <span className="text-xs text-muted-foreground">General Room</span>
                       )}
                     </TableCell>
-                    <TableCell className="text-xs">{r.booking_date || "—"}</TableCell>
+                    <TableCell className="text-xs">
+                      {startDateStr} {endDateStr ? `→ ${endDateStr}` : ''}
+                    </TableCell>
                     <TableCell className="font-semibold">{inr(r.base_amount || 0)}</TableCell>
                     <TableCell>
                       <Pill tone={r.status === "OCCUPIED" ? "info" : r.status === "CONFIRMED" ? "success" : r.status === "COMPLETED" ? "gold" : "warning"}>
@@ -257,55 +389,49 @@ function ReservationsPage() {
         </div>
         {!reservationRows.length && !blockedRows.length ? (
           <div className="p-8">
-            <EmptyState title="No bookings found" body="Try selecting a different tab or filter." />
+            <EmptyState title="No bookings found" body="Try selecting a different tab or adjusting your timeframe date filter." />
           </div>
         ) : null}
       </Panel>
 
-      {/* Block Room / Out of Service Dialog */}
+      {/* Block Room Dialog */}
       <Dialog open={blockOpen} onOpenChange={setBlockOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Block Room / Out of Service</DialogTitle>
-            <DialogDescription>Take a room out of inventory for maintenance, deep cleaning, or administrative block.</DialogDescription>
+            <DialogDescription>Mark a room key as temporarily unavailable for maintenance or administrative block.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 pt-2">
             <div className="space-y-1.5">
-              <Label>Select Room to Block</Label>
+              <Label>Select Room *</Label>
               <Select value={selectedRoomToBlock} onValueChange={setSelectedRoomToBlock}>
-                <SelectTrigger><SelectValue placeholder="Choose a room" /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Choose room..." /></SelectTrigger>
                 <SelectContent>
-                  {rooms.map((rm) => (
+                  {rooms.map(rm => (
                     <SelectItem key={rm.id} value={rm.id}>
-                      Room {rm.room_number || (rm as any).number} — {rm.room_name || 'Standard'} ({rm.status})
+                      Room {rm.room_number || (rm as any).number} ({rm.status})
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-
             <div className="space-y-1.5">
-              <Label>Block Type / Status</Label>
+              <Label>Block Type</Label>
               <Select value={blockStatus} onValueChange={setBlockStatus}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="OUT OF SERVICE">Out of Service (OOS Block)</SelectItem>
-                  <SelectItem value="MAINTENANCE">Maintenance Hold</SelectItem>
-                  <SelectItem value="DIRTY">Dirty / Turnover</SelectItem>
+                  <SelectItem value="OUT OF SERVICE">Out of Service (Administrative)</SelectItem>
+                  <SelectItem value="MAINTENANCE">Maintenance / Repairs</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-
             <div className="space-y-1.5">
               <Label>Reason / Notes</Label>
-              <Input placeholder="e.g. AC maintenance, painting, VIP hold" value={blockReason} onChange={(e) => setBlockReason(e.target.value)} />
+              <Input placeholder="e.g. AC repair, plumbing overhaul" value={blockReason} onChange={e => setBlockReason(e.target.value)} />
             </div>
-
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="flex justify-end gap-2 pt-2 border-t border-border">
               <Button variant="ghost" onClick={() => setBlockOpen(false)}>Cancel</Button>
-              <Button onClick={handleBlockRoom} className="bg-destructive text-destructive-foreground hover:opacity-90">
-                Confirm Room Block
-              </Button>
+              <Button onClick={handleBlockRoom} className="bg-destructive text-destructive-foreground">Apply Block</Button>
             </div>
           </div>
         </DialogContent>
