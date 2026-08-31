@@ -249,12 +249,12 @@ function ProfitsPage() {
     window.print();
   };
 
-  if (session && session.role !== "SUPER_ADMIN") {
+  if (session && session.role !== "SUPER_ADMIN" && session.role !== "GM") {
     return (
       <div className="space-y-6 pb-12">
         <PageHeader eyebrow="Financial Management" title="Profit & Loss Statement (P&L)" subtitle="Executive Financial Statement" />
         <Panel className="p-12 text-center">
-          <EmptyState title="Super Admin Access Only" body="Profit & Loss reports and executive financial audits are restricted to Super Administrators." icon={ShieldCheck} />
+          <EmptyState title="Executive Access Only" body="Profit & Loss reports and executive financial audits are restricted to Super Administrators and General Managers." icon={ShieldCheck} />
         </Panel>
       </div>
     );

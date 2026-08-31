@@ -76,12 +76,12 @@ function PaymentHistoryPage() {
     );
   });
 
-  if (session && session.role !== "SUPER_ADMIN") {
+  if (session && session.role !== "SUPER_ADMIN" && session.role !== "GM") {
     return (
       <div className="space-y-6 pb-12">
         <PageHeader eyebrow="Finance" title="Payment History & Audit Log" subtitle="Financial Audit Log" />
         <Panel className="p-12 text-center">
-          <EmptyState title="Super Admin Access Only" body="Payment ledger and historical transaction logs are restricted to Super Administrators." icon={Receipt} />
+          <EmptyState title="Executive Access Only" body="Payment ledger and historical transaction logs are restricted to Super Administrators and General Managers." icon={Receipt} />
         </Panel>
       </div>
     );

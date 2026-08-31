@@ -79,10 +79,10 @@ const NAV: { section: string; items: NavItem[] }[] = [
   {
     section: "Finance",
     items: [
-      { to: "/profits", label: "Profit & Loss (P&L)", icon: TrendingUp, roles: ["SUPER_ADMIN"] },
+      { to: "/profits", label: "Profit & Loss (P&L)", icon: TrendingUp, roles: ["SUPER_ADMIN", "GM"] },
       { to: "/payments", label: "Payment Dashboard & Inflow Analytics", icon: Receipt, roles: ["SUPER_ADMIN", "GM"] },
       { to: "/pending-payments", label: "Pending Payments", icon: Receipt },
-      { to: "/payment-history", label: "Payment History", icon: Receipt, roles: ["SUPER_ADMIN"] },
+      { to: "/payment-history", label: "Payment History", icon: Receipt, roles: ["SUPER_ADMIN", "GM"] },
       { to: "/discounts", label: "Raised Discounts", icon: TrendingUp },
       { to: "/expenses", label: "Expenses", icon: Receipt, roles: ["SUPER_ADMIN", "GM"] },
     ],
