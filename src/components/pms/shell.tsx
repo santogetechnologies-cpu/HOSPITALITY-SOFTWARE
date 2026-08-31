@@ -70,7 +70,6 @@ const NAV: { section: string; items: NavItem[] }[] = [
       { to: "/front-desk", label: "Check-In / Out", icon: ConciergeBell },
       { to: "/housekeeping", label: "Cleaning", icon: Sparkles },
       { to: "/party-hall", label: "Party Hall", icon: PartyPopper },
-      { to: "/visitors", label: "Visitors", icon: Users },
       { to: "/complaints", label: "Complaints", icon: Settings },
     ],
   },
@@ -110,7 +109,6 @@ const QUICK_ACTIONS: { label: string; to: string; icon: React.ComponentType<{ cl
   { label: "Pending Folios", to: "/pending-payments", icon: Receipt },
   { label: "Request Discount", to: "/discounts", icon: TrendingUp },
   { label: "Book Party Hall", to: "/party-hall", icon: PartyPopper },
-  { label: "Issue Visitor Pass", to: "/visitors", icon: Users },
   { label: "Log Maintenance Ticket", to: "/complaints", icon: Settings },
   { label: "Housekeeping Tasks", to: "/housekeeping", icon: Sparkles },
 ];
