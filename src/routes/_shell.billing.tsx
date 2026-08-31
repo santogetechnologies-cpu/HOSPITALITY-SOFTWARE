@@ -40,7 +40,7 @@ export const Route = createFileRoute("/_shell/billing")({
   component: BillingPage,
 });
 
-type Timeframe = "1D" | "1W" | "1M" | "CUSTOM";
+type Timeframe = "1D" | "1W" | "1M" | "ALL" | "CUSTOM";
 type PaperSize = "A4" | "A3" | "THERMAL_80" | "THERMAL_58" | "DOT_MATRIX";
 
 function numberToWordsINR(amount: number): string {
@@ -89,7 +89,7 @@ function BillingPage() {
 
   // Timeframe filter state
   const todayStr = new Date().toISOString().split("T")[0];
-  const [timeframe, setTimeframe] = React.useState<Timeframe>("1W");
+  const [timeframe, setTimeframe] = React.useState<Timeframe>("ALL");
   const [customStart, setCustomStart] = React.useState<string>(todayStr);
   const [customEnd, setCustomEnd] = React.useState<string>(todayStr);
   const [searchQuery, setSearchQuery] = React.useState<string>("");
@@ -116,9 +116,11 @@ function BillingPage() {
     const start = new Date();
     start.setHours(0, 0, 0, 0);
 
-    let label = "Last 7 Days";
+    let label = "All Bills (All Time)";
 
-    if (timeframe === "1D") {
+    if (timeframe === "ALL") {
+      label = "All Bills (All Time)";
+    } else if (timeframe === "1D") {
       label = "Today";
     } else if (timeframe === "1W") {
       start.setDate(start.getDate() - 6);
@@ -215,9 +217,14 @@ function BillingPage() {
   // Filtered reservations
   const filteredReservations = React.useMemo(() => {
     return reservations.filter((r) => {
-      const rDateStr = r.booking_date || (r.start_time ? r.start_time.split("T")[0] : todayStr);
-      const rDate = new Date(`${rDateStr}T00:00:00`);
-      if (rDate < startDate || rDate > endDate) return false;
+      if (r.status === "CANCELLED") return false;
+
+      // If search query is entered or timeframe is ALL, skip date bounding
+      if (!searchQuery.trim() && timeframe !== "ALL") {
+        const rDateStr = r.booking_date || (r.start_time ? r.start_time.split("T")[0] : todayStr);
+        const rDate = new Date(`${rDateStr}T00:00:00`);
+        if (rDate < startDate || rDate > endDate) return false;
+      }
 
       if (resourceFilter === "rooms" && r.resource_type !== "ROOM") return false;
       if (resourceFilter === "party_hall" && r.resource_type !== "PARTY_HALL") return false;
@@ -232,17 +239,20 @@ function BillingPage() {
       const room = getRoom(r.room_id);
       const term = searchQuery.toLowerCase().trim();
       const folioNum = `INV-${r.id.slice(0, 8).toUpperCase()}`;
+      const shortId = r.id.toLowerCase();
 
       return (
         r.id.toLowerCase().includes(term) ||
+        shortId.includes(term) ||
         folioNum.toLowerCase().includes(term) ||
         (guest?.name && guest.name.toLowerCase().includes(term)) ||
         (guest?.phone && guest.phone.includes(term)) ||
         (room?.room_number && room.room_number.toLowerCase().includes(term)) ||
-        (r.event_type && r.event_type.toLowerCase().includes(term))
+        (r.event_type && r.event_type.toLowerCase().includes(term)) ||
+        ((r as any).customer_name && (r as any).customer_name.toLowerCase().includes(term))
       );
     });
-  }, [reservations, startDate, endDate, resourceFilter, statusFilter, searchQuery, todayStr, payments, discounts]);
+  }, [reservations, startDate, endDate, resourceFilter, statusFilter, searchQuery, todayStr, payments, discounts, timeframe]);
 
   const kpiData = React.useMemo(() => {
     let totalBilled = 0;
@@ -443,6 +453,14 @@ function BillingPage() {
             <CalendarDays className="size-4 text-gold" />
             <span className="text-xs font-semibold uppercase text-foreground">Date Range:</span>
             <div className="inline-flex rounded-xl bg-secondary/80 p-1">
+              <Button
+                size="sm"
+                variant={timeframe === "ALL" ? "default" : "ghost"}
+                className={timeframe === "ALL" ? "h-7 rounded-lg bg-brass text-gold-foreground shadow-sm text-xs font-semibold" : "h-7 rounded-lg text-xs"}
+                onClick={() => setTimeframe("ALL")}
+              >
+                All Bills
+              </Button>
               <Button
                 size="sm"
                 variant={timeframe === "1D" ? "default" : "ghost"}

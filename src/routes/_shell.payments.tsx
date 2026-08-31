@@ -50,7 +50,7 @@ export const Route = createFileRoute("/_shell/payments")({
   component: PaymentsDashboard,
 });
 
-type Timeframe = "1D" | "1W" | "1M" | "CUSTOM";
+type Timeframe = "1D" | "1W" | "1M" | "ALL" | "CUSTOM";
 
 function downloadCSV(csvContent: string, filename: string) {
   const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
@@ -70,7 +70,7 @@ function PaymentsDashboard() {
 
   // Timeframe filter state
   const todayStr = new Date().toISOString().split("T")[0];
-  const [timeframe, setTimeframe] = React.useState<Timeframe>("1M");
+  const [timeframe, setTimeframe] = React.useState<Timeframe>("ALL");
   const [customStart, setCustomStart] = React.useState<string>(todayStr);
   const [customEnd, setCustomEnd] = React.useState<string>(todayStr);
   const [searchQuery, setSearchQuery] = React.useState<string>("");
@@ -92,9 +92,11 @@ function PaymentsDashboard() {
     const start = new Date();
     start.setHours(0, 0, 0, 0);
 
-    let label = "This Month (30 Days)";
+    let label = "All Time Transactions";
 
-    if (timeframe === "1D") {
+    if (timeframe === "ALL") {
+      label = "All Time Transactions";
+    } else if (timeframe === "1D") {
       label = "Today";
     } else if (timeframe === "1W") {
       start.setDate(start.getDate() - 6);
@@ -142,10 +144,14 @@ function PaymentsDashboard() {
     payments.forEach((p) => {
       if (p.reservation_id) processedResIds.add(p.reservation_id.toLowerCase());
       const res = getReservation(p.reservation_id);
-      const resDateStr = res?.booking_date || (res?.start_time ? res.start_time.split("T")[0] : todayStr);
-      const resDate = new Date(`${resDateStr}T00:00:00`);
+      
+      if (!searchQuery.trim() && timeframe !== "ALL") {
+        const resDateStr = res?.booking_date || (res?.start_time ? res.start_time.split("T")[0] : todayStr);
+        const resDate = new Date(`${resDateStr}T00:00:00`);
+        if (resDate < startDate || resDate > endDate) return;
+      }
 
-      if (resDate < startDate || resDate > endDate) return;
+      const resDateStr = res?.booking_date || (res?.start_time ? res.start_time.split("T")[0] : todayStr);
 
       const isPartyHall = res?.resource_type === "PARTY_HALL";
       if (resourceFilter === "rooms" && isPartyHall) return;
@@ -189,13 +195,19 @@ function PaymentsDashboard() {
 
       const searchLower = searchQuery.toLowerCase().trim();
       const invoiceNum = `INV-${String(p.reservation_id || p.id).slice(0, 8).toUpperCase()}`;
+      const rawResId = String(p.reservation_id || "").toLowerCase();
+      const rawPayId = String(p.id || "").toLowerCase();
+
       if (
         searchLower &&
         !invoiceNum.toLowerCase().includes(searchLower) &&
+        !rawResId.includes(searchLower) &&
+        !rawPayId.includes(searchLower) &&
         !guest?.name?.toLowerCase().includes(searchLower) &&
         !guest?.phone?.includes(searchLower) &&
         !room?.room_number?.toLowerCase().includes(searchLower) &&
-        !res?.event_type?.toLowerCase().includes(searchLower)
+        !res?.event_type?.toLowerCase().includes(searchLower) &&
+        !((res as any)?.customer_name && (res as any).customer_name.toLowerCase().includes(searchLower))
       ) {
         return;
       }
@@ -468,6 +480,14 @@ function PaymentsDashboard() {
             <CalendarDays className="size-4 text-gold" />
             <span className="text-xs font-semibold uppercase text-foreground">Audit Period:</span>
             <div className="inline-flex rounded-xl bg-secondary/80 p-1">
+              <Button
+                size="sm"
+                variant={timeframe === "ALL" ? "default" : "ghost"}
+                className={timeframe === "ALL" ? "h-7 rounded-lg bg-brass text-gold-foreground shadow-sm text-xs font-semibold" : "h-7 rounded-lg text-xs"}
+                onClick={() => setTimeframe("ALL")}
+              >
+                All Time
+              </Button>
               <Button
                 size="sm"
                 variant={timeframe === "1D" ? "default" : "ghost"}
