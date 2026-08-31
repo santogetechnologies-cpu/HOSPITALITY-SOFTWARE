@@ -47,63 +47,6 @@ type State = {
   businessDate: string;
 };
 
-export const DEFAULT_STAFF_PROFILES: Profile[] = [
-  {
-    id: "a0000000-0000-0000-0000-000000000001",
-    name: "DRB Hotel Admin",
-    email: "drbhoteladmin@drb.com",
-    phone: "+91 98765 00001",
-    role: "SUPER_ADMIN",
-    status: "ACTIVE",
-    pin: "admin123"
-  },
-  {
-    id: "a0000000-0000-0000-0000-000000000002",
-    name: "Rajesh Sharma",
-    email: "gm@drbhotel.com",
-    phone: "+91 98765 43210",
-    role: "GM",
-    status: "ACTIVE",
-    pin: "gm2026"
-  },
-  {
-    id: "a0000000-0000-0000-0000-000000000003",
-    name: "Priya Sharma",
-    email: "priya.desk@drbhotel.com",
-    phone: "+91 98765 43211",
-    role: "FRONT_DESK",
-    status: "ACTIVE",
-    pin: "desk101"
-  },
-  {
-    id: "a0000000-0000-0000-0000-000000000004",
-    name: "Amit Verma",
-    email: "amit.desk@drbhotel.com",
-    phone: "+91 98765 43212",
-    role: "FRONT_DESK",
-    status: "ACTIVE",
-    pin: "desk102"
-  },
-  {
-    id: "a0000000-0000-0000-0000-000000000005",
-    name: "Sunita Mehra",
-    email: "sunita.hk@drbhotel.com",
-    phone: "+91 98765 43213",
-    role: "FRONT_DESK",
-    status: "ACTIVE",
-    pin: "hk103"
-  },
-  {
-    id: "a0000000-0000-0000-0000-000000000006",
-    name: "Karan Patel",
-    email: "karan.patel@drbhotel.com",
-    phone: "+91 98765 43214",
-    role: "FRONT_DESK",
-    status: "INACTIVE",
-    pin: "karan2026"
-  }
-];
-
 const initialState: State = {
   session: null,
   rooms: [],
@@ -112,7 +55,7 @@ const initialState: State = {
   payments: [],
   discounts: [],
   expenses: [],
-  profiles: DEFAULT_STAFF_PROFILES,
+  profiles: [],
   notifications: [],
   tickets: [],
   hkTasks: [],
@@ -179,7 +122,8 @@ type Ctx = State & {
   assignTask: (taskId: string, assignee: string) => Promise<void>;
   addOrder: (o: Omit<PosOrder, "id" | "time">) => void;
   addEvent: (e: Omit<EventBooking, "id">) => void;
-  addGuest: (g: Omit<Guest, "id">) => Promise<{id: string, success: boolean}>;
+  addPayment: (p: Omit<Payment, "id">) => void;
+  addGuest: (g: Omit<Guest, "id">) => Promise<{id: string, success: boolean, error?: string}>;
   markAllRead: () => void;
   toggleRead: (id: string) => void;
   pushNotification: (n: Omit<Notification, "id" | "read" | "time">) => void;
@@ -188,7 +132,7 @@ type Ctx = State & {
   addPartyHallBooking: (b: { customerName: string; phone: string; email: string; eventType: string; guests: number; date: string; startTime: string; endTime: string; baseAmount: number; advance: number; }) => Promise<{ success: boolean; error?: string }>;
   
   // Finance Mutators
-  settlePayment: (paymentId: string, amount: number) => Promise<{ success: boolean; error?: string }>;
+  settlePayment: (paymentId: string, amount: number, method?: "CASH" | "UPI" | "CARD" | "BANK_TRANSFER" | "OTHER") => Promise<{ success: boolean; error?: string }>;
   freezePayment: (paymentId: string) => Promise<{ success: boolean; error?: string }>;
   requestDiscount: (reservationId: string, amount: number, reason: string) => Promise<{ success: boolean; error?: string }>;
   resolveDiscount: (discountId: string, status: "APPROVED" | "REJECTED") => Promise<{ success: boolean; error?: string }>;
@@ -244,15 +188,6 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         supabase.from('tickets').select('*')
       ]);
 
-      let resolvedProfiles = (profiles as any) || [];
-      if (!resolvedProfiles || resolvedProfiles.length === 0) {
-        resolvedProfiles = DEFAULT_STAFF_PROFILES;
-        // Non-blocking sync to Supabase so table is populated
-        supabase.from('profiles').upsert(DEFAULT_STAFF_PROFILES).catch(err => {
-          console.warn("Auto-seeding profiles to Supabase:", err);
-        });
-      }
-
       setState(s => ({
         ...s,
         rooms: (rooms as any) || [],
@@ -261,7 +196,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         payments: (payments as any) || [],
         discounts: (discounts as any) || [],
         expenses: (expenses as any) || [],
-        profiles: resolvedProfiles,
+        profiles: (profiles as any) || [],
         notifications: (notifications as any) || [],
         hkTasks: (hkTasks as any) || [],
         tickets: (tickets as any) || []
