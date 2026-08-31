@@ -535,14 +535,14 @@ export function PartyHallPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-4 pt-4 border-t border-border">
-                <div className="space-y-2">
+              <div className="grid grid-cols-4 gap-3 pt-4 border-t border-border">
+                <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <Label>Package Price (₹) *</Label>
+                    <Label className="text-xs">Base Tariff (₹) *</Label>
                     <button
                       type="button"
                       onClick={handleApplyHourlyEstimate}
-                      className="text-[10px] font-semibold text-gold hover:underline bg-gold/10 hover:bg-gold/20 px-1.5 py-0.5 rounded cursor-pointer transition-colors"
+                      className="text-[10px] font-semibold text-gold hover:underline bg-gold/10 hover:bg-gold/20 px-1 py-0.5 rounded cursor-pointer transition-colors"
                       title="Click to calculate from hourly rate"
                     >
                       {bookingDuration}h est: {inr(calculateHallPrice(form.startTime, form.endTime, hourlyRate))}
@@ -551,21 +551,48 @@ export function PartyHallPage() {
                   <Input
                     type="number"
                     required
-                    placeholder="Enter custom package price"
+                    placeholder="Base price"
                     value={form.baseAmount}
-                    onChange={(e) => setForm({ ...form, baseAmount: e.target.value })}
+                    onChange={(e) => {
+                      const base = parseFloat(e.target.value) || 0;
+                      const gst = Number(((base * 5) / 100).toFixed(2));
+                      const grand = base + gst;
+                      setForm({ ...form, baseAmount: e.target.value, advance: String(grand) });
+                    }}
                   />
-                  <div className="text-[10px] text-muted-foreground">Custom price · Always editable</div>
+                  <div className="text-[10px] text-muted-foreground">Custom package rate</div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Advance Received (₹)</Label>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs">GST 5% (₹)</Label>
+                  <div className="h-9 px-3 py-2 rounded-md border border-input bg-muted/50 text-xs font-mono font-medium flex items-center">
+                    +{inr(Number((((parseFloat(form.baseAmount) || 0) * 5) / 100).toFixed(2)))}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground">2.5% CGST + 2.5% SGST</div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold text-foreground">Grand Total (₹)</Label>
+                  <div className="h-9 px-3 py-2 rounded-md border border-input bg-gold/10 text-xs font-mono font-bold text-gold flex items-center">
+                    {inr((parseFloat(form.baseAmount) || 0) + Number((((parseFloat(form.baseAmount) || 0) * 5) / 100).toFixed(2)))}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground">Total Bill Payable</div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold text-foreground">Advance Paid (₹) *</Label>
                   <Input
                     type="number"
                     required
+                    className="font-bold text-emerald-600"
                     value={form.advance}
                     onChange={(e) => setForm({ ...form, advance: e.target.value })}
                   />
+                  <div className="text-[10px] text-muted-foreground">Collected upfront</div>
                 </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 pt-1">
                 <div className="space-y-2">
                   <Label>Payment Mode</Label>
                   <Select
@@ -583,6 +610,14 @@ export function PartyHallPage() {
                       <SelectItem value="OTHER">Other / Bill to Company</SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+                <div className="flex items-end pb-2">
+                  <div className="text-xs text-muted-foreground">
+                    Status:{" "}
+                    <span className={parseFloat(form.advance) >= (parseFloat(form.baseAmount) || 0) + Number((((parseFloat(form.baseAmount) || 0) * 5) / 100).toFixed(2)) ? "font-bold text-emerald-600" : "font-bold text-amber-600"}>
+                      {parseFloat(form.advance) >= (parseFloat(form.baseAmount) || 0) + Number((((parseFloat(form.baseAmount) || 0) * 5) / 100).toFixed(2)) ? "PAID IN FULL (₹0 Due)" : "PARTIAL / ADVANCE"}
+                    </span>
+                  </div>
                 </div>
               </div>
 

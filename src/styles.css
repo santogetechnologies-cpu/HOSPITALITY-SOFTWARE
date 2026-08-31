@@ -239,3 +239,56 @@
     border-radius: 999px;
   }
 }
+
+/* 
+ * Print Media Isolation for Official Tax Invoices & Folios
+ */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 8mm 10mm;
+  }
+
+  html, body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    height: auto !important;
+    overflow: visible !important;
+    font-size: 11pt !important;
+  }
+
+  /* Hide everything in the PMS shell, sidebar, dialog overlays, header buttons */
+  body * {
+    visibility: hidden !important;
+  }
+
+  /* Isolate and print only the active printable bill */
+  #printable-bill,
+  #printable-bill * {
+    visibility: visible !important;
+  }
+
+  #printable-bill {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    z-index: 9999999 !important;
+    overflow: visible !important;
+  }
+
+  /* Prevent awkward page break cuts */
+  table, tr, td, th, .no-break {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+}
+

@@ -139,6 +139,14 @@ export function FrontDesk() {
     notes: "",
   });
 
+  const calcRoomTotals = (ratePerNight: number, nights: number) => {
+    const n = Math.max(1, nights);
+    const base = ratePerNight * n;
+    const gst = Number(((base * 5) / 100).toFixed(2));
+    const grand = base + gst;
+    return { baseAmount: base, gstAmount: gst, totalAmount: grand };
+  };
+
   const handleStartDateChange = (newStart: string) => {
     const sDate = new Date(newStart);
     let eDate = new Date(b.endDate);
@@ -149,12 +157,19 @@ export function FrontDesk() {
     }
     const calcNights = Math.max(1, Math.round((eDate.getTime() - sDate.getTime()) / (1000 * 60 * 60 * 24)));
     const newEndStr = eDate.toISOString().split("T")[0];
+    
+    const selRoom = rooms.find(r => r.id === b.roomId);
+    const pricePerNight = Number(selRoom?.price) || (b.nights > 0 ? b.baseAmount / b.nights : 0);
+    const { baseAmount, totalAmount } = calcRoomTotals(pricePerNight, calcNights);
+
     setB({
       ...b,
       startDate: newStart,
       endDate: newEndStr,
       nights: calcNights,
-      totalAmount: b.baseAmount * calcNights,
+      baseAmount,
+      totalAmount,
+      paidAmount: totalAmount,
     });
   };
 
@@ -166,11 +181,17 @@ export function FrontDesk() {
       return;
     }
     const calcNights = Math.max(1, Math.round((eDate.getTime() - sDate.getTime()) / (1000 * 60 * 60 * 24)));
+    const selRoom = rooms.find(r => r.id === b.roomId);
+    const pricePerNight = Number(selRoom?.price) || (b.nights > 0 ? b.baseAmount / b.nights : 0);
+    const { baseAmount, totalAmount } = calcRoomTotals(pricePerNight, calcNights);
+
     setB({
       ...b,
       endDate: newEnd,
       nights: calcNights,
-      totalAmount: b.baseAmount * calcNights,
+      baseAmount,
+      totalAmount,
+      paidAmount: totalAmount,
     });
   };
 
@@ -179,11 +200,17 @@ export function FrontDesk() {
     const sDate = new Date(b.startDate);
     sDate.setDate(sDate.getDate() + nights);
     const newEndStr = sDate.toISOString().split("T")[0];
+    const selRoom = rooms.find(r => r.id === b.roomId);
+    const pricePerNight = Number(selRoom?.price) || (b.nights > 0 ? b.baseAmount / b.nights : 0);
+    const { baseAmount, totalAmount } = calcRoomTotals(pricePerNight, nights);
+
     setB({
       ...b,
       nights,
       endDate: newEndStr,
-      totalAmount: b.baseAmount * nights,
+      baseAmount,
+      totalAmount,
+      paidAmount: totalAmount,
     });
   };
 
@@ -729,11 +756,13 @@ export function FrontDesk() {
                     onValueChange={(v) => {
                       const room = rooms.find((r) => r.id === v);
                       if (room) {
+                        const { baseAmount, totalAmount } = calcRoomTotals(Number(room.price) || 0, b.nights);
                         setB({
                           ...b,
                           roomId: v,
-                          baseAmount: room.price,
-                          totalAmount: room.price * b.nights,
+                          baseAmount,
+                          totalAmount,
+                          paidAmount: totalAmount,
                         });
                       }
                     }}
@@ -877,37 +906,65 @@ export function FrontDesk() {
 
             {/* Section 3: Billing & Payment Settlement */}
             <div className="rounded-xl border border-border p-4 space-y-3 bg-secondary/10">
-              <div className="flex items-center gap-2 text-xs font-semibold uppercase text-gold">
-                <CreditCard className="size-4" /> 3. Billing & Payment Settlement
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase text-gold">
+                  <CreditCard className="size-4" /> 3. Billing & Payment Settlement
+                </div>
+                <div className="text-xs font-semibold text-muted-foreground">
+                  GST 5% (2.5% CGST + 2.5% SGST) Included
+                </div>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-4">
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Room Rate (₹ / Night)</Label>
+                  <Label className="text-xs font-medium">Base Tariff (₹)</Label>
                   <Input
                     type="number"
                     value={b.baseAmount}
                     onChange={(e) => {
                       const base = parseFloat(e.target.value) || 0;
-                      setB({ ...b, baseAmount: base, totalAmount: base * b.nights });
+                      const gst = Number(((base * 5) / 100).toFixed(2));
+                      const grand = base + gst;
+                      setB({ ...b, baseAmount: base, totalAmount: grand, paidAmount: grand });
                     }}
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Total Bill Amount (₹)</Label>
+                  <Label className="text-xs font-medium">GST 5% (₹)</Label>
+                  <div className="h-9 px-3 py-2 rounded-md border border-input bg-muted/50 text-xs font-mono font-medium flex items-center">
+                    +{inr(Number(((b.baseAmount * 5) / 100).toFixed(2)))}
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold text-foreground">Grand Total Bill (₹)</Label>
                   <Input
                     type="number"
+                    className="font-bold text-gold"
                     value={b.totalAmount}
-                    onChange={(e) => setB({ ...b, totalAmount: parseFloat(e.target.value) || 0 })}
+                    onChange={(e) => {
+                      const grand = parseFloat(e.target.value) || 0;
+                      const base = Math.round(grand / 1.05);
+                      setB({ ...b, totalAmount: grand, baseAmount: base });
+                    }}
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Advance Paid / Deposit (₹)</Label>
+                  <Label className="text-xs font-bold text-foreground">Amount Paid / Advance (₹)</Label>
                   <Input
                     type="number"
+                    className="font-bold text-emerald-600"
                     value={b.paidAmount}
                     onChange={(e) => setB({ ...b, paidAmount: parseFloat(e.target.value) || 0 })}
                   />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between text-xs pt-1 px-1 text-muted-foreground border-t border-border/50">
+                <div>
+                  Payment Status:{" "}
+                  <span className={b.paidAmount >= b.totalAmount && b.totalAmount > 0 ? "font-bold text-emerald-600" : "font-bold text-amber-600"}>
+                    {b.paidAmount >= b.totalAmount && b.totalAmount > 0 ? "PAID IN FULL (₹0 Balance)" : `ADVANCE PAID (Balance Due: ${inr(Math.max(0, b.totalAmount - b.paidAmount))})`}
+                  </span>
                 </div>
               </div>
 
