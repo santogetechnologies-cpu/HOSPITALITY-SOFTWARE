@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePms, type Role } from "@/lib/pms-store";
+import { drbLogo } from "@/lib/assets";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -158,9 +159,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       >
         <div className="flex min-h-0 flex-col">
           <div className="flex items-center gap-3 px-5 py-6">
-            <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-brass text-sm font-bold text-gold-foreground">
-              DRB
-            </span>
+            <img
+              src={drbLogo}
+              alt="DRB Hotel"
+              className="size-11 shrink-0 rounded-xl bg-sidebar-accent/60 p-1 object-contain shadow-soft"
+            />
             {!collapsed ? (
               <div className="min-w-0">
                 <div className="text-display truncate text-lg font-semibold tracking-wide text-sidebar-accent-foreground">
@@ -268,9 +271,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <header className="sticky top-0 z-30 border-b border-border bg-background/85 backdrop-blur-xl">
           <div className="flex flex-wrap items-center gap-3 px-4 py-3 md:px-6">
             <Link to="/dashboard" className="flex items-center gap-2 lg:hidden">
-              <span className="grid size-9 place-items-center rounded-lg bg-brass text-[11px] font-bold text-gold-foreground">
-                DRB
-              </span>
+              <img
+                src={drbLogo}
+                alt="DRB Hotel"
+                className="size-9 shrink-0 rounded-lg bg-card border border-border p-0.5 object-contain"
+              />
             </Link>
             <button
               onClick={() => setSearchOpen(true)}

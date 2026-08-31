@@ -14,6 +14,7 @@ import { reportLovableError } from "../lib/lovable-error-reporting";
 import { PmsProvider } from "@/lib/pms-store";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { drbLogo } from "@/lib/assets";
 
 function NotFoundComponent() {
   return (
@@ -88,7 +89,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { title: "DRB Hotel PMS" },
       { name: "description", content: "DRB Hotel Property Management System" },
       { property: "og:type", content: "website" },
+      { property: "og:title", content: "DRB Hotel PMS" },
+      { property: "og:description", content: "DRB Hotel Property Management System" },
+      { property: "og:image", content: drbLogo },
       { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:title", content: "DRB Hotel PMS" },
+      { name: "twitter:description", content: "DRB Hotel Property Management System" },
+      { name: "twitter:image", content: drbLogo },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
@@ -98,7 +105,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         rel: "stylesheet",
         href: "https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap",
       },
-      { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
+      { rel: "icon", href: drbLogo, type: "image/png" },
+      { rel: "apple-touch-icon", href: drbLogo },
     ],
   }),
   shellComponent: RootShell,

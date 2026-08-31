@@ -7,6 +7,7 @@ import { usePms, useHydrated } from "@/lib/pms-store";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { ShieldCheck, Sparkles, BedDouble, ArrowRight, KeyRound } from "lucide-react";
+import { drbLogo } from "@/lib/assets";
 
 // DRB Hotel PMS Sign In Route
 export const Route = createFileRoute("/")({
@@ -24,6 +25,8 @@ export const Route = createFileRoute("/")({
         content:
           "Premium hotel property management: reservations, front desk, room status, housekeeping, revenue and night audit.",
       },
+      { property: "og:image", content: drbLogo },
+      { name: "twitter:image", content: drbLogo },
     ],
   }),
   component: LoginPage,
@@ -71,10 +74,12 @@ function LoginPage() {
           style={{ background: "var(--gradient-brass)" }}
         />
         <div className="relative">
-          <div className="flex items-center gap-3">
-            <span className="grid size-12 place-items-center rounded-xl bg-brass text-sm font-bold text-gold-foreground">
-              DRB
-            </span>
+          <div className="flex items-center gap-3.5">
+            <img
+              src={drbLogo}
+              alt="DRB Hotel"
+              className="size-14 rounded-2xl bg-sidebar-accent/60 p-1.5 object-contain shadow-soft"
+            />
             <div>
               <div className="text-display text-2xl font-semibold tracking-[0.16em]">DRB HOTEL</div>
               <div className="text-[11px] uppercase tracking-[0.22em] text-gold">
@@ -118,10 +123,17 @@ function LoginPage() {
       {/* Form panel */}
       <div className="flex items-center justify-center bg-background px-5 py-12 md:px-12">
         <div className="w-full max-w-md">
-          <div className="mb-8 lg:hidden">
-            <div className="text-display text-2xl font-semibold tracking-[0.16em]">DRB HOTEL</div>
-            <div className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-              Property Management System
+          <div className="mb-8 flex items-center gap-3 lg:hidden">
+            <img
+              src={drbLogo}
+              alt="DRB Hotel"
+              className="size-12 rounded-xl bg-card border border-border p-1 object-contain shadow-sm"
+            />
+            <div>
+              <div className="text-display text-2xl font-semibold tracking-[0.16em]">DRB HOTEL</div>
+              <div className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+                Property Management System
+              </div>
             </div>
           </div>
 
