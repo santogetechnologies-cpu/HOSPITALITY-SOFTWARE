@@ -84,20 +84,27 @@ export function PartyHallPage() {
     date: new Date().toISOString().split("T")[0],
     startTime: "10:00",
     endTime: "14:00",
-    baseAmount: String(calculateHallPrice("10:00", "14:00", hourlyRate)),
-    advance: "500",
+    baseAmount: "12000",
+    advance: "2000",
     paymentMethod: "CASH" as "CASH" | "UPI" | "CARD" | "BANK_TRANSFER" | "OTHER",
   });
 
-  // Auto update base amount when times or rate changes
+  // Update times without overwriting user's custom package price
   const updateTimes = (start: string, end: string) => {
-    const calculated = calculateHallPrice(start, end, hourlyRate);
     setForm((prev) => ({
       ...prev,
       startTime: start,
       endTime: end,
+    }));
+  };
+
+  const handleApplyHourlyEstimate = () => {
+    const calculated = calculateHallPrice(form.startTime, form.endTime, hourlyRate);
+    setForm((prev) => ({
+      ...prev,
       baseAmount: String(calculated),
     }));
+    toast.info(`Package price set to estimated ${inr(calculated)}`);
   };
 
   // Extra Charges / Overtime Modal State
@@ -531,17 +538,24 @@ export function PartyHallPage() {
               <div className="grid grid-cols-3 gap-4 pt-4 border-t border-border">
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <Label>Total Package (₹) *</Label>
-                    <span className="text-[10px] font-semibold text-gold bg-gold/10 px-1.5 py-0.5 rounded">
-                      {bookingDuration} hrs @ {inr(hourlyRate)}/hr
-                    </span>
+                    <Label>Package Price (₹) *</Label>
+                    <button
+                      type="button"
+                      onClick={handleApplyHourlyEstimate}
+                      className="text-[10px] font-semibold text-gold hover:underline bg-gold/10 hover:bg-gold/20 px-1.5 py-0.5 rounded cursor-pointer transition-colors"
+                      title="Click to calculate from hourly rate"
+                    >
+                      {bookingDuration}h est: {inr(calculateHallPrice(form.startTime, form.endTime, hourlyRate))}
+                    </button>
                   </div>
                   <Input
                     type="number"
                     required
+                    placeholder="Enter custom package price"
                     value={form.baseAmount}
                     onChange={(e) => setForm({ ...form, baseAmount: e.target.value })}
                   />
+                  <div className="text-[10px] text-muted-foreground">Custom price · Always editable</div>
                 </div>
                 <div className="space-y-2">
                   <Label>Advance Received (₹)</Label>

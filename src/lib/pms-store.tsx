@@ -11,7 +11,8 @@ import {
   type Expense,
   type Profile,
   type HkTask,
-  type Ticket
+  type Ticket,
+  CANONICAL_ROOMS
 } from "./pms-data";
 
 export type Role = "SUPER_ADMIN" | "GM" | "FRONT_DESK" | "PENDING";
@@ -303,9 +304,59 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
+      let loadedRooms: any[] = (rooms as any) || [];
+
+      // Reconcile and seed exact 25 canonical rooms from user specifications
+      const reconciledRooms: any[] = [];
+      for (const canon of CANONICAL_ROOMS) {
+        const found = loadedRooms.find((r: any) => 
+          (r.room_number || r.number)?.toString().trim() === canon.room_number
+        );
+        if (found) {
+          const updated = {
+            ...found,
+            room_number: canon.room_number,
+            room_name: canon.room_name,
+            floor: canon.floor,
+            price: canon.price, // direct amount
+            capacity: canon.capacity,
+            is_active: true,
+          };
+          reconciledRooms.push(updated);
+          // If in DB the price, floor, or name was different, sync DB
+          if (found.price !== canon.price || found.room_name !== canon.room_name || found.floor !== canon.floor) {
+            void supabase.from('rooms').update({
+              room_name: canon.room_name,
+              floor: canon.floor,
+              price: canon.price,
+              capacity: canon.capacity,
+              is_active: true
+            }).eq('id', found.id);
+          }
+        } else {
+          const newRoom = {
+            id: `room-${canon.room_number}`,
+            room_number: canon.room_number,
+            room_name: canon.room_name,
+            floor: canon.floor,
+            price: canon.price,
+            capacity: canon.capacity,
+            status: 'AVAILABLE' as const,
+            is_active: true,
+            amenities: [],
+            photos: []
+          };
+          reconciledRooms.push(newRoom);
+          void supabase.from('rooms').upsert(newRoom);
+        }
+      }
+
+      // Sort naturally by room number
+      reconciledRooms.sort((a, b) => parseInt(a.room_number, 10) - parseInt(b.room_number, 10));
+
       setState(s => ({
         ...s,
-        rooms: (rooms as any) || [],
+        rooms: reconciledRooms,
         reservations: loadedReservations,
         guests: loadedGuests,
         payments: loadedPayments,

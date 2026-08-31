@@ -176,6 +176,41 @@ function ProfitsPage() {
 
   const otherRevenue = Math.max(0, totalGrossRevenue - roomRevenue - hallRevenue);
 
+  // Payment Breakdown by Inflow Channel
+  const paymentMethodSummary = React.useMemo(() => {
+    const summary: Record<string, { total: number; count: number }> = {
+      "UPI / QR Codes": { total: 0, count: 0 },
+      "Card (POS)": { total: 0, count: 0 },
+      "Cash in Drawer": { total: 0, count: 0 },
+      "Bank Transfers / Other": { total: 0, count: 0 },
+    };
+
+    filteredPayments.forEach((p) => {
+      const amt = Number(p.paid_amount) || 0;
+      if (amt <= 0) return;
+      const method = String(p.payment_method || "CASH").toUpperCase();
+      if (method.includes("UPI") || method.includes("GPAY") || method.includes("PHONEPE") || method.includes("QR") || method.includes("PAYTM")) {
+        summary["UPI / QR Codes"].total += amt;
+        summary["UPI / QR Codes"].count += 1;
+      } else if (method.includes("CARD") || method.includes("POS") || method.includes("DEBIT") || method.includes("CREDIT")) {
+        summary["Card (POS)"].total += amt;
+        summary["Card (POS)"].count += 1;
+      } else if (method.includes("CASH")) {
+        summary["Cash in Drawer"].total += amt;
+        summary["Cash in Drawer"].count += 1;
+      } else {
+        summary["Bank Transfers / Other"].total += amt;
+        summary["Bank Transfers / Other"].count += 1;
+      }
+    });
+
+    return Object.entries(summary).map(([name, data]) => ({
+      name,
+      value: data.total,
+      count: data.count,
+    }));
+  }, [filteredPayments]);
+
   // Daily Trend Data with EXACT Calendar Dates (No Mock Day 1..Day 7)
   const dailyFinancialTrend = React.useMemo(() => {
     const points: { day: string; dateStr: string; revenue: number; expense: number; profit: number }[] = [];
@@ -379,8 +414,8 @@ function ProfitsPage() {
         </div>
       </Panel>
 
-      {/* Revenue Split & Expense Distribution */}
-      <div className="grid gap-6 xl:grid-cols-2">
+      {/* Revenue Split, Expense Distribution & Payment Channels */}
+      <div className="grid gap-6 xl:grid-cols-3">
         {/* Expense Breakdown */}
         <Panel
           title="Operating Expenses by Category"
@@ -430,6 +465,32 @@ function ProfitsPage() {
                   </div>
                   <div className="mt-2">
                     <ProgressBar value={pct} tone="success" />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Panel>
+
+        {/* Payment Methods Breakdown */}
+        <Panel
+          title="Inflow by Payment Channel"
+          description={`Settlement mode distribution for ${dateRangeLabel}`}
+        >
+          <div className="space-y-3 pt-2">
+            {paymentMethodSummary.map((m) => {
+              const pct = totalGrossRevenue > 0 ? Math.round((m.value / totalGrossRevenue) * 100) : 0;
+              return (
+                <div key={m.name} className="rounded-xl border border-border p-3 bg-secondary/30">
+                  <div className="flex justify-between items-center text-xs font-semibold">
+                    <span className="flex items-center gap-1.5">
+                      <span>{m.name}</span>
+                      <span className="text-[10px] text-muted-foreground font-normal">({m.count} txns)</span>
+                    </span>
+                    <span className="font-bold text-gold">{inr(m.value)} ({pct}%)</span>
+                  </div>
+                  <div className="mt-2">
+                    <ProgressBar value={pct} tone="gold" />
                   </div>
                 </div>
               );

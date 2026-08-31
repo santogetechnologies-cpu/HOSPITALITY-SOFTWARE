@@ -5,12 +5,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { usePms } from '@/lib/pms-store'
+import { useSettings } from '@/lib/use-settings'
 import { inr } from '@/lib/pms-data'
 import { toast } from 'sonner'
-import { PiggyBank, Plus, CheckCircle2, XCircle, Lock, User, FileText, ArrowRight } from 'lucide-react'
+import { PiggyBank, Plus, CheckCircle2, XCircle, Lock, User, FileText, ArrowRight, ShieldCheck, ShieldAlert, KeyRound } from 'lucide-react'
 
 export const Route = createFileRoute('/_shell/discounts')({
   component: DiscountsPage,
@@ -18,6 +20,7 @@ export const Route = createFileRoute('/_shell/discounts')({
 
 function DiscountsPage() {
   const { discounts, reservations, guests, rooms, requestDiscount, resolveDiscount, session } = usePms();
+  const { settings, updatePolicySettings } = useSettings();
   const [open, setOpen] = React.useState(false);
   const [resId, setResId] = React.useState("");
   const [percent, setPercent] = React.useState("");
@@ -115,7 +118,13 @@ function DiscountsPage() {
   const getGuestName = (guestId?: string) => guests.find(g => g.id === guestId)?.name || "Guest";
   const getRoomNumber = (roomId?: string) => rooms.find(r => r.id === roomId)?.room_number || "Room";
 
-  const isSuperAdminOrGM = session?.role === 'SUPER_ADMIN' || session?.role === 'GM' || !session;
+  const isSuperAdmin = session?.role === 'SUPER_ADMIN' || !session;
+  const isGM = session?.role === 'GM';
+  const isFrontDesk = session?.role === 'FRONT_DESK';
+
+  const canApprove = isSuperAdmin || 
+    (isGM && Boolean(settings.allowGmDiscountApproval)) || 
+    (isFrontDesk && Boolean(settings.allowFrontDeskDiscountApproval));
 
   return (
     <div className="space-y-6 pb-12">
@@ -228,7 +237,65 @@ function DiscountsPage() {
         }
       />
 
-      {isSuperAdminOrGM && (
+      {/* Super Admin Approval Governance Panel */}
+      {isSuperAdmin && (
+        <Panel
+          title="Approval Governance & Access Permissions"
+          description="Control which staff roles are allowed to review, approve, or reject discount adjustments"
+          className="border-gold/30 bg-gradient-to-r from-gold/5 via-card to-card"
+        >
+          <div className="grid gap-4 sm:grid-cols-2 pt-2">
+            <div className="flex items-center justify-between p-3.5 rounded-xl border border-border/80 bg-secondary/30">
+              <div className="space-y-0.5">
+                <div className="text-sm font-semibold flex items-center gap-1.5">
+                  <ShieldCheck className="size-4 text-gold" />
+                  General Manager (GM) Approval
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Allow General Managers to approve & reject discount requests
+                </div>
+              </div>
+              <Switch
+                checked={Boolean(settings.allowGmDiscountApproval)}
+                onCheckedChange={(val) => {
+                  updatePolicySettings({ allowGmDiscountApproval: val });
+                  toast.success(`GM Discount Approval ${val ? "Enabled" : "Disabled"}`);
+                }}
+              />
+            </div>
+
+            <div className="flex items-center justify-between p-3.5 rounded-xl border border-border/80 bg-secondary/30">
+              <div className="space-y-0.5">
+                <div className="text-sm font-semibold flex items-center gap-1.5">
+                  <KeyRound className="size-4 text-gold" />
+                  Front Desk Staff Approval
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Allow Front Desk operators to approve & reject discount requests
+                </div>
+              </div>
+              <Switch
+                checked={Boolean(settings.allowFrontDeskDiscountApproval)}
+                onCheckedChange={(val) => {
+                  updatePolicySettings({ allowFrontDeskDiscountApproval: val });
+                  toast.success(`Front Desk Discount Approval ${val ? "Enabled" : "Disabled"}`);
+                }}
+              />
+            </div>
+          </div>
+        </Panel>
+      )}
+
+      {!canApprove && (
+        <div className="rounded-xl border border-border/80 bg-secondary/20 p-4 flex items-center gap-3">
+          <ShieldAlert className="size-5 text-warning shrink-0" />
+          <div className="text-xs text-muted-foreground">
+            <span className="font-semibold text-foreground">Super Admin Approval Required:</span> Your current role ({session?.role || "Staff"}) can request rate discounts using the button above. All requested discounts are routed to Super Admin for real-time review and authorization before applying to guest folios.
+          </div>
+        </div>
+      )}
+
+      {canApprove && (
         <Panel 
           title="Pending Approvals" 
           description="Review and approve discount requests before they apply to the folio"

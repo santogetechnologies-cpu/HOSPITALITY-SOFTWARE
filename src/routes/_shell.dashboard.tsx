@@ -24,6 +24,11 @@ import {
   Sparkles,
   ArrowUpRight,
   CalendarDays,
+  QrCode,
+  CreditCard,
+  Banknote,
+  Landmark,
+  Receipt,
 } from "lucide-react";
 import { KpiCard, PageHeader, Panel, Pill, ProgressBar, RoomCard, StatusLegend } from "@/components/pms/bits";
 import { Button } from "@/components/ui/button";
@@ -104,6 +109,49 @@ function Dashboard() {
 
   const periodRevenue = React.useMemo(() => {
     return filteredPayments.reduce((acc, p) => acc + (Number(p.paid_amount) || 0), 0);
+  }, [filteredPayments]);
+
+  // Payment Breakdown by Method for GM and Front Desk
+  const paymentBreakdown = React.useMemo(() => {
+    let upi = { total: 0, count: 0 };
+    let card = { total: 0, count: 0 };
+    let cash = { total: 0, count: 0 };
+    let bankTransfer = { total: 0, count: 0 };
+    let other = { total: 0, count: 0 };
+
+    filteredPayments.forEach((p) => {
+      const amt = Number(p.paid_amount) || 0;
+      if (amt <= 0) return;
+      const method = String(p.payment_method || "CASH").toUpperCase();
+
+      if (method.includes("UPI") || method.includes("GPAY") || method.includes("PHONEPE") || method.includes("QR") || method.includes("PAYTM")) {
+        upi.total += amt;
+        upi.count += 1;
+      } else if (method.includes("CARD") || method.includes("POS") || method.includes("DEBIT") || method.includes("CREDIT")) {
+        card.total += amt;
+        card.count += 1;
+      } else if (method.includes("CASH")) {
+        cash.total += amt;
+        cash.count += 1;
+      } else if (method.includes("BANK") || method.includes("NEFT") || method.includes("RTGS") || method.includes("IMPS") || method.includes("TRANSFER")) {
+        bankTransfer.total += amt;
+        bankTransfer.count += 1;
+      } else {
+        other.total += amt;
+        other.count += 1;
+      }
+    });
+
+    const grandTotal = upi.total + card.total + cash.total + bankTransfer.total + other.total;
+
+    return {
+      upi,
+      card,
+      cash,
+      bankTransfer,
+      other,
+      grandTotal,
+    };
   }, [filteredPayments]);
 
   const pendingPayments = payments.filter((p) => {
@@ -282,6 +330,119 @@ function Dashboard() {
         <KpiCard label={`Revenue (${dateRangeLabel})`} value={inr(periodRevenue)} hint={`${filteredPayments.length} payments`} icon={Wallet} tone="info" />
         <KpiCard label="Outstanding Dues" value={inr(outstandingDues)} hint={`${pendingPayments.length} open folios`} icon={IndianRupee} tone="destructive" />
       </div>
+
+      {/* Collection Breakdown by Payment Method (UPI, Card, Cash, Bank Transfer) */}
+      <Panel
+        title="Payment Collections by Method"
+        description={`Direct breakdown of collected funds (${dateRangeLabel}) across UPI, Card terminals, Cash in drawer, and Bank transfers`}
+        className="border-border/80"
+      >
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 pt-1">
+          {/* UPI Collections */}
+          <div className="p-3.5 rounded-xl border border-emerald-500/20 bg-emerald-500/5 flex flex-col justify-between">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="size-8 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
+                  <QrCode className="size-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-foreground">UPI / QR Codes</div>
+                  <div className="text-[10px] text-muted-foreground">GPay, PhonePe, Paytm</div>
+                </div>
+              </div>
+              <span className="text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 px-1.5 py-0.5 rounded">
+                {paymentBreakdown.upi.count} txns
+              </span>
+            </div>
+            <div className="mt-3">
+              <div className="text-lg font-bold text-emerald-600 tabular-nums">
+                {inr(paymentBreakdown.upi.total)}
+              </div>
+              <div className="text-[10px] text-muted-foreground mt-0.5">
+                {periodRevenue > 0 ? `${Math.round((paymentBreakdown.upi.total / periodRevenue) * 100)}% of period inflow` : "0% of inflow"}
+              </div>
+            </div>
+          </div>
+
+          {/* Card Collections */}
+          <div className="p-3.5 rounded-xl border border-blue-500/20 bg-blue-500/5 flex flex-col justify-between">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="size-8 rounded-lg bg-blue-500/10 text-blue-600 flex items-center justify-center">
+                  <CreditCard className="size-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-foreground">Card Swipes (POS)</div>
+                  <div className="text-[10px] text-muted-foreground">Debit / Credit Terminals</div>
+                </div>
+              </div>
+              <span className="text-[10px] font-semibold bg-blue-500/10 text-blue-600 px-1.5 py-0.5 rounded">
+                {paymentBreakdown.card.count} txns
+              </span>
+            </div>
+            <div className="mt-3">
+              <div className="text-lg font-bold text-blue-600 tabular-nums">
+                {inr(paymentBreakdown.card.total)}
+              </div>
+              <div className="text-[10px] text-muted-foreground mt-0.5">
+                {periodRevenue > 0 ? `${Math.round((paymentBreakdown.card.total / periodRevenue) * 100)}% of period inflow` : "0% of inflow"}
+              </div>
+            </div>
+          </div>
+
+          {/* Cash Collections */}
+          <div className="p-3.5 rounded-xl border border-amber-500/20 bg-amber-500/5 flex flex-col justify-between">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="size-8 rounded-lg bg-amber-500/10 text-amber-600 flex items-center justify-center">
+                  <Banknote className="size-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-foreground">Cash in Drawer</div>
+                  <div className="text-[10px] text-muted-foreground">Physical currency collected</div>
+                </div>
+              </div>
+              <span className="text-[10px] font-semibold bg-amber-500/10 text-amber-600 px-1.5 py-0.5 rounded">
+                {paymentBreakdown.cash.count} txns
+              </span>
+            </div>
+            <div className="mt-3">
+              <div className="text-lg font-bold text-amber-600 tabular-nums">
+                {inr(paymentBreakdown.cash.total)}
+              </div>
+              <div className="text-[10px] text-muted-foreground mt-0.5">
+                {periodRevenue > 0 ? `${Math.round((paymentBreakdown.cash.total / periodRevenue) * 100)}% of period inflow` : "0% of inflow"}
+              </div>
+            </div>
+          </div>
+
+          {/* Bank Transfer / Other */}
+          <div className="p-3.5 rounded-xl border border-purple-500/20 bg-purple-500/5 flex flex-col justify-between">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="size-8 rounded-lg bg-purple-500/10 text-purple-600 flex items-center justify-center">
+                  <Landmark className="size-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-foreground">Bank Transfers / NEFT</div>
+                  <div className="text-[10px] text-muted-foreground">Direct account deposits</div>
+                </div>
+              </div>
+              <span className="text-[10px] font-semibold bg-purple-500/10 text-purple-600 px-1.5 py-0.5 rounded">
+                {paymentBreakdown.bankTransfer.count + paymentBreakdown.other.count} txns
+              </span>
+            </div>
+            <div className="mt-3">
+              <div className="text-lg font-bold text-purple-600 tabular-nums">
+                {inr(paymentBreakdown.bankTransfer.total + paymentBreakdown.other.total)}
+              </div>
+              <div className="text-[10px] text-muted-foreground mt-0.5">
+                {periodRevenue > 0 ? `${Math.round(((paymentBreakdown.bankTransfer.total + paymentBreakdown.other.total) / periodRevenue) * 100)}% of period inflow` : "0% of inflow"}
+              </div>
+            </div>
+          </div>
+        </div>
+      </Panel>
 
       <div className="grid gap-6 xl:grid-cols-[1.55fr_1fr]">
         <Panel title="Revenue & Activity Trend" description={`Inflow performance over ${dateRangeLabel}`}>

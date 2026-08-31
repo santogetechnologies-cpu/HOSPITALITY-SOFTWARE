@@ -12,6 +12,9 @@ export type HotelProfile = {
   gstin: string;
   phone: string;
   address: string;
+  city?: string;
+  stateCode?: string;
+  hsnSac?: string;
 };
 
 export type SettingsState = {
@@ -23,28 +26,37 @@ export type SettingsState = {
   checkInStandardTime: string;
   checkOutStandardTime: string;
   gracePeriodMinutes: number;
+  allowGmDiscountApproval: boolean;
+  allowFrontDeskDiscountApproval: boolean;
 };
 
 const DEFAULT_SETTINGS: SettingsState = {
   hotelProfile: {
-    name: "DRB Hotel",
-    legalEntity: "DRB Hospitality Pvt Ltd",
-    gstin: "000",
-    phone: "+91 80 4000 1200",
-    address: "DRB Hotel, 5/116F1, 5, Market Rd, near Over bridge, Marthandam, Tamil Nadu 629165",
+    name: "HOTEL DRB",
+    legalEntity: "HOTEL DRB MARTHANDAM",
+    gstin: "33ABQPD6510M4ZI",
+    phone: "04651-272302 | Mobile: 9442501809",
+    address: "Market Road, Marthandam, Tamil Nadu",
+    city: "MARTHANDAM",
+    stateCode: "33",
+    hsnSac: "9963",
   },
-  floors: ["Ground", "1", "2", "3", "4", "5"],
+  floors: ["Floor 1", "Floor 2", "Floor 3", "Floor 4"],
   roomTypes: [
-    { id: "rt1", name: "Standard Room", basePrice: 2500 },
-    { id: "rt2", name: "Deluxe King", basePrice: 4500 },
-    { id: "rt3", name: "Executive Suite", basePrice: 8000 },
-    { id: "rt4", name: "Presidential Suite", basePrice: 15000 },
+    { id: "rt1", name: "Double Bed Non AC", basePrice: 700 },
+    { id: "rt2", name: "Double Bed Non AC Standard", basePrice: 1000 },
+    { id: "rt3", name: "3 Bed Non AC", basePrice: 1300 },
+    { id: "rt4", name: "Double Bed Standard AC", basePrice: 1600 },
+    { id: "rt5", name: "Double Bed Deluxe AC", basePrice: 2200 },
+    { id: "rt6", name: "Suite Room", basePrice: 3200 },
   ],
   partyHallHourlyRate: 3000,
   roomLateCheckoutFeePerHour: 500,
   checkInStandardTime: "14:00",
   checkOutStandardTime: "11:00",
   gracePeriodMinutes: 15,
+  allowGmDiscountApproval: false,
+  allowFrontDeskDiscountApproval: false,
 };
 
 export function useSettings() {

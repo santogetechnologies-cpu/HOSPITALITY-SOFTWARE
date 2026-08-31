@@ -226,10 +226,41 @@ export const EXPENSES = [
   { id: "e2", category: "F&B Supplies", amount: 450, date: "2026-08-12", description: "Milk packets" },
 ];
 
+export const CANONICAL_ROOMS = [
+  { room_number: "202", room_name: "Double Bed Non AC", floor: "Floor 2", price: 700, sgst: 17.5, cgst: 17.5, total_gst: 35.0, total_bill: 735.0, capacity: 2 },
+  { room_number: "104", room_name: "Double Bed Non AC Standard", floor: "Floor 1", price: 1000, sgst: 25.0, cgst: 25.0, total_gst: 50.0, total_bill: 1050.0, capacity: 2 },
+  { room_number: "201", room_name: "Double Bed Non AC Standard", floor: "Floor 2", price: 1000, sgst: 25.0, cgst: 25.0, total_gst: 50.0, total_bill: 1050.0, capacity: 2 },
+  { room_number: "204", room_name: "Double Bed Non AC Standard", floor: "Floor 2", price: 1000, sgst: 25.0, cgst: 25.0, total_gst: 50.0, total_bill: 1050.0, capacity: 2 },
+  { room_number: "301", room_name: "Double Bed Non AC Standard", floor: "Floor 3", price: 1000, sgst: 25.0, cgst: 25.0, total_gst: 50.0, total_bill: 1050.0, capacity: 2 },
+  { room_number: "304", room_name: "Double Bed Non AC Standard", floor: "Floor 3", price: 1000, sgst: 25.0, cgst: 25.0, total_gst: 50.0, total_bill: 1050.0, capacity: 2 },
+  { room_number: "401", room_name: "Double Bed Non AC Standard", floor: "Floor 4", price: 1000, sgst: 25.0, cgst: 25.0, total_gst: 50.0, total_bill: 1050.0, capacity: 2 },
+  { room_number: "404", room_name: "Double Bed Non AC Standard", floor: "Floor 4", price: 1000, sgst: 25.0, cgst: 25.0, total_gst: 50.0, total_bill: 1050.0, capacity: 2 },
+  { room_number: "103", room_name: "3 Bed Non AC", floor: "Floor 1", price: 1300, sgst: 32.5, cgst: 32.5, total_gst: 65.0, total_bill: 1365.0, capacity: 3 },
+  { room_number: "203", room_name: "3 Bed Non AC", floor: "Floor 2", price: 1300, sgst: 32.5, cgst: 32.5, total_gst: 65.0, total_bill: 1365.0, capacity: 3 },
+  { room_number: "303", room_name: "3 Bed Non AC", floor: "Floor 3", price: 1300, sgst: 32.5, cgst: 32.5, total_gst: 65.0, total_bill: 1365.0, capacity: 3 },
+  { room_number: "403", room_name: "3 Bed Non AC", floor: "Floor 4", price: 1300, sgst: 32.5, cgst: 32.5, total_gst: 65.0, total_bill: 1365.0, capacity: 3 },
+  { room_number: "102", room_name: "Double Bed Standard AC", floor: "Floor 1", price: 1600, sgst: 40.0, cgst: 40.0, total_gst: 80.0, total_bill: 1680.0, capacity: 2 },
+  { room_number: "105", room_name: "Double Bed Standard AC", floor: "Floor 1", price: 1600, sgst: 40.0, cgst: 40.0, total_gst: 80.0, total_bill: 1680.0, capacity: 2 },
+  { room_number: "205", room_name: "Double Bed Standard AC", floor: "Floor 2", price: 1600, sgst: 40.0, cgst: 40.0, total_gst: 80.0, total_bill: 1680.0, capacity: 2 },
+  { room_number: "302", room_name: "Double Bed Standard AC", floor: "Floor 3", price: 1600, sgst: 40.0, cgst: 40.0, total_gst: 80.0, total_bill: 1680.0, capacity: 2 },
+  { room_number: "305", room_name: "Double Bed Standard AC", floor: "Floor 3", price: 1600, sgst: 40.0, cgst: 40.0, total_gst: 80.0, total_bill: 1680.0, capacity: 2 },
+  { room_number: "402", room_name: "Double Bed Standard AC", floor: "Floor 4", price: 1600, sgst: 40.0, cgst: 40.0, total_gst: 80.0, total_bill: 1680.0, capacity: 2 },
+  { room_number: "405", room_name: "Double Bed Standard AC", floor: "Floor 4", price: 1600, sgst: 40.0, cgst: 40.0, total_gst: 80.0, total_bill: 1680.0, capacity: 2 },
+  { room_number: "306", room_name: "Double Bed Deluxe AC", floor: "Floor 3", price: 2200, sgst: 55.0, cgst: 55.0, total_gst: 110.0, total_bill: 2310.0, capacity: 2 },
+  { room_number: "406", room_name: "Double Bed Deluxe AC", floor: "Floor 4", price: 2200, sgst: 55.0, cgst: 55.0, total_gst: 110.0, total_bill: 2310.0, capacity: 2 },
+  { room_number: "307", room_name: "Suite Room", floor: "Floor 3", price: 3200, sgst: 80.0, cgst: 80.0, total_gst: 160.0, total_bill: 3360.0, capacity: 4 },
+  { room_number: "308", room_name: "Suite Room", floor: "Floor 3", price: 3200, sgst: 80.0, cgst: 80.0, total_gst: 160.0, total_bill: 3360.0, capacity: 4 },
+  { room_number: "407", room_name: "Suite Room", floor: "Floor 4", price: 3200, sgst: 80.0, cgst: 80.0, total_gst: 160.0, total_bill: 3360.0, capacity: 4 },
+  { room_number: "408", room_name: "Suite Room", floor: "Floor 4", price: 3200, sgst: 80.0, cgst: 80.0, total_gst: 160.0, total_bill: 3360.0, capacity: 4 },
+];
+
 export const ROOM_TYPES = [
-  { type: "Standard Twin", base: 3200 },
-  { type: "Deluxe King", base: 4500 },
-  { type: "Executive Suite", base: 8500 },
+  { type: "Double Bed Non AC", base: 700 },
+  { type: "Double Bed Non AC Standard", base: 1000 },
+  { type: "3 Bed Non AC", base: 1300 },
+  { type: "Double Bed Standard AC", base: 1600 },
+  { type: "Double Bed Deluxe AC", base: 2200 },
+  { type: "Suite Room", base: 3200 },
 ];
 
 export const MENU_CATEGORIES = ["Breakfast", "Starters", "Mains", "Drinks"];
