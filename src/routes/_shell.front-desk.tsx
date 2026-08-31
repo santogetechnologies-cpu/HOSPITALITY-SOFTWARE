@@ -60,19 +60,42 @@ export function FrontDesk() {
 
   const getReservationFinancials = (r: typeof reservations[0]) => {
     const p = getReservationPayment(r.id);
-    const approvedDiscount = discounts
-      .filter((d) => (d.reservation_id === r.id || d.reservation_id?.toLowerCase() === r.id.toLowerCase()) && d.status === "APPROVED")
-      .reduce((sum, d) => sum + (Number(d.requested_amount) || 0), 0);
+    const approvedDiscountList = discounts
+      .filter((d) => (d.reservation_id === r.id || d.reservation_id?.toLowerCase() === r.id.toLowerCase()) && d.status === "APPROVED");
+    
+    const approvedDiscount = approvedDiscountList.reduce((sum, d) => sum + (Number(d.requested_amount) || 0), 0);
 
-    const originalAmount = Number(r.base_amount) || Number(p?.total_amount) || 0;
-    let total = Number(p?.total_amount) || originalAmount;
-    if (approvedDiscount > 0 && total >= originalAmount && originalAmount > approvedDiscount) {
-      total = Math.max(0, originalAmount - approvedDiscount);
+    const hasPendingDiscount = discounts.some(
+      (d) => (d.reservation_id === r.id || d.reservation_id?.toLowerCase() === r.id.toLowerCase()) && d.status === "PENDING"
+    );
+
+    const discountReasons = approvedDiscountList.map(d => d.reason).filter(Boolean);
+
+    // Identify pre-discount base amount
+    const rawResBase = Number(r.base_amount) || 0;
+    const rawPayTotal = Number(p?.total_amount) || 0;
+
+    let originalAmount = Math.max(rawResBase, rawPayTotal);
+    let total = rawPayTotal || rawResBase || 0;
+
+    if (approvedDiscount > 0) {
+      if (rawPayTotal > 0 && rawPayTotal <= rawResBase - approvedDiscount + 1) {
+        // Payment in DB is already discounted
+        total = rawPayTotal;
+        originalAmount = rawPayTotal + approvedDiscount;
+      } else if (rawResBase > approvedDiscount) {
+        total = Math.max(0, rawResBase - approvedDiscount);
+        originalAmount = rawResBase;
+      } else if (rawPayTotal > approvedDiscount) {
+        total = Math.max(0, rawPayTotal - approvedDiscount);
+        originalAmount = rawPayTotal;
+      }
     }
+
     const paid = Number(p?.paid_amount) || 0;
-    const balance = total - paid > 0 ? total - paid : 0;
+    const balance = Math.max(0, total - paid);
     const isPaid = balance === 0 && total > 0;
-    return { total, paid, balance, isPaid, payment: p, approvedDiscount };
+    return { total, paid, balance, isPaid, payment: p, approvedDiscount, hasPendingDiscount, originalAmount, discountReasons };
   };
 
   // Helper: check if a room is overlapping with any active reservation on given dates
@@ -204,10 +227,13 @@ export function FrontDesk() {
   React.useEffect(() => {
     if (res) {
       setAssignedRoomId(res.room_id || "");
+      const { balance } = getReservationFinancials(res);
+      setCheckinPayAmount(balance > 0 ? String(balance) : "");
     } else {
       setAssignedRoomId("");
+      setCheckinPayAmount("");
     }
-  }, [res]);
+  }, [res, discounts, payments, reservations]);
 
   const handleCompleteCheckIn = async () => {
     if (!res) return;
@@ -324,7 +350,12 @@ export function FrontDesk() {
                       </div>
                       <div className="rounded-lg bg-secondary/60 p-2">
                         <dt className="text-muted-foreground">Total Bill</dt>
-                        <dd className="font-semibold text-foreground">{inr(total)}</dd>
+                        <dd className="font-semibold text-foreground">
+                          {inr(total)}
+                          {approvedDiscount > 0 && (
+                            <span className="ml-1 text-[10px] text-success font-semibold">(-{inr(approvedDiscount)})</span>
+                          )}
+                        </dd>
                       </div>
                       <div className="rounded-lg bg-secondary/60 p-2">
                         <dt className="text-muted-foreground">Pending Balance</dt>
@@ -542,8 +573,23 @@ export function FrontDesk() {
                 <div className="rounded-xl border border-border bg-secondary/30 p-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <div className="text-xs text-muted-foreground">Total Bill: {inr(total)}</div>
-                      <div className="text-xs text-success font-medium">Already Paid: {inr(paid)}</div>
+                      {approvedDiscount > 0 ? (
+                        <div className="space-y-0.5">
+                          <div className="text-xs text-muted-foreground line-through">
+                            Original Bill: {inr(originalAmount)}
+                          </div>
+                          <div className="text-xs font-semibold text-success flex items-center gap-1">
+                            <span className="size-1.5 rounded-full bg-success inline-block" />
+                            -{inr(approvedDiscount)} discount applied {discountReasons.length ? `(${discountReasons[0]})` : ""}
+                          </div>
+                          <div className="text-sm font-bold text-foreground">
+                            Net Bill: {inr(total)}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-sm font-bold text-foreground">Total Bill: {inr(total)}</div>
+                      )}
+                      <div className="text-xs text-success font-medium mt-1">Already Paid: {inr(paid)}</div>
                     </div>
                     <div className="text-right">
                       <div className="text-[10px] uppercase font-semibold text-muted-foreground">Balance Due</div>
