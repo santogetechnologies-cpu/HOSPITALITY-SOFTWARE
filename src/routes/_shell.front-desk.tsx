@@ -1215,6 +1215,9 @@ export function FrontDesk() {
               {bookingLoading ? "Booking Room..." : "Confirm & Book Room"}
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Stay Modification & Folio Adjustment Modal */}
       <Dialog open={adjustModalOpen} onOpenChange={setAdjustModalOpen}>
         <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto">
