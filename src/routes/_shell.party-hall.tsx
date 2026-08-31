@@ -85,7 +85,7 @@ export function PartyHallPage() {
     startTime: "10:00",
     endTime: "14:00",
     baseAmount: String(calculateHallPrice("10:00", "14:00", hourlyRate)),
-    advance: "5000",
+    advance: "500",
     paymentMethod: "CASH" as "CASH" | "UPI" | "CARD" | "BANK_TRANSFER" | "OTHER",
   });
 
@@ -233,7 +233,7 @@ export function PartyHallPage() {
         startTime: "10:00",
         endTime: "14:00",
         baseAmount: String(calculateHallPrice("10:00", "14:00", hourlyRate)),
-        advance: "5000",
+        advance: "500",
         paymentMethod: "CASH",
       });
     } else {
