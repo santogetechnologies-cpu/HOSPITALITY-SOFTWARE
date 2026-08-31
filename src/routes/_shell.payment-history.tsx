@@ -31,15 +31,36 @@ function PaymentHistoryPage() {
       .reduce((sum, d) => sum + (Number(d.requested_amount) || 0), 0);
   };
 
-  const totalCollected = payments.reduce((acc, p) => acc + (p.paid_amount || 0), 0);
-  const completedPayments = payments.filter(p => p.status === 'COMPLETED');
-  const partialPayments = payments.filter(p => p.status === 'PARTIAL');
+  const isPaymentCompleted = (p: typeof payments[0]) => {
+    const res = getReservation(p.reservation_id);
+    const approvedDiscount = getApprovedDiscount(p.reservation_id);
+    const originalAmount = Number(res?.base_amount) || Number(p.total_amount) || 0;
+    let total = Number(p.total_amount) || originalAmount;
+    if (approvedDiscount > 0 && total >= originalAmount && originalAmount > approvedDiscount) {
+      total = Math.max(0, originalAmount - approvedDiscount);
+    }
+    const paid = Number(p.paid_amount) || 0;
+    return p.status === 'COMPLETED' || (paid >= total && total > 0);
+  };
+
+  const isPaymentPartial = (p: typeof payments[0]) => {
+    if (isPaymentCompleted(p)) return false;
+    const paid = Number(p.paid_amount) || 0;
+    return p.status === 'PARTIAL' || paid > 0;
+  };
+
+  const totalCollected = payments.reduce((acc, p) => acc + (Number(p.paid_amount) || 0), 0);
+  const completedPayments = payments.filter(isPaymentCompleted);
+  const partialPayments = payments.filter(isPaymentPartial);
 
   const filtered = payments.filter((p) => {
-    if (filter === "completed" && p.status !== "COMPLETED") return false;
-    if (filter === "partial" && p.status !== "PARTIAL") return false;
+    const isCompleted = isPaymentCompleted(p);
+    const isPartial = isPaymentPartial(p);
+
+    if (filter === "completed" && !isCompleted) return false;
+    if (filter === "partial" && !isPartial) return false;
     if (filter === "frozen" && p.status !== "FROZEN") return false;
-    if (filter === "pending" && p.status !== "PENDING") return false;
+    if (filter === "pending" && (isCompleted || isPartial || p.status === "FROZEN")) return false;
 
     if (!q.trim()) return true;
     const res = getReservation(p.reservation_id);
@@ -173,8 +194,8 @@ function PaymentHistoryPage() {
                   </TableCell>
                   <TableCell className="text-xs font-medium">{p.payment_method || "CASH / UPI"}</TableCell>
                   <TableCell>
-                    <Pill tone={p.status === 'COMPLETED' ? 'success' : p.status === 'PARTIAL' ? 'warning' : p.status === 'FROZEN' ? 'info' : 'destructive'}>
-                      {p.status || 'PENDING'}
+                    <Pill tone={balance === 0 && total > 0 ? 'success' : balance > 0 && paid > 0 ? 'warning' : p.status === 'FROZEN' ? 'info' : 'destructive'}>
+                      {balance === 0 && total > 0 ? 'COMPLETED' : balance > 0 && paid > 0 ? 'PARTIAL' : (p.status || 'PENDING')}
                     </Pill>
                   </TableCell>
                   <TableCell className="text-right">

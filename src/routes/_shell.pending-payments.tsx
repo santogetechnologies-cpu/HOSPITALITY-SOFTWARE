@@ -63,7 +63,11 @@ function PendingPaymentsPage() {
 
     // 1. Process all existing payment records with outstanding balance
     payments.forEach((p) => {
+      if (p.reservation_id) processedResIds.add(p.reservation_id);
+
       const res = reservations.find(r => r.id === p.reservation_id || r.id?.toLowerCase() === p.reservation_id?.toLowerCase());
+      if (res?.status === 'CANCELLED') return;
+
       const guest = res ? getGuest(res.guest_id) : null;
       const room = res ? getRoom(res.room_id) : null;
       const originalAmount = Number(res?.base_amount) || Number(p.total_amount) || 0;
@@ -71,7 +75,7 @@ function PendingPaymentsPage() {
       const hasPendingDiscount = getPendingDiscount(p.reservation_id);
 
       // Effective total bill: apply approved discount if not already deducted
-      let effectiveTotal = Number(p.total_amount) || 0;
+      let effectiveTotal = Number(p.total_amount) || originalAmount;
       if (approvedDiscount > 0 && effectiveTotal >= originalAmount && originalAmount > approvedDiscount) {
         effectiveTotal = Math.max(0, originalAmount - approvedDiscount);
       }
@@ -79,9 +83,8 @@ function PendingPaymentsPage() {
       const paid = Number(p.paid_amount) || 0;
       const balance = Math.max(0, effectiveTotal - paid);
 
-      if (balance > 0 || p.status === 'PENDING' || p.status === 'PARTIAL' || p.status === 'FROZEN' || hasPendingDiscount) {
-        if (p.reservation_id) processedResIds.add(p.reservation_id);
-
+      // Only display in Pending Folios if there is an actual remaining balance (> 0) or an unresolved discount request
+      if (balance > 0 || hasPendingDiscount) {
         let stage: PendingItem['stage'] = 'PRE_CHECKIN';
         if (p.status === 'FROZEN' || hasPendingDiscount) stage = 'FROZEN';
         else if (res?.status === 'OCCUPIED') stage = 'IN_HOUSE';
@@ -100,7 +103,7 @@ function PendingPaymentsPage() {
           totalAmount: effectiveTotal,
           paidAmount: paid,
           balance,
-          status: hasPendingDiscount ? 'FROZEN' : p.status,
+          status: hasPendingDiscount ? 'FROZEN' : (paid >= effectiveTotal && effectiveTotal > 0 ? 'COMPLETED' : paid > 0 ? 'PARTIAL' : 'PENDING'),
           discountAmount: approvedDiscount,
           originalAmount: approvedDiscount > 0 ? (originalAmount > effectiveTotal ? originalAmount : effectiveTotal + approvedDiscount) : undefined
         });

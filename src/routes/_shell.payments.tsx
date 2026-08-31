@@ -12,12 +12,16 @@ export const Route = createFileRoute('/_shell/payments')({
 function PaymentsDashboard() {
   const { payments, expenses, session } = usePms();
 
-  const totalCollected = payments.reduce((acc, p) => acc + (p.paid_amount || 0), 0);
+  const totalCollected = payments.reduce((acc, p) => acc + (Number(p.paid_amount) || 0), 0);
   
-  const pendingPayments = payments.filter(p => p.status === 'PENDING' || p.status === 'PARTIAL');
-  const totalPending = pendingPayments.reduce((acc, p) => acc + (p.total_amount - (p.paid_amount || 0)), 0);
+  const pendingPayments = payments.filter(p => {
+    const total = Number(p.total_amount) || 0;
+    const paid = Number(p.paid_amount) || 0;
+    return (total - paid) > 0 && p.status !== 'COMPLETED';
+  });
+  const totalPending = pendingPayments.reduce((acc, p) => acc + Math.max(0, (Number(p.total_amount) || 0) - (Number(p.paid_amount) || 0)), 0);
 
-  const totalExpenses = expenses.reduce((acc, e) => acc + (e.amount || 0), 0);
+  const totalExpenses = expenses.reduce((acc, e) => acc + (Number(e.amount) || 0), 0);
 
   const frozenPayments = payments.filter(p => p.status === 'FROZEN');
 

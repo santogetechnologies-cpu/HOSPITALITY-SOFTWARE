@@ -101,7 +101,24 @@ function PartyHallPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>Phone Number</Label>
-                  <Input required value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} />
+                  <Input 
+                    required 
+                    value={form.phone} 
+                    onChange={(e) => {
+                      const ph = e.target.value;
+                      const matched = ph.trim() ? guests.find((g) => g.phone && g.phone.trim().toLowerCase() === ph.trim().toLowerCase()) : null;
+                      if (matched) {
+                        setForm((prev) => ({
+                          ...prev,
+                          phone: ph,
+                          customerName: prev.customerName || matched.name,
+                          email: prev.email || matched.email || "",
+                        }));
+                      } else {
+                        setForm((prev) => ({ ...prev, phone: ph }));
+                      }
+                    }} 
+                  />
                 </div>
               </div>
 

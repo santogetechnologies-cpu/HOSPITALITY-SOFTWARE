@@ -602,7 +602,24 @@ export function FrontDesk() {
                   <Input
                     placeholder="+91 98765 43210"
                     value={b.phone}
-                    onChange={(e) => setB({ ...b, phone: e.target.value })}
+                    onChange={(e) => {
+                      const ph = e.target.value;
+                      const matched = ph.trim() ? guests.find((g) => g.phone && g.phone.trim().toLowerCase() === ph.trim().toLowerCase()) : null;
+                      if (matched) {
+                        setB((prev) => ({
+                          ...prev,
+                          phone: ph,
+                          guestName: prev.guestName || matched.name,
+                          email: prev.email || matched.email || "",
+                          idType: matched.id_type || prev.idType,
+                          idNumber: prev.idNumber || matched.id_number || "",
+                          address: prev.address || matched.address || "",
+                          country: (matched as any).country || prev.country,
+                        }));
+                      } else {
+                        setB((prev) => ({ ...prev, phone: ph }));
+                      }
+                    }}
                   />
                 </div>
                 <div className="space-y-1.5">

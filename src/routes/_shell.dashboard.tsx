@@ -106,9 +106,13 @@ function Dashboard() {
     return filteredPayments.reduce((acc, p) => acc + (Number(p.paid_amount) || 0), 0);
   }, [filteredPayments]);
 
-  const pendingPayments = payments.filter((p) => p.status === "PENDING" || p.status === "PARTIAL");
+  const pendingPayments = payments.filter((p) => {
+    const total = Number(p.total_amount) || 0;
+    const paid = Number(p.paid_amount) || 0;
+    return total - paid > 0 && p.status !== "COMPLETED";
+  });
   const outstandingDues = pendingPayments.reduce(
-    (acc, p) => acc + Math.max(0, (p.total_amount || 0) - (p.paid_amount || 0)),
+    (acc, p) => acc + Math.max(0, (Number(p.total_amount) || 0) - (Number(p.paid_amount) || 0)),
     0
   );
 

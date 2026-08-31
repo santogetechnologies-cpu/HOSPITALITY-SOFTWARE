@@ -31,7 +31,7 @@ export const Route = createFileRoute("/_shell/guests")({
 });
 
 function GuestsPage() {
-  const { guests, addGuest, deleteGuest, session } = usePms();
+  const { guests, reservations, payments, addGuest, deleteGuest, session } = usePms();
   const isAdmin = session?.role === "SUPER_ADMIN" || session?.role === "GM" || !session;
   const [q, setQ] = React.useState("");
   const [type, setType] = React.useState("all");
@@ -50,12 +50,34 @@ function GuestsPage() {
     notes: ""
   });
 
+  const guestStats = React.useMemo(() => {
+    const stats: Record<string, { stays: number; spend: number }> = {};
+    reservations.forEach((r) => {
+      if (!r.guest_id || r.status === "CANCELLED") return;
+      if (!stats[r.guest_id]) stats[r.guest_id] = { stays: 0, spend: 0 };
+      stats[r.guest_id].stays += 1;
+
+      const p = payments.find((pay) => pay.reservation_id === r.id);
+      const paid = Number(p?.paid_amount) || Number(r.base_amount) || 0;
+      stats[r.guest_id].spend += paid;
+    });
+    return stats;
+  }, [reservations, payments]);
+
   const handleAdd = async () => {
     if (!form.name.trim()) return toast.error("Guest full name is required");
+    const phoneTrimmed = form.phone.trim();
+    if (phoneTrimmed) {
+      const existing = guests.find((g) => g.phone && g.phone.trim().toLowerCase() === phoneTrimmed.toLowerCase());
+      if (existing) {
+        return toast.error(`A guest profile with phone number "${phoneTrimmed}" already exists (${existing.name}).`);
+      }
+    }
+
     const res = await addGuest({
       name: form.name.trim(),
       email: form.email.trim() || undefined,
-      phone: form.phone.trim() || undefined,
+      phone: phoneTrimmed || undefined,
       country: form.country.trim() || "India",
       address: form.address.trim() || undefined,
       id_number: form.id_number.trim() || undefined,
@@ -98,8 +120,8 @@ function GuestsPage() {
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="Total Guests" value={String(guests.length)} icon={Users} tone="gold" hint="Active profiles" />
-        <KpiCard label="Returning Guests" value={String(guests.filter((g) => (g.stays || 0) > 1).length)} icon={Repeat} tone="info" />
+        <KpiCard label="Total Guests" value={String(guests.length)} icon={Users} tone="gold" hint="Unique profiles" />
+        <KpiCard label="Returning Guests" value={String(guests.filter((g) => (guestStats[g.id]?.stays || (g as any).stays || 0) > 1).length)} icon={Repeat} tone="info" />
         <KpiCard label="VIP Guests" value={String(guests.filter((g) => g.vip).length)} icon={Crown} tone="warning" hint="Priority handling" />
         <KpiCard label="Corporate Guests" value={String(guests.filter((g) => g.type === "Corporate").length)} icon={Building2} tone="success" hint="City ledger" />
       </div>
@@ -133,8 +155,8 @@ function GuestsPage() {
                   <TableCell className="text-xs">{g.phone || "—"}<br /><span className="text-muted-foreground">{g.email || ""}</span></TableCell>
                   <TableCell>{g.country || "India"}</TableCell>
                   <TableCell className="font-mono text-xs">{g.id_number || "—"}</TableCell>
-                  <TableCell className="tabular-nums">{g.stays || 0}</TableCell>
-                  <TableCell className="tabular-nums">{inr(g.spend || 0)}</TableCell>
+                  <TableCell className="tabular-nums">{guestStats[g.id]?.stays || (g as any).stays || 0}</TableCell>
+                  <TableCell className="tabular-nums">{inr(guestStats[g.id]?.spend || (g as any).spend || 0)}</TableCell>
                   <TableCell><Pill>{g.type || "Individual"}</Pill></TableCell>
                   <TableCell>{g.vip ? <Pill tone="gold">VIP</Pill> : "—"}</TableCell>
                   <TableCell className="text-right">

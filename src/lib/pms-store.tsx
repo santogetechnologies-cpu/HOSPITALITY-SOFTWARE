@@ -192,25 +192,74 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
       const loadedPayments = (payments as any) || [];
       const loadedReservations = (reservations as any) || [];
 
-      // Auto-reconciliation of approved discounts & frozen payment statuses
-      loadedDiscounts.forEach((d: any) => {
-        if (d.status === 'APPROVED' && d.reservation_id) {
-          const pay = loadedPayments.find((p: any) => p.reservation_id === d.reservation_id);
-          if (pay && pay.status === 'FROZEN') {
-            const total = Number(pay.total_amount) || 0;
-            const paid = Number(pay.paid_amount) || 0;
-            const newStatus = paid >= total && total > 0 ? 'COMPLETED' : (paid > 0 ? 'PARTIAL' : 'PENDING');
-            pay.status = newStatus;
-            void supabase.from('payments').update({ status: newStatus }).eq('id', pay.id);
-          }
+      // Auto-reconciliation of approved discounts & payment statuses
+      loadedPayments.forEach((pay: any) => {
+        const res = loadedReservations.find((r: any) => r.id === pay.reservation_id || r.id?.toLowerCase() === pay.reservation_id?.toLowerCase());
+        const approvedDisc = loadedDiscounts
+          .filter((d: any) => (d.reservation_id === pay.reservation_id || d.reservation_id?.toLowerCase() === pay.reservation_id?.toLowerCase()) && d.status === 'APPROVED')
+          .reduce((sum: number, d: any) => sum + (Number(d.requested_amount) || 0), 0);
+        
+        const originalAmount = Number(res?.base_amount) || Number(pay.total_amount) || 0;
+        let effectiveTotal = Number(pay.total_amount) || originalAmount;
+        if (approvedDisc > 0 && effectiveTotal >= originalAmount && originalAmount > approvedDisc) {
+          effectiveTotal = Math.max(0, originalAmount - approvedDisc);
+        }
+
+        const paid = Number(pay.paid_amount) || 0;
+        if (paid >= effectiveTotal && effectiveTotal > 0 && pay.status !== 'COMPLETED') {
+          pay.status = 'COMPLETED';
+          void supabase.from('payments').update({ status: 'COMPLETED' }).eq('id', pay.id);
+        } else if (pay.status === 'FROZEN' && !loadedDiscounts.some((d: any) => (d.reservation_id === pay.reservation_id || d.reservation_id?.toLowerCase() === pay.reservation_id?.toLowerCase()) && d.status === 'PENDING')) {
+          const newStatus = paid >= effectiveTotal && effectiveTotal > 0 ? 'COMPLETED' : (paid > 0 ? 'PARTIAL' : 'PENDING');
+          pay.status = newStatus;
+          void supabase.from('payments').update({ status: newStatus }).eq('id', pay.id);
         }
       });
+
+      let loadedGuests = (guests as any) || [];
+
+      // Auto-Deduplication: Merge duplicate guests with the same phone number
+      const phoneToGuests = new Map<string, any[]>();
+      loadedGuests.forEach((g: any) => {
+        const phone = g.phone?.trim();
+        if (phone) {
+          const list = phoneToGuests.get(phone) || [];
+          list.push(g);
+          phoneToGuests.set(phone, list);
+        }
+      });
+
+      const duplicateIdsToDelete: string[] = [];
+      phoneToGuests.forEach((guestList) => {
+        if (guestList.length > 1) {
+          // Primary guest is the one with id_number, email, or first one
+          const primary = guestList.find((g) => g.id_number || g.email) || guestList[0];
+          const duplicates = guestList.filter((g) => g.id !== primary.id);
+
+          duplicates.forEach((dup) => {
+            duplicateIdsToDelete.push(dup.id);
+            // Re-point any reservations from duplicate to primary
+            loadedReservations.forEach((r: any) => {
+              if (r.guest_id === dup.id) {
+                r.guest_id = primary.id;
+                void supabase.from('reservations').update({ guest_id: primary.id }).eq('guest_id', dup.id);
+              }
+            });
+            // Delete duplicate from DB
+            void supabase.from('guests').delete().eq('id', dup.id);
+          });
+        }
+      });
+
+      if (duplicateIdsToDelete.length > 0) {
+        loadedGuests = loadedGuests.filter((g: any) => !duplicateIdsToDelete.includes(g.id));
+      }
 
       setState(s => ({
         ...s,
         rooms: (rooms as any) || [],
         reservations: loadedReservations,
-        guests: (guests as any) || [],
+        guests: loadedGuests,
         payments: loadedPayments,
         discounts: loadedDiscounts,
         expenses: (expenses as any) || [],
@@ -407,20 +456,44 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             };
           }
 
-          // 2. Insert Guest with ID and contact metadata
-          const guestId = crypto.randomUUID();
-          const { error: gErr } = await supabase.from('guests').insert({
-            id: guestId,
-            name: b.guestName.trim(),
-            phone: b.phone?.trim() || null,
-            email: b.email?.trim() || null,
-            id_type: b.idType || null,
-            id_number: b.idNumber?.trim() || null,
-            address: b.address?.trim() || null,
-            country: b.country?.trim() || 'India',
-            notes: b.notes?.trim() || null
-          });
-          if (gErr) throw gErr;
+          // 2. Lookup or Insert Guest with ID and contact metadata
+          const phoneTrimmed = b.phone?.trim();
+          let guestId: string;
+
+          const existingGuest = phoneTrimmed
+            ? state.guests.find((g) => g.phone && g.phone.trim().toLowerCase() === phoneTrimmed.toLowerCase())
+            : null;
+
+          if (existingGuest) {
+            guestId = existingGuest.id;
+            // Update existing guest details if new info provided
+            const updates: any = {};
+            if (b.guestName.trim()) updates.name = b.guestName.trim();
+            if (b.email?.trim()) updates.email = b.email.trim();
+            if (b.idType) updates.id_type = b.idType;
+            if (b.idNumber?.trim()) updates.id_number = b.idNumber.trim();
+            if (b.address?.trim()) updates.address = b.address.trim();
+            if (b.country?.trim()) updates.country = b.country.trim();
+            if (b.notes?.trim()) updates.notes = b.notes.trim();
+
+            if (Object.keys(updates).length > 0) {
+              await supabase.from('guests').update(updates).eq('id', guestId);
+            }
+          } else {
+            guestId = crypto.randomUUID();
+            const { error: gErr } = await supabase.from('guests').insert({
+              id: guestId,
+              name: b.guestName.trim(),
+              phone: phoneTrimmed || null,
+              email: b.email?.trim() || null,
+              id_type: b.idType || null,
+              id_number: b.idNumber?.trim() || null,
+              address: b.address?.trim() || null,
+              country: b.country?.trim() || 'India',
+              notes: b.notes?.trim() || null
+            });
+            if (gErr) throw gErr;
+          }
 
           // 3. Insert Reservation with ISO start_time, end_time, and guest count
           const resId = crypto.randomUUID();
@@ -519,15 +592,30 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
 
       addGuest: async (g) => {
         try {
+          const phoneTrimmed = g.phone?.trim();
+          if (phoneTrimmed) {
+            const existing = state.guests.find(
+              (x) => x.phone && x.phone.trim().toLowerCase() === phoneTrimmed.toLowerCase()
+            );
+            if (existing) {
+              return {
+                id: existing.id,
+                success: false,
+                error: `A guest profile with phone number "${phoneTrimmed}" already exists (${existing.name}).`,
+              };
+            }
+          }
+
           const id = crypto.randomUUID();
           const { error } = await supabase.from('guests').insert({ 
             id, 
-            name: g.name, 
-            email: g.email || null,
-            phone: g.phone || null,
-            address: g.address || null,
-            id_number: g.id_number || null,
-            notes: g.notes || null
+            name: g.name.trim(), 
+            email: g.email?.trim() || null,
+            phone: phoneTrimmed || null,
+            address: g.address?.trim() || null,
+            id_number: g.id_number?.trim() || null,
+            country: g.country?.trim() || 'India',
+            notes: g.notes?.trim() || null
           });
           if (error) {
             console.error("addGuest error:", error);
@@ -593,12 +681,31 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             return { success: false, error: "Party Hall Unavailable — Overlapping booking detected for this time slot." };
           }
 
-          // 2. Insert Guest
-          const guestId = crypto.randomUUID();
-          const { error: gErr } = await supabase.from('guests').insert({
-            id: guestId, name: b.customerName, phone: b.phone, email: b.email
-          });
-          if (gErr) throw gErr;
+          // 2. Lookup or Insert Guest
+          const phoneTrimmed = b.phone?.trim();
+          let guestId: string;
+          const existingGuest = phoneTrimmed
+            ? state.guests.find((g) => g.phone && g.phone.trim().toLowerCase() === phoneTrimmed.toLowerCase())
+            : null;
+
+          if (existingGuest) {
+            guestId = existingGuest.id;
+            const updates: any = {};
+            if (b.customerName?.trim()) updates.name = b.customerName.trim();
+            if (b.email?.trim()) updates.email = b.email.trim();
+            if (Object.keys(updates).length > 0) {
+              await supabase.from('guests').update(updates).eq('id', guestId);
+            }
+          } else {
+            guestId = crypto.randomUUID();
+            const { error: gErr } = await supabase.from('guests').insert({
+              id: guestId,
+              name: b.customerName.trim(),
+              phone: phoneTrimmed || null,
+              email: b.email?.trim() || null
+            });
+            if (gErr) throw gErr;
+          }
 
           // 3. Get Party Hall ID (assuming only one exists)
           const { data: hall } = await supabase.from('party_hall').select('id').limit(1).single();
@@ -642,15 +749,15 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
 
       settlePayment: async (paymentId, amount, method = 'CASH') => {
         try {
-          let payment = state.payments.find(p => p.id === paymentId);
+          let payment = state.payments.find(p => p.id === paymentId || p.reservation_id === paymentId || (p.reservation_id && paymentId && p.reservation_id.toLowerCase() === paymentId.toLowerCase()));
           if (!payment) {
             // Check if it's a reservation ID without a payment record yet
-            const res = state.reservations.find(r => r.id === paymentId);
+            const res = state.reservations.find(r => r.id === paymentId || (r.id && paymentId && r.id.toLowerCase() === paymentId.toLowerCase()));
             if (res) {
               const payId = crypto.randomUUID();
               const totalAmt = Number(res.base_amount) || 0;
               const paidAmt = Number(amount) || 0;
-              const status = paidAmt >= totalAmt ? "COMPLETED" : "PARTIAL";
+              const status = paidAmt >= totalAmt && totalAmt > 0 ? "COMPLETED" : "PARTIAL";
               const { error } = await supabase.from('payments').insert({
                 id: payId,
                 reservation_id: res.id,
@@ -665,8 +772,9 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             }
             return { success: false, error: "Payment record not found" };
           }
-          const newPaid = (payment.paid_amount || 0) + amount;
-          const status = newPaid >= (payment.total_amount || 0) ? "COMPLETED" : "PARTIAL";
+          const newPaid = (Number(payment.paid_amount) || 0) + Number(amount);
+          const totalAmt = Number(payment.total_amount) || 0;
+          const status = newPaid >= totalAmt && totalAmt > 0 ? "COMPLETED" : (newPaid > 0 ? "PARTIAL" : "PENDING");
           const { error } = await supabase.from('payments').update({ 
             paid_amount: newPaid, 
             status,
