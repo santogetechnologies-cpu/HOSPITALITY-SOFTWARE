@@ -1127,8 +1127,8 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
           }
 
           // Optimistically update local store
-          set((prev) => ({
-            discounts: prev.discounts.map(d => d.id === discountId ? { ...d, status, approved_by: approver } : d)
+          patch((s) => ({
+            discounts: s.discounts.map(d => d.id === discountId ? { ...d, status, approved_by: approver } : d)
           }));
 
           await fetchData();
