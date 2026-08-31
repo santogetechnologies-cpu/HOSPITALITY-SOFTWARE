@@ -101,20 +101,28 @@ function SettingsPage() {
     }
   }, [addRoomOpen, settings]);
 
+  const [addRoomLoading, setAddRoomLoading] = React.useState(false);
+
   const handleAddRoom = async () => {
+    if (addRoomLoading) return;
     if (!r.number.trim()) return toast.error("Please enter a room number (e.g. 101)");
     if (!r.price || r.price <= 0) return toast.error("Please enter a valid room rate");
     
     const floorToSave = r.floor || settings.floors[0] || "1";
     const typeToSave = r.type || settings.roomTypes[0]?.name || "Standard Room";
 
-    const res = await addRoom(r.number.trim(), typeToSave, floorToSave, r.price);
-    if (res?.success) {
-      toast.success(`Room ${r.number.trim()} created successfully!`);
-      setAddRoomOpen(false);
-      setR({ number: "", type: "", floor: "", price: 0 });
-    } else {
-      toast.error(res?.error || "Failed to create room");
+    setAddRoomLoading(true);
+    try {
+      const res = await addRoom(r.number.trim(), typeToSave, floorToSave, r.price);
+      if (res?.success) {
+        toast.success(`Room ${r.number.trim()} created successfully!`);
+        setAddRoomOpen(false);
+        setR({ number: "", type: "", floor: "", price: 0 });
+      } else {
+        toast.error(res?.error || "Failed to create room");
+      }
+    } finally {
+      setAddRoomLoading(false);
     }
   };
 
@@ -438,8 +446,10 @@ function SettingsPage() {
             </div>
           </div>
           <div className="flex justify-end gap-3 pt-2">
-            <Button variant="ghost" onClick={() => setAddRoomOpen(false)}>Cancel</Button>
-            <Button onClick={handleAddRoom} className="bg-brass text-gold-foreground hover:opacity-90">Create Room Key</Button>
+            <Button variant="ghost" onClick={() => setAddRoomOpen(false)} disabled={addRoomLoading}>Cancel</Button>
+            <Button disabled={addRoomLoading} onClick={handleAddRoom} className="bg-brass text-gold-foreground hover:opacity-90">
+              {addRoomLoading ? "Creating Room..." : "Create Room Key"}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

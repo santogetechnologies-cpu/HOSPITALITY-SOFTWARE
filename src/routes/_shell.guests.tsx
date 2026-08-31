@@ -64,7 +64,10 @@ function GuestsPage() {
     return stats;
   }, [reservations, payments]);
 
+  const [saving, setSaving] = React.useState(false);
+
   const handleAdd = async () => {
+    if (saving) return;
     if (!form.name.trim()) return toast.error("Guest full name is required");
     const phoneTrimmed = form.phone.trim();
     if (phoneTrimmed) {
@@ -74,37 +77,42 @@ function GuestsPage() {
       }
     }
 
-    const res = await addGuest({
-      name: form.name.trim(),
-      email: form.email.trim() || undefined,
-      phone: phoneTrimmed || undefined,
-      country: form.country.trim() || "India",
-      address: form.address.trim() || undefined,
-      id_number: form.id_number.trim() || undefined,
-      type: form.type,
-      vip: form.vip,
-      notes: form.notes.trim() || undefined,
-      stays: 0,
-      spend: 0,
-      preferences: []
-    } as any);
+    setSaving(true);
+    try {
+      const res = await addGuest({
+        name: form.name.trim(),
+        email: form.email.trim() || undefined,
+        phone: phoneTrimmed || undefined,
+        country: form.country.trim() || "India",
+        address: form.address.trim() || undefined,
+        id_number: form.id_number.trim() || undefined,
+        type: form.type,
+        vip: form.vip,
+        notes: form.notes.trim() || undefined,
+        stays: 0,
+        spend: 0,
+        preferences: []
+      } as any);
 
-    if (res?.success) {
-      toast.success("Guest profile created successfully!");
-      setAddOpen(false);
-      setForm({
-        name: "",
-        email: "",
-        phone: "",
-        country: "India",
-        address: "",
-        id_number: "",
-        type: "Individual",
-        vip: false,
-        notes: ""
-      });
-    } else {
-      toast.error(res?.error || "Failed to add guest profile");
+      if (res?.success) {
+        toast.success("Guest profile created successfully!");
+        setAddOpen(false);
+        setForm({
+          name: "",
+          email: "",
+          phone: "",
+          country: "India",
+          address: "",
+          id_number: "",
+          type: "Individual",
+          vip: false,
+          notes: ""
+        });
+      } else {
+        toast.error(res?.error || "Failed to add guest profile");
+      }
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -267,8 +275,10 @@ function GuestsPage() {
             </div>
           </div>
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="ghost" onClick={() => setAddOpen(false)}>Cancel</Button>
-            <Button onClick={handleAdd} className="bg-brass text-gold-foreground">Save Guest</Button>
+            <Button variant="ghost" onClick={() => setAddOpen(false)} disabled={saving}>Cancel</Button>
+            <Button disabled={saving} onClick={handleAdd} className="bg-brass text-gold-foreground">
+              {saving ? "Saving Guest..." : "Save Guest"}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

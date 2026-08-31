@@ -187,38 +187,48 @@ export function FrontDesk() {
     });
   };
 
+  const [bookingLoading, setBookingLoading] = React.useState(false);
+  const [checkinLoading, setCheckinLoading] = React.useState(false);
+  const [checkoutLoading, setCheckoutLoading] = React.useState<string | null>(null);
+
   const handleBooking = async () => {
+    if (bookingLoading) return;
     if (!b.guestName.trim()) return toast.error("Please enter guest name");
     if (!b.roomId) return toast.error("Please select a room");
     if (isRoomBookedForDates(b.roomId, b.startDate, b.endDate)) {
       return toast.error("This room is already reserved for the selected dates. Please select another room.");
     }
 
-    const res = await addRoomReservation(b);
-    if (res?.success) {
-      toast.success("Room booked successfully!");
-      setBookingOpen(false);
-      setB({
-        guestName: "",
-        phone: "",
-        email: "",
-        idType: "Aadhaar Card",
-        idNumber: "",
-        address: "",
-        country: "India",
-        numberOfGuests: 1,
-        roomId: "",
-        startDate: todayStr,
-        endDate: tomorrowStr,
-        nights: 1,
-        baseAmount: 0,
-        totalAmount: 0,
-        paidAmount: 0,
-        paymentMethod: "CASH",
-        notes: "",
-      });
-    } else {
-      toast.error(res?.error || "Failed to book room");
+    setBookingLoading(true);
+    try {
+      const res = await addRoomReservation(b);
+      if (res?.success) {
+        toast.success("Room booked successfully!");
+        setBookingOpen(false);
+        setB({
+          guestName: "",
+          phone: "",
+          email: "",
+          idType: "Aadhaar Card",
+          idNumber: "",
+          address: "",
+          country: "India",
+          numberOfGuests: 1,
+          roomId: "",
+          startDate: todayStr,
+          endDate: tomorrowStr,
+          nights: 1,
+          baseAmount: 0,
+          totalAmount: 0,
+          paidAmount: 0,
+          paymentMethod: "CASH",
+          notes: "",
+        });
+      } else {
+        toast.error(res?.error || "Failed to book room");
+      }
+    } finally {
+      setBookingLoading(false);
     }
   };
 
@@ -236,7 +246,7 @@ export function FrontDesk() {
   }, [res, discounts, payments, reservations]);
 
   const handleCompleteCheckIn = async () => {
-    if (!res) return;
+    if (!res || checkinLoading) return;
     const isPartyHall = res.resource_type === "PARTY_HALL";
     const targetRoomId = assignedRoomId || res.room_id;
 
@@ -244,24 +254,53 @@ export function FrontDesk() {
       return toast.error("Please assign an available room before completing check-in.");
     }
 
-    const { balance } = getReservationFinancials(res);
+    setCheckinLoading(true);
+    try {
+      const { balance } = getReservationFinancials(res);
 
-    // If there is an unpaid balance and staff entered an amount, settle it
-    const payAmt = parseFloat(checkinPayAmount);
-    if (balance > 0 && !isNaN(payAmt) && payAmt > 0) {
-      await settlePayment(res.id, payAmt, checkinPayMethod);
+      // If there is an unpaid balance and staff entered an amount, settle it
+      const payAmt = parseFloat(checkinPayAmount);
+      if (balance > 0 && !isNaN(payAmt) && payAmt > 0) {
+        await settlePayment(res.id, payAmt, checkinPayMethod);
+      }
+
+      await checkIn(res.id, targetRoomId);
+      const assignedRoom = rooms.find((r) => r.id === targetRoomId);
+      toast.success(
+        isPartyHall
+          ? `${resGuest?.name || "Guest"} checked in for Party Hall event`
+          : `${resGuest?.name || "Guest"} checked in to Room ${assignedRoom?.room_number || resRoom?.room_number || "assigned"}`
+      );
+      setSelected(null);
+      setCheckinPayAmount("");
+      setAssignedRoomId("");
+    } finally {
+      setCheckinLoading(false);
+    }
+  };
+
+  const handleCheckoutSubmit = async (r: typeof reservations[0], timer: any, balance: number, isPartyHall: boolean, gName: string, rmNum: string) => {
+    if (checkoutLoading === r.id) return;
+    if (timer.isOverdue && timer.calculatedExtraFee > 0) {
+      const fee = timer.calculatedExtraFee;
+      const hrs = timer.overdueHours;
+      if (confirm(`Guest is ${hrs} hour(s) overdue. Apply late checkout fee of ${inr(fee)} to the folio?`)) {
+        await addReservationExtraCharge(r.id, fee, `Late Check-out Fee (${hrs} hrs)`);
+        toast.info(`Late fee of ${inr(fee)} added to guest folio.`);
+      }
     }
 
-    await checkIn(res.id, targetRoomId);
-    const assignedRoom = rooms.find((r) => r.id === targetRoomId);
-    toast.success(
-      isPartyHall
-        ? `${resGuest?.name || "Guest"} checked in for Party Hall event`
-        : `${resGuest?.name || "Guest"} checked in to Room ${assignedRoom?.room_number || resRoom?.room_number || "assigned"}`
-    );
-    setSelected(null);
-    setCheckinPayAmount("");
-    setAssignedRoomId("");
+    if (balance > 0) {
+      if (!confirm(`This guest has an outstanding balance of ${inr(balance)}. Proceed to check out and mark room for housekeeping?`)) return;
+    }
+
+    setCheckoutLoading(r.id);
+    try {
+      await checkOut(r.id);
+      toast.success(`${gName} checked out · ${isPartyHall ? "Party Hall cleared" : `Room ${rmNum} moved to Housekeeping`}`);
+    } finally {
+      setCheckoutLoading(null);
+    }
   };
 
   return (
@@ -469,25 +508,11 @@ export function FrontDesk() {
                           <Button
                             size="sm"
                             variant="outline"
-                            className="rounded-lg h-8 text-xs"
-                            onClick={async () => {
-                              if (timer.isOverdue && timer.calculatedExtraFee > 0) {
-                                const fee = timer.calculatedExtraFee;
-                                const hrs = timer.overdueHours;
-                                if (confirm(`Guest is ${hrs} hour(s) overdue. Apply late checkout fee of ${inr(fee)} to the folio?`)) {
-                                  await addReservationExtraCharge(r.id, fee, `Late Check-out Fee (${hrs} hrs)`);
-                                  toast.info(`Late fee of ${inr(fee)} added to guest folio.`);
-                                }
-                              }
-
-                              if (balance > 0) {
-                                if (!confirm(`This guest has an outstanding balance of ${inr(balance)}. Proceed to check out and mark room for housekeeping?`)) return;
-                              }
-                              await checkOut(r.id);
-                              toast.success(`${gName} checked out · ${isPartyHall ? "Party Hall cleared" : `Room ${rmNum} moved to Housekeeping`}`);
-                            }}
+                            disabled={checkoutLoading === r.id}
+                            className="rounded-lg h-8 text-xs font-medium"
+                            onClick={() => handleCheckoutSubmit(r, timer, balance, isPartyHall, gName, rmNum)}
                           >
-                            Check Out
+                            {checkoutLoading === r.id ? "Checking Out..." : "Check Out"}
                           </Button>
                         </div>
                       </TableCell>
@@ -637,9 +662,9 @@ export function FrontDesk() {
                 </div>
 
                 <div className="flex justify-end gap-3 pt-3 border-t border-border">
-                  <Button variant="ghost" onClick={() => setSelected(null)}>Cancel</Button>
-                  <Button className="bg-brass text-gold-foreground hover:opacity-90" onClick={handleCompleteCheckIn}>
-                    Complete Check-In
+                  <Button variant="ghost" onClick={() => setSelected(null)} disabled={checkinLoading}>Cancel</Button>
+                  <Button disabled={checkinLoading} className="bg-brass text-gold-foreground hover:opacity-90" onClick={handleCompleteCheckIn}>
+                    {checkinLoading ? "Completing Check-In..." : "Complete Check-In"}
                   </Button>
                 </div>
               </div>
@@ -916,11 +941,11 @@ export function FrontDesk() {
           </div>
 
           <div className="flex justify-end gap-3 pt-4 border-t border-border">
-            <Button variant="ghost" onClick={() => setBookingOpen(false)}>
+            <Button variant="ghost" onClick={() => setBookingOpen(false)} disabled={bookingLoading}>
               Cancel
             </Button>
-            <Button onClick={handleBooking} className="bg-brass text-gold-foreground hover:opacity-90">
-              Confirm & Book Room
+            <Button disabled={bookingLoading} onClick={handleBooking} className="bg-brass text-gold-foreground hover:opacity-90 font-medium">
+              {bookingLoading ? "Booking Room..." : "Confirm & Book Room"}
             </Button>
           </div>
         </DialogContent>

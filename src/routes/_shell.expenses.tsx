@@ -24,6 +24,35 @@ function ExpensesPage() {
   const [amount, setAmount] = React.useState("");
   const [category, setCategory] = React.useState("Operational");
   const [description, setDescription] = React.useState("");
+  const [expenseLoading, setExpenseLoading] = React.useState(false);
+
+  const handleExpenseSubmit = async () => {
+    if (expenseLoading) return;
+    const amt = parseFloat(amount);
+    if (isNaN(amt) || amt <= 0) {
+      toast.error("Please enter a valid expense amount.");
+      return;
+    }
+    if (!description.trim()) {
+      toast.error("Please provide an expense description.");
+      return;
+    }
+
+    setExpenseLoading(true);
+    try {
+      const res = await addExpense(amt, category, description.trim());
+      if (res?.success) {
+        toast.success("Expense record logged successfully.");
+        setOpen(false);
+        setAmount("");
+        setDescription("");
+      } else {
+        toast.error(res?.error || "Failed to log expense");
+      }
+    } finally {
+      setExpenseLoading(false);
+    }
+  };
 
   return (
     <div className="space-y-6 pb-12">
@@ -64,29 +93,11 @@ function ExpensesPage() {
                   <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="e.g. Plumber fee, Milk packet" />
                 </div>
                 <Button 
-                  className="w-full bg-brass text-gold-foreground hover:opacity-90 mt-4"
-                  onClick={async () => {
-                    const amt = parseFloat(amount);
-                    if (isNaN(amt) || amt <= 0) {
-                      toast.error("Please enter a valid expense amount.");
-                      return;
-                    }
-                    if (!description.trim()) {
-                      toast.error("Please provide an expense description.");
-                      return;
-                    }
-                    const res = await addExpense(amt, category, description.trim());
-                    if (res?.success) {
-                      toast.success("Expense record logged successfully.");
-                      setOpen(false);
-                      setAmount("");
-                      setDescription("");
-                    } else {
-                      toast.error(res?.error || "Failed to log expense");
-                    }
-                  }}
+                  disabled={expenseLoading}
+                  className="w-full bg-brass text-gold-foreground hover:opacity-90 mt-4 font-medium"
+                  onClick={handleExpenseSubmit}
                 >
-                  Save Record
+                  {expenseLoading ? "Saving Record..." : "Save Record"}
                 </Button>
               </div>
             </DialogContent>

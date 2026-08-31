@@ -27,6 +27,8 @@ import {
   ClipboardCheck,
   ChevronRight,
   Network,
+  Menu,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePms, type Role } from "@/lib/pms-store";
@@ -118,6 +120,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [collapsed, setCollapsed] = React.useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const [searchOpen, setSearchOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
   const unread = notifications.filter((n) => !n.read).length;
@@ -270,13 +273,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-30 border-b border-border bg-background/85 backdrop-blur-xl">
           <div className="flex flex-wrap items-center gap-3 px-4 py-3 md:px-6">
-            <Link to="/dashboard" className="flex items-center gap-2 lg:hidden">
-              <img
-                src={drbLogo}
-                alt="DRB Hotel"
-                className="size-9 shrink-0 rounded-lg bg-card border border-border p-0.5 object-contain"
-              />
-            </Link>
+            <div className="flex items-center gap-2 lg:hidden">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setMobileMenuOpen(true)}
+                className="flex items-center gap-1.5 rounded-xl border-gold/40 bg-gold/10 text-gold hover:bg-gold/20 font-semibold px-2.5 h-9 shadow-soft"
+                aria-label="Open mobile menu"
+              >
+                <Menu className="size-4" />
+                <span className="text-xs">Menu</span>
+              </Button>
+              <Link to="/dashboard" className="flex items-center gap-2">
+                <img
+                  src={drbLogo}
+                  alt="DRB Hotel"
+                  className="size-9 shrink-0 rounded-lg bg-card border border-border p-0.5 object-contain"
+                />
+              </Link>
+            </div>
             <button
               onClick={() => setSearchOpen(true)}
               className="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-xl border border-border bg-card px-3 text-sm text-muted-foreground transition-colors hover:border-gold/50 md:max-w-md"
@@ -388,7 +403,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </footer>
       </div>
 
-      <MobileNav />
+      <MobileMegaNav isOpen={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} />
 
       <Dialog open={searchOpen} onOpenChange={setSearchOpen}>
         <DialogContent className="max-w-lg p-0">
@@ -509,38 +524,176 @@ function QuickAdd() {
   );
 }
 
-function MobileNav() {
-  const { session } = usePms();
+function MobileMegaNav({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+  const { session, logout, notifications } = usePms();
+  const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const isFrontDesk = session?.role === "FRONT_DESK";
-  
-  const items = [
-    { to: "/dashboard", label: "Home", icon: LayoutDashboard },
-    { to: "/front-desk", label: "Desk", icon: ConciergeBell },
-    { to: "/rooms", label: "Rooms", icon: BedDouble },
-    { to: "/housekeeping", label: "HK", icon: Sparkles },
-    isFrontDesk
-      ? { to: "/party-hall", label: "Events", icon: PartyPopper }
-      : { to: "/settings", label: "Config", icon: Settings },
-  ];
+  const [search, setSearch] = React.useState("");
+  const unread = notifications.filter((n) => !n.read).length;
+
+  // Lock background scroll when open
+  React.useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 flex border-t border-border bg-card/95 backdrop-blur lg:hidden">
-      {items.map((i) => {
-        const active = pathname.startsWith(i.to);
-        return (
-          <Link
-            key={i.to}
-            to={i.to}
-            className={cn(
-              "flex flex-1 flex-col items-center gap-1 py-2 text-[10px]",
-              active ? "text-gold" : "text-muted-foreground",
-            )}
-          >
-            <i.icon className="size-4" />
-            {i.label}
-          </Link>
-        );
-      })}
-    </nav>
+    <div className="fixed inset-0 z-50 flex flex-col bg-background/98 backdrop-blur-2xl animate-in fade-in zoom-in-95 duration-200 lg:hidden overflow-hidden">
+      {/* Top Header */}
+      <div className="flex items-center justify-between border-b border-border/80 px-5 py-4 bg-card/70">
+        <div className="flex items-center gap-3">
+          <img
+            src={drbLogo}
+            alt="DRB Hotel"
+            className="size-10 rounded-xl bg-card border border-border p-1 object-contain shadow-soft"
+          />
+          <div>
+            <div className="font-display text-base font-bold tracking-wider text-foreground">DRB HOTEL</div>
+            <div className="text-[10px] uppercase tracking-widest text-gold font-semibold">
+              {session?.roleLabel || "Property Management"}
+            </div>
+          </div>
+        </div>
+
+        <button
+          onClick={onClose}
+          className="grid size-10 place-items-center rounded-xl border border-border bg-card text-foreground hover:bg-accent active:scale-90 transition-all shadow-sm"
+          aria-label="Close menu"
+        >
+          <X className="size-5 text-gold" />
+        </button>
+      </div>
+
+      {/* Quick Search */}
+      <div className="px-5 pt-3.5 pb-1.5">
+        <div className="relative">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search all tools & menus..."
+            className="pl-10 h-10 rounded-xl bg-card/90 border-border focus-visible:ring-gold text-sm"
+          />
+          {search && (
+            <button
+              onClick={() => setSearch("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-muted-foreground hover:text-foreground"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Grid of Sections and Cards */}
+      <div className="flex-1 overflow-y-auto px-5 py-3 space-y-6 scroll-slim">
+        {NAV.map((group) => {
+          const allowedItems = group.items.filter(
+            (i) => !i.roles || !session || i.roles.includes(session.role),
+          );
+          const filteredItems = search.trim()
+            ? allowedItems.filter((i) => i.label.toLowerCase().includes(search.toLowerCase()))
+            : allowedItems;
+
+          if (!filteredItems.length) return null;
+
+          return (
+            <div key={group.section} className="space-y-2.5">
+              <div className="flex items-center justify-between text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground/80 px-1">
+                <span>{group.section}</span>
+                <span className="text-[10px] lowercase text-muted-foreground/60">({filteredItems.length})</span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                {filteredItems.map((item) => {
+                  const active = pathname === item.to || pathname.startsWith(item.to + "/");
+                  const isNotifications = item.to === "/notifications";
+
+                  return (
+                    <button
+                      key={item.to}
+                      onClick={() => {
+                        onClose();
+                        void navigate({ to: item.to });
+                      }}
+                      className={cn(
+                        "relative flex flex-col items-start justify-between rounded-2xl border p-4 text-left transition-all active:scale-95 shadow-sm group",
+                        active
+                          ? "border-gold/80 bg-gold/15 text-gold-foreground ring-1 ring-gold/40 shadow-brass"
+                          : "border-border/80 bg-card/90 text-foreground hover:border-gold/50 hover:bg-card"
+                      )}
+                    >
+                      <div className="flex w-full items-center justify-between mb-3">
+                        <div
+                          className={cn(
+                            "grid size-10 place-items-center rounded-xl transition-colors",
+                            active
+                              ? "bg-gold text-midnight shadow-soft"
+                              : "bg-secondary text-gold group-hover:bg-gold/20"
+                          )}
+                        >
+                          <item.icon className="size-5" />
+                        </div>
+
+                        {isNotifications && unread > 0 ? (
+                          <span className="rounded-full bg-destructive px-2 py-0.5 text-[10px] font-bold text-destructive-foreground">
+                            {unread} new
+                          </span>
+                        ) : active ? (
+                          <span className="size-2 rounded-full bg-gold animate-pulse" />
+                        ) : null}
+                      </div>
+
+                      <div className="w-full">
+                        <div className="font-semibold text-sm leading-snug line-clamp-1">{item.label}</div>
+                        <div className="text-[11px] text-muted-foreground mt-0.5 line-clamp-1">
+                          {active ? "Active Screen" : "Tap to open"}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Bottom Profile & Logout Footer */}
+      <div className="border-t border-border/80 bg-card/95 p-4 flex items-center justify-between shadow-lg">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-brass text-xs font-bold text-gold-foreground">
+            {session?.name?.slice(0, 2).toUpperCase() ?? "DR"}
+          </div>
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold text-foreground">{session?.name}</div>
+            <div className="truncate text-[11px] text-gold">{session?.roleLabel}</div>
+          </div>
+        </div>
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            onClose();
+            logout();
+            toast.success("Signed out of DRB Hotel PMS");
+            void navigate({ to: "/" });
+          }}
+          className="rounded-xl border-destructive/30 text-destructive hover:bg-destructive/10"
+        >
+          <LogOut className="mr-1.5 size-4" />
+          Logout
+        </Button>
+      </div>
+    </div>
   );
 }

@@ -38,32 +38,46 @@ function StaffPage() {
   const [selectedStaff, setSelectedStaff] = React.useState<{ id: string; name: string } | null>(null);
   const [newPassword, setNewPassword] = React.useState("");
 
+  const [addStaffLoading, setAddStaffLoading] = React.useState(false);
+  const [changePassLoading, setChangePassLoading] = React.useState(false);
+
   const handleAdd = async () => {
+    if (addStaffLoading) return;
     if (!form.name.trim()) return toast.error("Please enter staff member name");
     if (!form.password.trim()) return toast.error("Please enter login password or PIN");
 
-    const res = await addStaff(form.name.trim(), form.role, form.phone.trim(), form.email.trim(), form.password.trim());
-    if (res?.success) {
-      toast.success(`Staff profile for "${form.name}" created successfully`);
-      setAddOpen(false);
-      setForm({ name: "", phone: "", role: "FRONT_DESK", email: "", password: "" });
-    } else {
-      toast.error(res?.error || "Failed to create staff profile");
+    setAddStaffLoading(true);
+    try {
+      const res = await addStaff(form.name.trim(), form.role, form.phone.trim(), form.email.trim(), form.password.trim());
+      if (res?.success) {
+        toast.success(`Staff profile for "${form.name}" created successfully`);
+        setAddOpen(false);
+        setForm({ name: "", phone: "", role: "FRONT_DESK", email: "", password: "" });
+      } else {
+        toast.error(res?.error || "Failed to create staff profile");
+      }
+    } finally {
+      setAddStaffLoading(false);
     }
   };
 
   const handleChangePassword = async () => {
-    if (!selectedStaff) return;
+    if (!selectedStaff || changePassLoading) return;
     if (!newPassword.trim()) return toast.error("Please enter a new password or PIN");
 
-    const res = await updateStaffPassword(selectedStaff.id, newPassword.trim());
-    if (res?.success) {
-      toast.success(`Password for ${selectedStaff.name} updated successfully!`);
-      setPassOpen(false);
-      setSelectedStaff(null);
-      setNewPassword("");
-    } else {
-      toast.error(res?.error || "Failed to update password");
+    setChangePassLoading(true);
+    try {
+      const res = await updateStaffPassword(selectedStaff.id, newPassword.trim());
+      if (res?.success) {
+        toast.success(`Password for ${selectedStaff.name} updated successfully!`);
+        setPassOpen(false);
+        setSelectedStaff(null);
+        setNewPassword("");
+      } else {
+        toast.error(res?.error || "Failed to update password");
+      }
+    } finally {
+      setChangePassLoading(false);
     }
   };
 
@@ -256,8 +270,10 @@ function StaffPage() {
               </div>
             </div>
             <div className="flex justify-end gap-2 pt-3 border-t border-border">
-              <Button variant="ghost" onClick={() => setAddOpen(false)}>Cancel</Button>
-              <Button onClick={handleAdd} className="bg-brass text-gold-foreground">Create Staff Login</Button>
+              <Button variant="ghost" onClick={() => setAddOpen(false)} disabled={addStaffLoading}>Cancel</Button>
+              <Button disabled={addStaffLoading} onClick={handleAdd} className="bg-brass text-gold-foreground">
+                {addStaffLoading ? "Creating Login..." : "Create Staff Login"}
+              </Button>
             </div>
           </div>
         </DialogContent>
@@ -283,9 +299,9 @@ function StaffPage() {
               />
             </div>
             <div className="flex justify-end gap-2 pt-2">
-              <Button variant="ghost" onClick={() => setPassOpen(false)}>Cancel</Button>
-              <Button onClick={handleChangePassword} className="bg-brass text-gold-foreground">
-                Update Password
+              <Button variant="ghost" onClick={() => setPassOpen(false)} disabled={changePassLoading}>Cancel</Button>
+              <Button disabled={changePassLoading} onClick={handleChangePassword} className="bg-brass text-gold-foreground">
+                {changePassLoading ? "Updating..." : "Update Password"}
               </Button>
             </div>
           </div>
