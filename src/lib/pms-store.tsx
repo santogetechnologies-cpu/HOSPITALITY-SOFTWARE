@@ -47,8 +47,20 @@ type State = {
   businessDate: string;
 };
 
+const getStoredSession = (): Session | null => {
+  if (typeof window !== "undefined") {
+    const s = localStorage.getItem("drb_pms_session");
+    if (s) {
+      try {
+        return JSON.parse(s);
+      } catch (e) {}
+    }
+  }
+  return null;
+};
+
 const initialState: State = {
-  session: null,
+  session: getStoredSession(),
   rooms: [],
   reservations: [],
   guests: [],
@@ -256,6 +268,41 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         loadedGuests = loadedGuests.filter((g: any) => !duplicateIdsToDelete.includes(g.id));
       }
 
+      let loadedProfiles: any[] = (profiles as any) || [];
+
+      // Auto-reconcile default staff accounts in Supabase profiles
+      const defaultStaffAccounts = [
+        {
+          id: 'staff-frontdesk-default',
+          name: 'FRONT DESK',
+          email: 'drbreception@gmail.com',
+          phone: '00',
+          role: 'FRONT_DESK',
+          pin: '00',
+          status: 'ACTIVE'
+        },
+        {
+          id: 'staff-manager-default',
+          name: 'Manager',
+          email: 'drbmanager@gmail.com',
+          phone: '00',
+          role: 'GM',
+          pin: '00',
+          status: 'ACTIVE'
+        }
+      ];
+
+      for (const defStaff of defaultStaffAccounts) {
+        const found = loadedProfiles.find((p: any) => 
+          (p.email && p.email.toLowerCase() === defStaff.email.toLowerCase()) || 
+          (p.name && p.name.toLowerCase() === defStaff.name.toLowerCase())
+        );
+        if (!found) {
+          loadedProfiles = [defStaff, ...loadedProfiles];
+          void supabase.from('profiles').upsert(defStaff);
+        }
+      }
+
       setState(s => ({
         ...s,
         rooms: (rooms as any) || [],
@@ -264,7 +311,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         payments: loadedPayments,
         discounts: loadedDiscounts,
         expenses: (expenses as any) || [],
-        profiles: (profiles as any) || [],
+        profiles: loadedProfiles,
         notifications: (notifications as any) || [],
         hkTasks: (hkTasks as any) || [],
         tickets: (tickets as any) || []
@@ -282,15 +329,23 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         if (session.user.email?.toLowerCase() === "drbhoteladmin@drb.com") {
           role = "SUPER_ADMIN";
         }
-        setState((s) => ({
-          ...s,
-          session: {
-            username: session.user.email || "",
-            name: session.user.user_metadata?.name || session.user.email?.split("@")[0] || "",
-            role: role as Role,
-            roleLabel: role === "SUPER_ADMIN" ? "Super Admin" : role,
-          }
-        }));
+        const s: Session = {
+          username: session.user.email || "",
+          name: session.user.user_metadata?.name || session.user.email?.split("@")[0] || "",
+          role: role as Role,
+          roleLabel: role === "SUPER_ADMIN" ? "Super Admin" : role === "GM" ? "General Manager" : "Front Desk",
+        };
+        setState((st) => ({ ...st, session: s }));
+        localStorage.setItem("drb_pms_session", JSON.stringify(s));
+        fetchData();
+      } else {
+        const local = localStorage.getItem("drb_pms_session");
+        if (local) {
+          try {
+            const parsed = JSON.parse(local);
+            setState((st) => ({ ...st, session: parsed }));
+          } catch (e) {}
+        }
         fetchData();
       }
     });
@@ -301,18 +356,18 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         if (session.user.email?.toLowerCase() === "drbhoteladmin@drb.com") {
           role = "SUPER_ADMIN";
         }
-        setState((s) => ({
-          ...s,
-          session: {
-            username: session.user.email || "",
-            name: session.user.user_metadata?.name || session.user.email?.split("@")[0] || "",
-            role: role as Role,
-            roleLabel: role === "SUPER_ADMIN" ? "Super Admin" : role,
-          }
-        }));
+        const s: Session = {
+          username: session.user.email || "",
+          name: session.user.user_metadata?.name || session.user.email?.split("@")[0] || "",
+          role: role as Role,
+          roleLabel: role === "SUPER_ADMIN" ? "Super Admin" : role === "GM" ? "General Manager" : "Front Desk",
+        };
+        setState((st) => ({ ...st, session: s }));
+        localStorage.setItem("drb_pms_session", JSON.stringify(s));
         fetchData();
-      } else {
-        setState((s) => ({ ...s, session: null }));
+      } else if (_event === "SIGNED_OUT") {
+        localStorage.removeItem("drb_pms_session");
+        setState((st) => ({ ...st, session: null }));
       }
     });
 
@@ -325,8 +380,6 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
     
     const channel = supabase.channel('pms_changes')
       .on('postgres_changes', { event: '*', schema: 'public' }, () => {
-        // Simple approach: re-fetch everything on any change to keep it perfectly synced.
-        // In a production app you'd apply patches based on payload.new / payload.old
         fetchData();
       })
       .subscribe();
@@ -342,25 +395,92 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
     return {
       ...state,
       login: async (email, password) => {
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error || !data.user) {
-          console.error("Supabase Login Error:", error);
-          return { session: null, error: error?.message || "Invalid credentials." };
+        const cleanInput = (email || "").trim();
+        const cleanPassword = (password || "").trim();
+
+        // 1. Try Supabase Auth first
+        try {
+          const { data, error } = await supabase.auth.signInWithPassword({ email: cleanInput, password: cleanPassword });
+          if (data?.user) {
+            let role = data.user.user_metadata?.role || "SUPER_ADMIN";
+            if (cleanInput.toLowerCase() === "drbhoteladmin@drb.com") {
+              role = "SUPER_ADMIN";
+            }
+            
+            const session: Session = {
+              username: data.user.email || cleanInput,
+              name: data.user.user_metadata?.name || cleanInput.split("@")[0] || "Admin",
+              role: role as Role,
+              roleLabel: role === "SUPER_ADMIN" ? "Super Admin" : role === "GM" ? "General Manager" : "Front Desk",
+            };
+            setState((s) => ({ ...s, session }));
+            if (typeof window !== "undefined") {
+              localStorage.setItem("drb_pms_session", JSON.stringify(session));
+            }
+            return { session, error: null };
+          }
+        } catch (e) {
+          console.warn("Supabase Auth signIn failed, trying profiles:", e);
         }
-        
-        let role = data.user.user_metadata?.role || "SUPER_ADMIN";
-        // Force super admin for the specific email
-        if (email.toLowerCase() === "drbhoteladmin@drb.com") {
-          role = "SUPER_ADMIN";
+
+        // 2. Check Staff Profiles in Supabase 'profiles' table
+        try {
+          const { data: dbProfiles } = await supabase
+            .from('profiles')
+            .select('*');
+          
+          const profilePool = (dbProfiles && dbProfiles.length > 0) ? dbProfiles : state.profiles;
+          
+          const matched = profilePool.find((p: any) => {
+            const pEmail = (p.email || "").trim().toLowerCase();
+            const pName = (p.name || "").trim().toLowerCase();
+            const pPhone = (p.phone || "").trim();
+            const target = cleanInput.toLowerCase();
+
+            const isMatch = pEmail === target || pName === target || pPhone === target;
+            const isActive = (p.status || 'ACTIVE').toUpperCase() === 'ACTIVE';
+            return isMatch && isActive;
+          });
+
+          if (matched) {
+            const storedPin = String(matched.pin || "").trim();
+            if (storedPin && cleanPassword && storedPin !== cleanPassword) {
+              return { session: null, error: "Incorrect password or PIN for this staff account." };
+            }
+
+            let rawRole = (matched.role || "FRONT_DESK").toUpperCase();
+            let role: Role = "FRONT_DESK";
+            let roleLabel = "Front Desk";
+
+            if (rawRole.includes("SUPER") || rawRole === "ADMIN" || rawRole === "SUPER_ADMIN") {
+              role = "SUPER_ADMIN";
+              roleLabel = "Super Admin";
+            } else if (rawRole.includes("MANAGER") || rawRole === "GM" || rawRole === "GENERAL MANAGER") {
+              role = "GM";
+              roleLabel = "General Manager";
+            } else {
+              role = "FRONT_DESK";
+              roleLabel = "Front Desk";
+            }
+
+            const session: Session = {
+              username: matched.email || matched.name,
+              name: matched.name || "Staff Member",
+              role,
+              roleLabel,
+            };
+
+            setState((s) => ({ ...s, session }));
+            if (typeof window !== "undefined") {
+              localStorage.setItem("drb_pms_session", JSON.stringify(session));
+            }
+            return { session, error: null };
+          }
+        } catch (pErr) {
+          console.error("Profile check error:", pErr);
         }
-        
-        const session: Session = {
-          username: data.user.email || "",
-          name: data.user.user_metadata?.name || data.user.email?.split("@")[0] || "",
-          role: role as Role,
-          roleLabel: role === "SUPER_ADMIN" ? "Super Admin" : role,
-        };
-        return { session, error: null };
+
+        return { session: null, error: "Invalid login credentials. Please verify your email / username and password." };
       },
       signUp: async (email, password) => {
         const role = "SUPER_ADMIN";
@@ -381,10 +501,19 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
           role: role as Role,
           roleLabel: "Super Admin",
         };
+        setState((s) => ({ ...s, session }));
+        if (typeof window !== "undefined") {
+          localStorage.setItem("drb_pms_session", JSON.stringify(session));
+        }
         return { session, error: null };
       },
       logout: async () => {
-        await supabase.auth.signOut();
+        try {
+          await supabase.auth.signOut();
+        } catch (e) {}
+        if (typeof window !== "undefined") {
+          localStorage.removeItem("drb_pms_session");
+        }
         setState((s) => ({ ...s, session: null }));
       },
       
@@ -1125,18 +1254,23 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
       addStaff: async (name, role, phone, email, pass) => {
         try {
           const userId = crypto.randomUUID();
+          let normalizedRole = role || 'FRONT_DESK';
+          if (normalizedRole === 'Front Desk') normalizedRole = 'FRONT_DESK';
+          if (normalizedRole === 'General Manager') normalizedRole = 'GM';
+          if (normalizedRole === 'Super Admin') normalizedRole = 'SUPER_ADMIN';
+
           const newStaff = {
             id: userId,
-            name,
-            role: role || 'FRONT_DESK',
-            phone: phone || null,
-            email: email || null,
-            pin: pass || null,
+            name: name.trim(),
+            role: normalizedRole,
+            phone: phone?.trim() || null,
+            email: email?.trim() || null,
+            pin: pass?.trim() || null,
             status: 'ACTIVE'
           };
           setState(s => ({
             ...s,
-            profiles: [newStaff as any, ...s.profiles]
+            profiles: [newStaff as any, ...s.profiles.filter(p => newStaff.email ? p.email?.toLowerCase() !== newStaff.email?.toLowerCase() : p.id !== userId)]
           }));
           const { error: pErr } = await supabase.from('profiles').upsert(newStaff);
           if (pErr) {

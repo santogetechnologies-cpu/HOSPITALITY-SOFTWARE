@@ -129,10 +129,13 @@ function StaffPage() {
                 <TableCell className="text-xs text-muted-foreground">{p.email || p.id}</TableCell>
                 <TableCell>{p.phone || "—"}</TableCell>
                 <TableCell>
-                  <Select defaultValue={p.role} onValueChange={(r) => {
-                    updateStaffRole(p.id, r);
-                    toast.success(`${p.name}'s role updated to ${r}`);
-                  }}>
+                  <Select 
+                    value={p.role === "Front Desk" ? "FRONT_DESK" : p.role === "General Manager" ? "GM" : p.role || "FRONT_DESK"} 
+                    onValueChange={(r) => {
+                      updateStaffRole(p.id, r);
+                      toast.success(`${p.name}'s role updated to ${r}`);
+                    }}
+                  >
                     <SelectTrigger className="w-[160px] h-8 text-xs">
                       <SelectValue />
                     </SelectTrigger>
