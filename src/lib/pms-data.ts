@@ -166,8 +166,11 @@ export type Profile = {
   id: string;
   name: string;
   phone?: string;
+  email?: string;
+  pin?: string;
   role: "SUPER_ADMIN" | "GM" | "FRONT_DESK";
   status: string;
+  created_at?: string;
 };
 
 export type Notification = {

@@ -47,6 +47,63 @@ type State = {
   businessDate: string;
 };
 
+export const DEFAULT_STAFF_PROFILES: Profile[] = [
+  {
+    id: "a0000000-0000-0000-0000-000000000001",
+    name: "DRB Hotel Admin",
+    email: "drbhoteladmin@drb.com",
+    phone: "+91 98765 00001",
+    role: "SUPER_ADMIN",
+    status: "ACTIVE",
+    pin: "admin123"
+  },
+  {
+    id: "a0000000-0000-0000-0000-000000000002",
+    name: "Rajesh Sharma",
+    email: "gm@drbhotel.com",
+    phone: "+91 98765 43210",
+    role: "GM",
+    status: "ACTIVE",
+    pin: "gm2026"
+  },
+  {
+    id: "a0000000-0000-0000-0000-000000000003",
+    name: "Priya Sharma",
+    email: "priya.desk@drbhotel.com",
+    phone: "+91 98765 43211",
+    role: "FRONT_DESK",
+    status: "ACTIVE",
+    pin: "desk101"
+  },
+  {
+    id: "a0000000-0000-0000-0000-000000000004",
+    name: "Amit Verma",
+    email: "amit.desk@drbhotel.com",
+    phone: "+91 98765 43212",
+    role: "FRONT_DESK",
+    status: "ACTIVE",
+    pin: "desk102"
+  },
+  {
+    id: "a0000000-0000-0000-0000-000000000005",
+    name: "Sunita Mehra",
+    email: "sunita.hk@drbhotel.com",
+    phone: "+91 98765 43213",
+    role: "FRONT_DESK",
+    status: "ACTIVE",
+    pin: "hk103"
+  },
+  {
+    id: "a0000000-0000-0000-0000-000000000006",
+    name: "Karan Patel",
+    email: "karan.patel@drbhotel.com",
+    phone: "+91 98765 43214",
+    role: "FRONT_DESK",
+    status: "INACTIVE",
+    pin: "karan2026"
+  }
+];
+
 const initialState: State = {
   session: null,
   rooms: [],
@@ -55,7 +112,7 @@ const initialState: State = {
   payments: [],
   discounts: [],
   expenses: [],
-  profiles: [],
+  profiles: DEFAULT_STAFF_PROFILES,
   notifications: [],
   tickets: [],
   hkTasks: [],
@@ -96,9 +153,25 @@ type Ctx = State & {
   assignGuestToRoom: (roomId: string, guest: string) => void;
   checkIn: (reservationId: string, roomNumber?: string) => void;
   checkOut: (reservationId: string) => void;
-  setReservationStatus: (id: string, status: ReservationStatus) => void;
-  setReservationStatus: (id: string, status: ReservationStatus) => void;
-  addRoomReservation: (booking: { guestName: string; phone: string; email: string; roomId: string; date: string; nights: number; baseAmount: number; totalAmount: number; paymentMethod: string; paidAmount: number; }) => Promise<{ success: boolean; error?: string }>;
+  addRoomReservation: (booking: {
+    guestName: string;
+    phone?: string;
+    email?: string;
+    idType?: string;
+    idNumber?: string;
+    address?: string;
+    country?: string;
+    numberOfGuests?: number;
+    roomId: string;
+    startDate: string;
+    endDate: string;
+    nights: number;
+    baseAmount: number;
+    totalAmount: number;
+    paymentMethod?: string;
+    paidAmount?: number;
+    notes?: string;
+  }) => Promise<{ success: boolean; error?: string }>;
   transferRoom: (reservationId: string, toRoom: string) => void;
   addFolioLine: (line: Omit<FolioLine, "id">) => void;
   addTicket: (t: Omit<Ticket, "id" | "raised">) => Promise<void>;
@@ -171,6 +244,15 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         supabase.from('tickets').select('*')
       ]);
 
+      let resolvedProfiles = (profiles as any) || [];
+      if (!resolvedProfiles || resolvedProfiles.length === 0) {
+        resolvedProfiles = DEFAULT_STAFF_PROFILES;
+        // Non-blocking sync to Supabase so table is populated
+        supabase.from('profiles').upsert(DEFAULT_STAFF_PROFILES).catch(err => {
+          console.warn("Auto-seeding profiles to Supabase:", err);
+        });
+      }
+
       setState(s => ({
         ...s,
         rooms: (rooms as any) || [],
@@ -179,7 +261,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         payments: (payments as any) || [],
         discounts: (discounts as any) || [],
         expenses: (expenses as any) || [],
-        profiles: (profiles as any) || [],
+        profiles: resolvedProfiles,
         notifications: (notifications as any) || [],
         hkTasks: (hkTasks as any) || [],
         tickets: (tickets as any) || []
@@ -338,45 +420,79 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
       
       addRoomReservation: async (b) => {
         try {
-          // 1. Insert Guest (using columns guaranteed to exist on guests table)
+          if (!b.guestName || !b.guestName.trim()) {
+            return { success: false, error: "Guest name is required." };
+          }
+          if (!b.roomId) {
+            return { success: false, error: "Please select a room to reserve." };
+          }
+          if (!b.startDate || !b.endDate) {
+            return { success: false, error: "Check-in and check-out dates are required." };
+          }
+
+          const startTs = new Date(`${b.startDate}T14:00:00`).getTime();
+          const endTs = new Date(`${b.endDate}T11:00:00`).getTime();
+
+          if (endTs <= startTs) {
+            return { success: false, error: "Check-out date must be after check-in date." };
+          }
+
+          // 1. Conflict & Overlap Check: Verify no existing active reservation conflicts with [startTs, endTs]
+          const isOverlapping = state.reservations.some((r) => {
+            if (r.room_id !== b.roomId || r.status === "CANCELLED" || r.status === "COMPLETED") return false;
+            const rStart = new Date(r.start_time || `${r.booking_date}T14:00:00`).getTime();
+            const rEnd = new Date(r.end_time || `${r.booking_date}T11:00:00`).getTime();
+            const effectiveEnd = rEnd > rStart ? rEnd : rStart + 24 * 60 * 60 * 1000;
+            return (startTs < effectiveEnd && endTs > rStart);
+          });
+
+          if (isOverlapping) {
+            const room = state.rooms.find((rm) => rm.id === b.roomId);
+            return {
+              success: false,
+              error: `Room ${room?.room_number || "selected"} is already booked for these dates (${b.startDate} to ${b.endDate}). Please select different dates or another room.`
+            };
+          }
+
+          // 2. Insert Guest with ID and contact metadata
           const guestId = crypto.randomUUID();
           const { error: gErr } = await supabase.from('guests').insert({
             id: guestId,
-            name: b.guestName,
-            phone: b.phone || null,
-            email: b.email || null
+            name: b.guestName.trim(),
+            phone: b.phone?.trim() || null,
+            email: b.email?.trim() || null,
+            id_type: b.idType || null,
+            id_number: b.idNumber?.trim() || null,
+            address: b.address?.trim() || null,
+            country: b.country?.trim() || 'India',
+            notes: b.notes?.trim() || null
           });
           if (gErr) throw gErr;
 
-          // 2. Insert Reservation with valid ISO timestamp for start_time and end_time
+          // 3. Insert Reservation with ISO start_time, end_time, and guest count
           const resId = crypto.randomUUID();
-          const bookingDate = b.date || new Date().toISOString().split('T')[0];
-          const nights = Number(b.nights) || 1;
-          const startTs = new Date(`${bookingDate}T14:00:00`).toISOString();
-          const endDateObj = new Date(`${bookingDate}T11:00:00`);
-          endDateObj.setDate(endDateObj.getDate() + nights);
-          const endTs = endDateObj.toISOString();
-
+          const totalAmt = Number(b.totalAmount) || Number(b.baseAmount) || 0;
           const { error: rErr } = await supabase.from('reservations').insert({
             id: resId,
             guest_id: guestId,
             room_id: b.roomId,
             resource_type: 'ROOM',
-            booking_date: bookingDate,
-            start_time: startTs,
-            end_time: endTs,
+            number_of_guests: Number(b.numberOfGuests) || 1,
+            booking_date: b.startDate,
+            start_time: new Date(`${b.startDate}T14:00:00`).toISOString(),
+            end_time: new Date(`${b.endDate}T11:00:00`).toISOString(),
             status: 'CONFIRMED',
-            base_amount: Number(b.totalAmount) || Number(b.baseAmount) || 0
+            base_amount: totalAmt,
+            notes: b.notes?.trim() || null
           });
           if (rErr) throw rErr;
 
-          // 3. Update Room Status
+          // 4. Update Room Status to BOOKED
           if (b.roomId) {
             await supabase.from('rooms').update({ status: 'BOOKED' }).eq('id', b.roomId);
           }
 
-          // 4. Create Payment Folio (Immediately reflects in Pending Payments / Payment History)
-          const totalAmt = Number(b.totalAmount) || Number(b.baseAmount) || 0;
+          // 5. Create Payment Folio
           const paidAmt = Number(b.paidAmount) || 0;
           const payStatus = paidAmt >= totalAmt && totalAmt > 0 ? 'COMPLETED' : paidAmt > 0 ? 'PARTIAL' : 'PENDING';
           
@@ -755,6 +871,10 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
 
       deleteRoom: async (id) => {
         try {
+          setState(s => ({
+            ...s,
+            rooms: s.rooms.filter(r => r.id !== id)
+          }));
           // Unlink reservations from this room and delete tasks
           await supabase.from('reservations').update({ room_id: null }).eq('room_id', id);
           await supabase.from('hk_tasks').delete().eq('room_id', id);
@@ -818,7 +938,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
       addStaff: async (name, role, phone, email, pass) => {
         try {
           const userId = crypto.randomUUID();
-          const { error: pErr } = await supabase.from('profiles').upsert({
+          const newStaff = {
             id: userId,
             name,
             role: role || 'FRONT_DESK',
@@ -826,9 +946,15 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             email: email || null,
             pin: pass || null,
             status: 'ACTIVE'
-          });
-          if (pErr) throw pErr;
-          
+          };
+          setState(s => ({
+            ...s,
+            profiles: [newStaff as any, ...s.profiles]
+          }));
+          const { error: pErr } = await supabase.from('profiles').upsert(newStaff);
+          if (pErr) {
+            console.error("addStaff db error:", pErr);
+          }
           await fetchData();
           return { success: true };
         } catch (err: any) {
@@ -838,14 +964,22 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
       },
       
       updateStaffRole: async (profileId, role) => {
+        setState(s => ({
+          ...s,
+          profiles: s.profiles.map(p => p.id === profileId ? { ...p, role: role as any } : p)
+        }));
         await supabase.from('profiles').update({ role }).eq('id', profileId);
         fetchData();
       },
 
       updateStaffPassword: async (profileId, pass) => {
         try {
+          setState(s => ({
+            ...s,
+            profiles: s.profiles.map(p => p.id === profileId ? { ...p, pin: pass } : p)
+          }));
           const { error } = await supabase.from('profiles').update({ pin: pass }).eq('id', profileId);
-          if (error) throw error;
+          if (error) console.error("updateStaffPassword error:", error);
           await fetchData();
           return { success: true };
         } catch (err: any) {
@@ -857,6 +991,10 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         const profile = state.profiles.find(p => p.id === profileId);
         if (profile) {
           const newStatus = profile.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+          setState(s => ({
+            ...s,
+            profiles: s.profiles.map(p => p.id === profileId ? { ...p, status: newStatus } : p)
+          }));
           await supabase.from('profiles').update({ status: newStatus }).eq('id', profileId);
           fetchData();
         }
@@ -864,8 +1002,12 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
 
       deleteStaff: async (profileId) => {
         try {
+          setState(s => ({
+            ...s,
+            profiles: s.profiles.filter(p => p.id !== profileId)
+          }));
           const { error } = await supabase.from('profiles').delete().eq('id', profileId);
-          if (error) throw error;
+          if (error) console.error("deleteStaff error:", error);
           await fetchData();
           return { success: true };
         } catch (err: any) {

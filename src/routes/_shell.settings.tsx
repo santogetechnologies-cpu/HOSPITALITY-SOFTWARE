@@ -12,7 +12,7 @@ import { PageHeader, Panel, Pill } from "@/components/pms/bits";
 import { usePms } from "@/lib/pms-store";
 import { useSettings } from "@/lib/use-settings";
 import { inr } from "@/lib/pms-data";
-import { Plus, Building2, Layers } from "lucide-react";
+import { Plus, Building2, Layers, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -30,7 +30,8 @@ export const Route = createFileRoute("/_shell/settings")({
 const SECTIONS = ["Hotel Profile", "Rooms", "Policies", "Notifications", "Integrations", "Audit Logs"];
 
 function SettingsPage() {
-  const { rooms, addRoom } = usePms();
+  const { rooms, addRoom, deleteRoom, session } = usePms();
+  const isSuperAdmin = session?.role === "SUPER_ADMIN" || !session;
   const { settings, addFloor, removeFloor, addRoomType, removeRoomType } = useSettings();
   
   const [active, setActive] = React.useState("Rooms");
@@ -173,6 +174,7 @@ function SettingsPage() {
                       <TableHead>Floor</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead className="text-right">Base Rate</TableHead>
+                      {isSuperAdmin && <TableHead className="text-right">Actions</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -187,6 +189,26 @@ function SettingsPage() {
                           </Pill>
                         </TableCell>
                         <TableCell className="text-right font-semibold">{inr(room.price || (room as any).rate || 0)}</TableCell>
+                        {isSuperAdmin && (
+                          <TableCell className="text-right">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-8 text-destructive hover:bg-destructive/10 hover:text-destructive text-xs"
+                              onClick={async () => {
+                                const rNum = room.room_number || (room as any).number;
+                                if (confirm(`Are you sure you want to permanently delete Room ${rNum}?`)) {
+                                  const delRes = await deleteRoom(room.id);
+                                  if (delRes?.success) toast.success(`Room ${rNum} deleted successfully`);
+                                  else toast.error(delRes?.error || "Failed to delete room");
+                                }
+                              }}
+                            >
+                              <Trash2 className="size-3.5 mr-1" />
+                              Delete
+                            </Button>
+                          </TableCell>
+                        )}
                       </TableRow>
                     ))}
                   </TableBody>
