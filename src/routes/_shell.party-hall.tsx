@@ -1,6 +1,7 @@
 import * as React from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { usePms } from "@/lib/pms-store";
+import { useSettings } from "@/lib/use-settings";
 import { PageHeader, Panel, Pill } from "@/components/pms/bits";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,6 +19,11 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { inr } from "@/lib/pms-data";
 import {
+  calculateDurationHours,
+  calculateHallPrice,
+  getPartyHallTimerStatus,
+} from "@/lib/timer-utils";
+import {
   Calendar,
   Clock,
   Users,
@@ -28,9 +34,10 @@ import {
   CreditCard,
   Edit,
   CheckCircle2,
-  Hourglass,
   Receipt,
   Sparkles,
+  Timer,
+  Tag,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -50,11 +57,22 @@ export function PartyHallPage() {
     addReservationExtraCharge,
     settlePayment,
     checkOut,
+    requestDiscount,
   } = usePms();
+
+  const { settings } = useSettings();
+  const hourlyRate = settings.partyHallHourlyRate || 3000;
 
   const [open, setOpen] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [errorMsg, setErrorMsg] = React.useState("");
+
+  // Live timer state tick
+  const [, setTick] = React.useState(0);
+  React.useEffect(() => {
+    const timer = setInterval(() => setTick((t) => t + 1), 30000);
+    return () => clearInterval(timer);
+  }, []);
 
   // New Booking Form State
   const [form, setForm] = React.useState({
@@ -66,21 +84,32 @@ export function PartyHallPage() {
     date: new Date().toISOString().split("T")[0],
     startTime: "10:00",
     endTime: "14:00",
-    baseAmount: "15000",
+    baseAmount: String(calculateHallPrice("10:00", "14:00", hourlyRate)),
     advance: "5000",
     paymentMethod: "CASH" as "CASH" | "UPI" | "CARD" | "BANK_TRANSFER" | "OTHER",
   });
+
+  // Auto update base amount when times or rate changes
+  const updateTimes = (start: string, end: string) => {
+    const calculated = calculateHallPrice(start, end, hourlyRate);
+    setForm((prev) => ({
+      ...prev,
+      startTime: start,
+      endTime: end,
+      baseAmount: String(calculated),
+    }));
+  };
 
   // Extra Charges / Overtime Modal State
   const [extraChargeModalOpen, setExtraChargeModalOpen] = React.useState(false);
   const [selectedResForCharge, setSelectedResForCharge] = React.useState<any>(null);
   const [extraChargeForm, setExtraChargeForm] = React.useState({
     reason: "Extra Hours / Overtime",
-    amount: "2000",
+    amount: "3000",
     extendEndTime: false,
     newEndTime: "16:00",
     collectNow: true,
-    collectAmount: "2000",
+    collectAmount: "3000",
     paymentMethod: "CASH" as "CASH" | "UPI" | "CARD" | "BANK_TRANSFER" | "OTHER",
   });
 
@@ -108,6 +137,12 @@ export function PartyHallPage() {
     status: "CONFIRMED",
   });
 
+  // Request Discount Modal State
+  const [discountModalOpen, setDiscountModalOpen] = React.useState(false);
+  const [selectedResForDiscount, setSelectedResForDiscount] = React.useState<any>(null);
+  const [discountAmount, setDiscountAmount] = React.useState("");
+  const [discountReason, setDiscountReason] = React.useState("");
+
   const hallBookings = reservations
     .filter((r: any) => r.resource_type === "PARTY_HALL")
     .sort((a: any, b: any) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
@@ -131,6 +166,12 @@ export function PartyHallPage() {
       )
       .reduce((sum, d) => sum + (Number(d.requested_amount) || 0), 0);
 
+    const hasPendingDiscount = discounts.some(
+      (d) =>
+        (d.reservation_id === r.id || d.reservation_id?.toLowerCase() === r.id.toLowerCase()) &&
+        d.status === "PENDING"
+    );
+
     const originalAmount = Number(r.base_amount) || Number(p?.total_amount) || 0;
     let total = Number(p?.total_amount) || originalAmount;
     if (approvedDiscount > 0 && total >= originalAmount && originalAmount > approvedDiscount) {
@@ -139,7 +180,7 @@ export function PartyHallPage() {
     const paid = Number(p?.paid_amount) || 0;
     const balance = total - paid > 0 ? total - paid : 0;
     const isPaid = balance === 0 && total > 0;
-    return { total, paid, balance, isPaid, payment: p, approvedDiscount };
+    return { total, paid, balance, isPaid, payment: p, approvedDiscount, hasPendingDiscount };
   };
 
   const handleNewBooking = async (e: React.FormEvent) => {
@@ -175,7 +216,7 @@ export function PartyHallPage() {
         date: new Date().toISOString().split("T")[0],
         startTime: "10:00",
         endTime: "14:00",
-        baseAmount: "15000",
+        baseAmount: String(calculateHallPrice("10:00", "14:00", hourlyRate)),
         advance: "5000",
         paymentMethod: "CASH",
       });
@@ -184,16 +225,18 @@ export function PartyHallPage() {
     }
   };
 
-  const handleOpenExtraCharge = (r: any) => {
+  const handleOpenExtraCharge = (r: any, defaultFee?: number, overtimeHrs?: number) => {
     setSelectedResForCharge(r);
     const endTimeStr = r.end_time ? new Date(r.end_time).toTimeString().slice(0, 5) : "16:00";
+    const chargeAmt = defaultFee && defaultFee > 0 ? defaultFee : hourlyRate;
+
     setExtraChargeForm({
-      reason: "Extra Hours / Overtime",
-      amount: "2000",
+      reason: overtimeHrs && overtimeHrs > 0 ? `Overtime Extension (${overtimeHrs} hrs)` : "Extra Hours / Overtime",
+      amount: String(chargeAmt),
       extendEndTime: true,
       newEndTime: endTimeStr,
       collectNow: true,
-      collectAmount: "2000",
+      collectAmount: String(chargeAmt),
       paymentMethod: "CASH",
     });
     setExtraChargeModalOpen(true);
@@ -317,14 +360,45 @@ export function PartyHallPage() {
     }
   };
 
+  const handleOpenRequestDiscount = (r: any) => {
+    setSelectedResForDiscount(r);
+    const fin = getReservationFinancials(r);
+    setDiscountAmount(String(Math.min(fin.total, 1000)));
+    setDiscountReason("Customer satisfaction / Event adjustment");
+    setDiscountModalOpen(true);
+  };
+
+  const handleSaveRequestDiscount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedResForDiscount) return;
+    const amt = parseFloat(discountAmount);
+    if (isNaN(amt) || amt <= 0) return toast.error("Please enter a valid discount amount");
+
+    setLoading(true);
+    const res = await requestDiscount(selectedResForDiscount.id, amt, discountReason.trim());
+    setLoading(false);
+
+    if (res?.success) {
+      toast.success("Discount request submitted for Super Admin approval!");
+      setDiscountModalOpen(false);
+      setSelectedResForDiscount(null);
+    } else {
+      toast.error(res?.error || "Failed to submit discount request");
+    }
+  };
+
+  const bookingDuration = calculateDurationHours(form.startTime, form.endTime);
+
   return (
     <div className="mx-auto max-w-6xl space-y-6 pb-12">
       <div className="flex items-center justify-between">
-        <PageHeader
-          eyebrow="Events & Banquets"
-          title="Party Hall Bookings"
-          subtitle="Manage event schedules, overtime charges, and instant collections."
-        />
+        <div>
+          <PageHeader
+            eyebrow="Events & Banquets"
+            title="Party Hall Bookings"
+            subtitle={`Manage event schedules, overtime trackers, and hourly billing (@ ${inr(hourlyRate)}/hr).`}
+          />
+        </div>
 
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
@@ -335,7 +409,9 @@ export function PartyHallPage() {
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>New Party Hall Booking</DialogTitle>
-              <DialogDescription>Schedule and reserve the banquet hall with advance payment.</DialogDescription>
+              <DialogDescription>
+                Auto-computed @ {inr(hourlyRate)}/hr. Enter schedule and customer details.
+              </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleNewBooking} className="space-y-4 pt-2">
               {errorMsg && (
@@ -346,7 +422,7 @@ export function PartyHallPage() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Customer Name</Label>
+                  <Label>Customer Name *</Label>
                   <Input
                     required
                     value={form.customerName}
@@ -354,7 +430,7 @@ export function PartyHallPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Phone Number</Label>
+                  <Label>Phone Number *</Label>
                   <Input
                     required
                     value={form.phone}
@@ -380,7 +456,7 @@ export function PartyHallPage() {
 
               <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-2">
-                  <Label>Event Date</Label>
+                  <Label>Event Date *</Label>
                   <Input
                     type="date"
                     required
@@ -389,21 +465,21 @@ export function PartyHallPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Start Time</Label>
+                  <Label>Start Time *</Label>
                   <Input
                     type="time"
                     required
                     value={form.startTime}
-                    onChange={(e) => setForm({ ...form, startTime: e.target.value })}
+                    onChange={(e) => updateTimes(e.target.value, form.endTime)}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>End Time</Label>
+                  <Label>End Time *</Label>
                   <Input
                     type="time"
                     required
                     value={form.endTime}
-                    onChange={(e) => setForm({ ...form, endTime: e.target.value })}
+                    onChange={(e) => updateTimes(form.startTime, e.target.value)}
                   />
                 </div>
               </div>
@@ -438,7 +514,12 @@ export function PartyHallPage() {
 
               <div className="grid grid-cols-3 gap-4 pt-4 border-t border-border">
                 <div className="space-y-2">
-                  <Label>Total Package Amount (₹)</Label>
+                  <div className="flex items-center justify-between">
+                    <Label>Total Package (₹) *</Label>
+                    <span className="text-[10px] font-semibold text-gold bg-gold/10 px-1.5 py-0.5 rounded">
+                      {bookingDuration} hrs @ {inr(hourlyRate)}/hr
+                    </span>
+                  </div>
                   <Input
                     type="number"
                     required
@@ -497,17 +578,16 @@ export function PartyHallPage() {
           <TableHeader>
             <TableRow>
               <TableHead>Event & Customer</TableHead>
-              <TableHead>Date & Schedule</TableHead>
-              <TableHead>Guests</TableHead>
-              <TableHead>Financial Summary</TableHead>
-              <TableHead>Status</TableHead>
+              <TableHead>Date & Timing</TableHead>
+              <TableHead>Live Timer / Status</TableHead>
+              <TableHead>Financials & Due</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {hallBookings.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground py-12">
+                <TableCell colSpan={5} className="text-center text-muted-foreground py-12">
                   No party hall bookings found. Click "New Booking" to schedule an event.
                 </TableCell>
               </TableRow>
@@ -515,13 +595,23 @@ export function PartyHallPage() {
               hallBookings.map((b: any) => {
                 const gName = getGuestName(b.guest_id);
                 const gPhone = getGuestPhone(b.guest_id);
-                const { total, paid, balance, isPaid, payment } = getReservationFinancials(b);
+                const { total, paid, balance, isPaid, payment, hasPendingDiscount } =
+                  getReservationFinancials(b);
+                const timer = getPartyHallTimerStatus(b, settings);
 
                 return (
-                  <TableRow key={b.id} className="hover:bg-accent/40">
+                  <TableRow key={b.id} className={timer.isOverdue ? "bg-destructive/5 hover:bg-destructive/10" : "hover:bg-accent/40"}>
                     <TableCell>
-                      <div className="font-semibold">{b.event_type || "Event"}</div>
+                      <div className="font-semibold flex items-center gap-1.5">
+                        {b.event_type || "Event"}
+                        {hasPendingDiscount && (
+                          <span className="text-[10px] bg-warning/20 text-warning px-1.5 py-0.5 rounded font-medium">
+                            Discount Pending
+                          </span>
+                        )}
+                      </div>
                       <div className="text-xs text-muted-foreground">{gName} {gPhone ? `· ${gPhone}` : ""}</div>
+                      <div className="text-[11px] text-muted-foreground mt-0.5"><Users className="inline size-3 mr-1" />{b.number_of_guests} Guests</div>
                     </TableCell>
 
                     <TableCell>
@@ -536,9 +626,13 @@ export function PartyHallPage() {
                     </TableCell>
 
                     <TableCell>
-                      <div className="flex items-center text-xs font-medium">
-                        <Users className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />
-                        {b.number_of_guests} Guests
+                      <div className="space-y-1">
+                        <Pill tone={timer.tone}>{timer.label}</Pill>
+                        {timer.subLabel && (
+                          <div className={timer.isOverdue ? "text-[11px] font-bold text-destructive" : "text-[11px] text-muted-foreground"}>
+                            {timer.subLabel}
+                          </div>
+                        )}
                       </div>
                     </TableCell>
 
@@ -546,33 +640,33 @@ export function PartyHallPage() {
                       <div className="text-xs font-medium">
                         Total: <span className="font-semibold">{inr(total)}</span>
                       </div>
-                      <div className="text-[11px] text-success">Paid: {inr(paid)} {payment?.payment_method ? `(${payment.payment_method})` : ""}</div>
+                      <div className="text-[11px] text-success">
+                        Paid: {inr(paid)} {payment?.payment_method ? `(${payment.payment_method})` : ""}
+                      </div>
                       <div className={balance > 0 ? "text-[11px] font-bold text-warning" : "text-[11px] text-muted-foreground"}>
                         {balance > 0 ? `Due: ${inr(balance)}` : "Settled (₹0.00)"}
                       </div>
                     </TableCell>
 
-                    <TableCell>
-                      {b.status === "COMPLETED" ? (
-                        <Pill tone="success">Completed</Pill>
-                      ) : b.status === "OCCUPIED" ? (
-                        <Pill tone="info">In-Progress</Pill>
-                      ) : isPaid ? (
-                        <Pill tone="success">Paid / Confirmed</Pill>
-                      ) : (
-                        <Pill tone="warning">Due Pending</Pill>
-                      )}
-                    </TableCell>
-
                     <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1.5">
+                      <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                        {timer.isOverdue && b.status !== "COMPLETED" && (
+                          <Button
+                            size="sm"
+                            className="h-8 rounded-lg text-xs bg-destructive text-white hover:bg-destructive/90 animate-pulse"
+                            onClick={() => handleOpenExtraCharge(b, timer.calculatedExtraFee, timer.overdueHours)}
+                          >
+                            <Timer className="mr-1 h-3 w-3" /> Apply Overtime ({inr(timer.calculatedExtraFee)})
+                          </Button>
+                        )}
+
                         <Button
                           size="sm"
                           variant="outline"
                           className="h-8 rounded-lg text-xs bg-secondary/40 hover:bg-gold/10 hover:text-gold hover:border-gold/50"
                           onClick={() => handleOpenExtraCharge(b)}
                         >
-                          <Plus className="mr-1 h-3 w-3 text-gold" /> Add Charges / Time
+                          <Plus className="mr-1 h-3 w-3 text-gold" /> Extra Charges
                         </Button>
 
                         {balance > 0 && (
@@ -591,12 +685,15 @@ export function PartyHallPage() {
                               <MoreHorizontal className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-48">
+                          <DropdownMenuContent align="end" className="w-52">
                             <DropdownMenuItem onClick={() => handleOpenEdit(b)}>
                               <Edit className="mr-2 h-4 w-4" /> Edit Booking Details
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => handleOpenExtraCharge(b)}>
                               <Sparkles className="mr-2 h-4 w-4 text-gold" /> Add Overtime / Service
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleOpenRequestDiscount(b)}>
+                              <Tag className="mr-2 h-4 w-4 text-gold" /> Request Discount (Admin Approval)
                             </DropdownMenuItem>
                             {balance > 0 && (
                               <DropdownMenuItem onClick={() => handleOpenCollectBalance(b)}>
@@ -640,7 +737,7 @@ export function PartyHallPage() {
       <Dialog open={extraChargeModalOpen} onOpenChange={setExtraChargeModalOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Add Extra Charges / Extend Time</DialogTitle>
+            <DialogTitle>Add Extra Charges / Overtime</DialogTitle>
             <DialogDescription>
               Add overtime, catering add-ons, or additional charges to this party hall booking.
             </DialogDescription>
@@ -653,7 +750,7 @@ export function PartyHallPage() {
                   {selectedResForCharge.event_type} · {getGuestName(selectedResForCharge.guest_id)}
                 </div>
                 <div className="text-muted-foreground">
-                  Current Base Rate: {inr(selectedResForCharge.base_amount || 0)} · Date: {selectedResForCharge.booking_date}
+                  Current Base Rate: {inr(selectedResForCharge.base_amount || 0)} · Standard Rate: {inr(hourlyRate)}/hr
                 </div>
               </div>
 
@@ -717,9 +814,18 @@ export function PartyHallPage() {
                         type="time"
                         className="h-9"
                         value={extraChargeForm.newEndTime}
-                        onChange={(e) =>
-                          setExtraChargeForm({ ...extraChargeForm, newEndTime: e.target.value })
-                        }
+                        onChange={(e) => {
+                          const newTime = e.target.value;
+                          const oldEnd = selectedResForCharge.end_time ? new Date(selectedResForCharge.end_time).toTimeString().slice(0, 5) : "14:00";
+                          const extraHours = calculateDurationHours(oldEnd, newTime);
+                          const autoExtra = Math.max(1, extraHours) * hourlyRate;
+                          setExtraChargeForm({
+                            ...extraChargeForm,
+                            newEndTime: newTime,
+                            amount: String(autoExtra),
+                            collectAmount: extraChargeForm.collectNow ? String(autoExtra) : extraChargeForm.collectAmount,
+                          });
+                        }}
                       />
                     </div>
                   </div>
@@ -1007,6 +1113,65 @@ export function PartyHallPage() {
               </div>
             </form>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Request Discount Modal */}
+      <Dialog open={discountModalOpen} onOpenChange={setDiscountModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Request Discount</DialogTitle>
+            <DialogDescription>
+              Submit discount request for Super Admin approval. Folio will be locked until resolved.
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedResForDiscount && (() => {
+            const fin = getReservationFinancials(selectedResForDiscount);
+
+            return (
+              <form onSubmit={handleSaveRequestDiscount} className="space-y-4 pt-2">
+                <div className="p-3 rounded-lg bg-secondary/50 border border-border text-xs flex justify-between items-center">
+                  <span className="text-muted-foreground">Original Total:</span>
+                  <span className="font-bold text-sm">{inr(fin.total)}</span>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Discount Amount (₹) *</Label>
+                  <Input
+                    type="number"
+                    required
+                    value={discountAmount}
+                    onChange={(e) => setDiscountAmount(e.target.value)}
+                    placeholder="e.g. 1000"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Reason / Justification *</Label>
+                  <Input
+                    required
+                    value={discountReason}
+                    onChange={(e) => setDiscountReason(e.target.value)}
+                    placeholder="e.g. Long event concession, Service adjustment"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2 border-t border-border">
+                  <Button variant="ghost" type="button" onClick={() => setDiscountModalOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={loading}
+                    className="bg-brass text-gold-foreground hover:opacity-90"
+                  >
+                    Submit for Approval
+                  </Button>
+                </div>
+              </form>
+            );
+          })()}
         </DialogContent>
       </Dialog>
     </div>

@@ -939,6 +939,10 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
           const discount = state.discounts.find(d => d.id === discountId);
           if (!discount) return { success: false, error: "Discount request not found" };
 
+          if (status === "APPROVED" && state.session && state.session.role !== "SUPER_ADMIN") {
+            return { success: false, error: "Access Denied: Only a Super Admin can approve discounts." };
+          }
+
           const approver = state.session?.name || state.session?.username || "Super Admin";
           const { error: dErr } = await supabase.from('discounts').update({ 
             status, 

@@ -12,8 +12,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { EmptyState, KpiCard, PageHeader, Panel, Pill } from "@/components/pms/bits";
 import { usePms } from "@/lib/pms-store";
 import { inr } from "@/lib/pms-data";
+import { useSettings } from "@/lib/use-settings";
+import { getStayTimerStatus } from "@/lib/timer-utils";
 import { toast } from "sonner";
-import { LogIn, LogOut, Plus, Users, DoorOpen, CheckCircle2, Calendar, CreditCard, ShieldCheck, MapPin, User, FileText, AlertTriangle } from "lucide-react";
+import { LogIn, LogOut, Plus, Users, DoorOpen, CheckCircle2, Calendar, CreditCard, ShieldCheck, MapPin, User, FileText, AlertTriangle, Timer, Clock } from "lucide-react";
 
 export const Route = createFileRoute("/_shell/front-desk")({
   head: () => ({
@@ -28,7 +30,14 @@ export const Route = createFileRoute("/_shell/front-desk")({
 const HK_CHECKLIST = ["Keycards encoded & assigned", "Government ID scanned & verified", "Registration card signed", "Advance deposit settled"];
 
 export function FrontDesk() {
-  const { rooms, reservations, guests, payments, discounts, checkIn, checkOut, addRoomReservation, settlePayment } = usePms();
+  const { rooms, reservations, guests, payments, discounts, checkIn, checkOut, addRoomReservation, settlePayment, addReservationExtraCharge } = usePms();
+  const { settings } = useSettings();
+
+  const [, setTick] = React.useState(0);
+  React.useEffect(() => {
+    const t = setInterval(() => setTick((n) => n + 1), 30000);
+    return () => clearInterval(t);
+  }, []);
 
   const arrivals = reservations.filter((r) => r.status === "CONFIRMED" || r.status === "PENDING");
   const inHouse = reservations.filter((r) => r.status === "OCCUPIED");
@@ -270,6 +279,7 @@ export function FrontDesk() {
               const rm = getRoom(r.room_id);
               const isPartyHall = r.resource_type === 'PARTY_HALL';
               const { total, paid, balance, isPaid } = getReservationFinancials(r);
+              const timer = getStayTimerStatus(r, settings);
 
               const checkInDate = r.start_time ? new Date(r.start_time).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : r.booking_date;
               const checkOutDate = r.end_time ? new Date(r.end_time).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—";
@@ -285,13 +295,16 @@ export function FrontDesk() {
                         </div>
                         {gId && <div className="text-[11px] text-muted-foreground mt-0.5">{gId}</div>}
                       </div>
-                      {isPaid ? (
-                        <Pill tone="success">Paid in Full</Pill>
-                      ) : paid > 0 ? (
-                        <Pill tone="info">Partial Paid</Pill>
-                      ) : (
-                        <Pill tone="warning">Pending Due</Pill>
-                      )}
+                      <div className="text-right space-y-1">
+                        <Pill tone={timer.tone}>{timer.label}</Pill>
+                        {isPaid ? (
+                          <div className="text-[10px] text-success font-semibold">Paid in Full</div>
+                        ) : paid > 0 ? (
+                          <div className="text-[10px] text-info font-semibold">Partial Paid</div>
+                        ) : (
+                          <div className="text-[10px] text-warning font-semibold">Pending Due</div>
+                        )}
+                      </div>
                     </div>
 
                     <dl className="mt-4 grid grid-cols-2 gap-2 text-xs">
@@ -351,9 +364,10 @@ export function FrontDesk() {
                   <TableHead>Guest & Contact</TableHead>
                   <TableHead>Room / Resource</TableHead>
                   <TableHead>Stay Window</TableHead>
+                  <TableHead>Stay Timer & Overtime</TableHead>
                   <TableHead>Total Bill</TableHead>
                   <TableHead>Paid</TableHead>
-                  <TableHead>Outstanding Balance</TableHead>
+                  <TableHead>Pending Due</TableHead>
                   <TableHead className="text-right">Action</TableHead>
                 </TableRow>
               </TableHeader>
@@ -366,12 +380,13 @@ export function FrontDesk() {
                   const rmNum = getRoomNum(r.room_id);
                   const isPartyHall = r.resource_type === 'PARTY_HALL';
                   const { total, paid, balance } = getReservationFinancials(r);
+                  const timer = getStayTimerStatus(r, settings);
 
                   const checkInDate = r.start_time ? new Date(r.start_time).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : r.booking_date;
                   const checkOutDate = r.end_time ? new Date(r.end_time).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "—";
 
                   return (
-                    <TableRow key={r.id}>
+                    <TableRow key={r.id} className={timer.isOverdue ? "bg-destructive/5 hover:bg-destructive/10" : undefined}>
                       <TableCell>
                         <div className="font-semibold">{gName}</div>
                         <div className="text-xs text-muted-foreground">{gPhone || "—"} {gId ? `· ${gId}` : ""}</div>
@@ -384,26 +399,66 @@ export function FrontDesk() {
                         )}
                       </TableCell>
                       <TableCell className="text-xs">{checkInDate} → {checkOutDate}</TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          <Pill tone={timer.tone}>{timer.label}</Pill>
+                          {timer.subLabel && (
+                            <div className={timer.isOverdue ? "text-[11px] font-bold text-destructive" : "text-[11px] text-muted-foreground"}>
+                              {timer.subLabel}
+                            </div>
+                          )}
+                        </div>
+                      </TableCell>
                       <TableCell className="font-medium">{inr(total)}</TableCell>
                       <TableCell className="text-success font-medium">{inr(paid)}</TableCell>
                       <TableCell className={balance > 0 ? "font-bold text-warning" : "text-success font-medium"}>
                         {balance > 0 ? inr(balance) : "₹0 (Settled)"}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="rounded-lg"
-                          onClick={async () => {
-                            if (balance > 0) {
-                              if (!confirm(`This guest has an outstanding balance of ${inr(balance)}. Proceed to check out and mark room for housekeeping?`)) return;
-                            }
-                            await checkOut(r.id);
-                            toast.success(`${gName} checked out · ${isPartyHall ? "Party Hall cleared" : `Room ${rmNum} moved to Housekeeping`}`);
-                          }}
-                        >
-                          Check Out
-                        </Button>
+                        <div className="flex items-center justify-end gap-2 flex-wrap">
+                          {timer.isOverdue && timer.calculatedExtraFee > 0 && (
+                            <Button
+                              size="sm"
+                              className="rounded-lg text-xs bg-destructive text-white hover:bg-destructive/90 animate-pulse h-8"
+                              onClick={async () => {
+                                const fee = timer.calculatedExtraFee;
+                                const hrs = timer.overdueHours;
+                                const resAdd = await addReservationExtraCharge(r.id, fee, `Late Check-out Fee (${hrs} hrs)`);
+                                if (resAdd.success) {
+                                  toast.success(`Applied ${inr(fee)} late checkout fee. Folio updated.`);
+                                } else {
+                                  toast.error(resAdd.error || "Failed to apply late fee");
+                                }
+                              }}
+                            >
+                              <Timer className="size-3 mr-1" /> Add Late Fee ({inr(timer.calculatedExtraFee)})
+                            </Button>
+                          )}
+
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="rounded-lg h-8 text-xs"
+                            onClick={async () => {
+                              if (timer.isOverdue && timer.calculatedExtraFee > 0) {
+                                const fee = timer.calculatedExtraFee;
+                                const hrs = timer.overdueHours;
+                                if (confirm(`Guest is ${hrs} hour(s) overdue. Apply late checkout fee of ${inr(fee)} to the folio?`)) {
+                                  await addReservationExtraCharge(r.id, fee, `Late Check-out Fee (${hrs} hrs)`);
+                                  toast.info(`Late fee of ${inr(fee)} added to guest folio.`);
+                                }
+                              }
+
+                              if (balance > 0) {
+                                if (!confirm(`This guest has an outstanding balance of ${inr(balance)}. Proceed to check out and mark room for housekeeping?`)) return;
+                              }
+                              await checkOut(r.id);
+                              toast.success(`${gName} checked out · ${isPartyHall ? "Party Hall cleared" : `Room ${rmNum} moved to Housekeeping`}`);
+                            }}
+                          >
+                            Check Out
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   );

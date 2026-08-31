@@ -27,12 +27,12 @@ export const Route = createFileRoute("/_shell/settings")({
   component: SettingsPage,
 });
 
-const SECTIONS = ["Hotel Profile", "Rooms", "Policies", "Notifications", "Integrations", "Audit Logs"];
+const SECTIONS = ["Hotel Profile", "Rooms", "Timers & Overtime Policies", "Notifications", "Integrations", "Audit Logs"];
 
 function SettingsPage() {
   const { rooms, addRoom, deleteRoom, session } = usePms();
   const isSuperAdmin = session?.role === "SUPER_ADMIN" || !session;
-  const { settings, addFloor, removeFloor, addRoomType, removeRoomType } = useSettings();
+  const { settings, addFloor, removeFloor, addRoomType, removeRoomType, updatePolicySettings } = useSettings();
   
   const [active, setActive] = React.useState("Rooms");
   
@@ -40,6 +40,25 @@ function SettingsPage() {
   const [r, setR] = React.useState({ number: "", type: "", floor: "", price: 0 });
   const [newFloor, setNewFloor] = React.useState("");
   const [newType, setNewType] = React.useState({ name: "", price: "" });
+
+  // Policy Form State
+  const [policyForm, setPolicyForm] = React.useState({
+    partyHallHourlyRate: settings.partyHallHourlyRate || 3000,
+    roomLateCheckoutFeePerHour: settings.roomLateCheckoutFeePerHour || 500,
+    checkInStandardTime: settings.checkInStandardTime || "14:00",
+    checkOutStandardTime: settings.checkOutStandardTime || "11:00",
+    gracePeriodMinutes: settings.gracePeriodMinutes || 15,
+  });
+
+  React.useEffect(() => {
+    setPolicyForm({
+      partyHallHourlyRate: settings.partyHallHourlyRate || 3000,
+      roomLateCheckoutFeePerHour: settings.roomLateCheckoutFeePerHour || 500,
+      checkInStandardTime: settings.checkInStandardTime || "14:00",
+      checkOutStandardTime: settings.checkOutStandardTime || "11:00",
+      gracePeriodMinutes: settings.gracePeriodMinutes || 15,
+    });
+  }, [settings]);
 
   // When opening add room modal, ensure default selection
   React.useEffect(() => {
@@ -218,6 +237,90 @@ function SettingsPage() {
                     No rooms currently in database. Click "Add Room" to create one!
                   </div>
                 )}
+              </div>
+            </div>
+          ) : active === "Timers & Overtime Policies" || active === "Policies" ? (
+            <div className="space-y-6">
+              <div className="rounded-xl border border-border p-4 bg-secondary/20 space-y-4">
+                <div className="font-semibold text-base flex items-center gap-2">
+                  <span className="size-2.5 rounded-full bg-gold inline-block" /> Party Hall Hourly Pricing & Overtime
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Set the standard hourly rate for Party Hall / Banquet bookings. The system will automatically compute booking costs and overtime charges based on event hours.
+                </p>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Party Hall Standard Rate (₹ / Hour) *</Label>
+                    <Input
+                      type="number"
+                      value={policyForm.partyHallHourlyRate}
+                      onChange={(e) => setPolicyForm({ ...policyForm, partyHallHourlyRate: parseFloat(e.target.value) || 0 })}
+                      placeholder="3000"
+                    />
+                    <span className="text-[11px] text-muted-foreground">e.g. ₹3,000 per hour (4 hours = ₹12,000)</span>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Room Late Check-Out Fee (₹ / Hour) *</Label>
+                    <Input
+                      type="number"
+                      value={policyForm.roomLateCheckoutFeePerHour}
+                      onChange={(e) => setPolicyForm({ ...policyForm, roomLateCheckoutFeePerHour: parseFloat(e.target.value) || 0 })}
+                      placeholder="500"
+                    />
+                    <span className="text-[11px] text-muted-foreground">Auto-calculated when guest exceeds checkout time</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-border p-4 bg-secondary/20 space-y-4">
+                <div className="font-semibold text-base flex items-center gap-2">
+                  <span className="size-2.5 rounded-full bg-gold inline-block" /> Standard Check-in / Check-out Schedule
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <div className="space-y-2">
+                    <Label>Standard Check-In Time</Label>
+                    <Input
+                      type="time"
+                      value={policyForm.checkInStandardTime}
+                      onChange={(e) => setPolicyForm({ ...policyForm, checkInStandardTime: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Standard Check-Out Time</Label>
+                    <Input
+                      type="time"
+                      value={policyForm.checkOutStandardTime}
+                      onChange={(e) => setPolicyForm({ ...policyForm, checkOutStandardTime: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Grace Period (Minutes)</Label>
+                    <Input
+                      type="number"
+                      value={policyForm.gracePeriodMinutes}
+                      onChange={(e) => setPolicyForm({ ...policyForm, gracePeriodMinutes: parseInt(e.target.value) || 0 })}
+                      placeholder="15"
+                    />
+                    <span className="text-[11px] text-muted-foreground">Buffer before overtime kicks in</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-2 flex justify-end">
+                <Button
+                  className="rounded-xl bg-brass text-gold-foreground hover:opacity-90 shadow-brass"
+                  onClick={() => {
+                    updatePolicySettings(policyForm);
+                    toast.success("Timers and Hourly Rates policy saved successfully!");
+                  }}
+                >
+                  Save Policy Configuration
+                </Button>
               </div>
             </div>
           ) : (

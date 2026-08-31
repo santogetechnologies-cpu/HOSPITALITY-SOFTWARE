@@ -35,11 +35,17 @@ interface PendingItem {
 }
 
 function PendingPaymentsPage() {
-  const { payments, reservations, guests, rooms, discounts, settlePayment, freezePayment } = usePms();
+  const { payments, reservations, guests, rooms, discounts, settlePayment, freezePayment, requestDiscount } = usePms();
   const [selectedItem, setSelectedItem] = React.useState<PendingItem | null>(null);
   const [collectionAmount, setCollectionAmount] = React.useState("");
-  const [method, setMethod] = React.useState<"CASH" | "UPI" | "CARD" | "BANK_TRANSFER">("CASH");
+  const [method, setMethod] = React.useState<"CASH" | "UPI" | "CARD" | "BANK_TRANSFER" | "OTHER">("CASH");
   const [loading, setLoading] = React.useState(false);
+
+  // Discount Request Modal State
+  const [discountModalOpen, setDiscountModalOpen] = React.useState(false);
+  const [selectedItemForDiscount, setSelectedItemForDiscount] = React.useState<PendingItem | null>(null);
+  const [discountAmount, setDiscountAmount] = React.useState("");
+  const [discountReason, setDiscountReason] = React.useState("");
 
   const getGuest = (id?: string) => guests.find(g => g.id === id);
   const getRoom = (roomId?: string) => rooms.find(rm => rm.id === roomId);
@@ -250,27 +256,44 @@ function PendingPaymentsPage() {
                   {inr(item.balance)}
                 </TableCell>
                 <TableCell className="text-right">
-                  {item.stage === 'FROZEN' || item.status === 'FROZEN' ? (
-                    <Button 
-                      size="sm" 
-                      variant="outline" 
-                      disabled
-                      className="opacity-70 cursor-not-allowed text-xs text-warning border-warning/30"
-                    >
-                      🔒 Frozen (Pending Approval)
-                    </Button>
-                  ) : (
-                    <Button 
-                      size="sm" 
-                      className="bg-brass text-gold-foreground hover:opacity-90 shadow-sm"
-                      onClick={() => {
-                        setSelectedItem(item);
-                        setCollectionAmount(String(item.balance));
-                      }}
-                    >
-                      Collect Balance
-                    </Button>
-                  )}
+                  <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                    {item.stage === 'FROZEN' || item.status === 'FROZEN' ? (
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        disabled
+                        className="opacity-70 cursor-not-allowed text-xs text-warning border-warning/30"
+                      >
+                        🔒 Frozen (Approval Pending)
+                      </Button>
+                    ) : (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 text-xs border-gold/40 text-gold hover:bg-gold/10"
+                          onClick={() => {
+                            setSelectedItemForDiscount(item);
+                            setDiscountAmount(String(Math.min(item.balance, 500)));
+                            setDiscountReason("Guest rate adjustment / Manager concession");
+                            setDiscountModalOpen(true);
+                          }}
+                        >
+                          Request Discount
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          className="bg-brass text-gold-foreground hover:opacity-90 shadow-sm h-8 text-xs"
+                          onClick={() => {
+                            setSelectedItem(item);
+                            setCollectionAmount(String(item.balance));
+                          }}
+                        >
+                          Collect Balance
+                        </Button>
+                      </>
+                    )}
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
@@ -330,6 +353,7 @@ function PendingPaymentsPage() {
                     <SelectItem value="UPI">UPI / QR (GPay, PhonePe, Paytm)</SelectItem>
                     <SelectItem value="CARD">Credit / Debit Card</SelectItem>
                     <SelectItem value="BANK_TRANSFER">Bank Transfer / NEFT</SelectItem>
+                    <SelectItem value="OTHER">Other / Direct</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -342,6 +366,72 @@ function PendingPaymentsPage() {
                   onClick={handleCollect}
                 >
                   {loading ? "Recording..." : `Confirm Collection of ${inr(parseFloat(collectionAmount) || 0)}`}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Request Discount Dialog */}
+      <Dialog open={discountModalOpen} onOpenChange={setDiscountModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Request Folio Discount</DialogTitle>
+            <DialogDescription>
+              Submit discount for {selectedItemForDiscount?.guestName}. Requires Super Admin approval.
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedItemForDiscount && (
+            <div className="space-y-4 pt-2">
+              <div className="p-3 rounded-xl bg-secondary/50 border border-border text-xs flex justify-between items-center">
+                <span className="text-muted-foreground">Outstanding Folio Balance:</span>
+                <span className="font-bold text-sm text-warning">{inr(selectedItemForDiscount.balance)}</span>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Discount Amount (₹) *</Label>
+                <Input 
+                  type="number" 
+                  value={discountAmount} 
+                  onChange={(e) => setDiscountAmount(e.target.value)} 
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Reason / Justification *</Label>
+                <Input 
+                  value={discountReason} 
+                  onChange={(e) => setDiscountReason(e.target.value)} 
+                  placeholder="e.g. Overtime waiver, Special corporate discount"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-border">
+                <Button variant="ghost" onClick={() => setDiscountModalOpen(false)}>Cancel</Button>
+                <Button 
+                  className="bg-brass text-gold-foreground hover:opacity-90"
+                  disabled={loading}
+                  onClick={async () => {
+                    const amt = parseFloat(discountAmount);
+                    if (isNaN(amt) || amt <= 0) return toast.error("Please enter a valid discount amount");
+                    if (!discountReason.trim()) return toast.error("Please enter a reason");
+
+                    setLoading(true);
+                    const res = await requestDiscount(selectedItemForDiscount.reservationId, amt, discountReason.trim());
+                    setLoading(false);
+
+                    if (res?.success) {
+                      toast.success("Discount request submitted! Folio locked pending Super Admin approval.");
+                      setDiscountModalOpen(false);
+                      setSelectedItemForDiscount(null);
+                    } else {
+                      toast.error(res?.error || "Failed to submit request");
+                    }
+                  }}
+                >
+                  Submit for Approval
                 </Button>
               </div>
             </div>

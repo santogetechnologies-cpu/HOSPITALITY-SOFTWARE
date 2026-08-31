@@ -6,9 +6,14 @@ export type RoomTypeConfig = {
   basePrice: number;
 };
 
-type SettingsState = {
+export type SettingsState = {
   floors: string[];
   roomTypes: RoomTypeConfig[];
+  partyHallHourlyRate: number;
+  roomLateCheckoutFeePerHour: number;
+  checkInStandardTime: string;
+  checkOutStandardTime: string;
+  gracePeriodMinutes: number;
 };
 
 const DEFAULT_SETTINGS: SettingsState = {
@@ -18,7 +23,12 @@ const DEFAULT_SETTINGS: SettingsState = {
     { id: "rt2", name: "Deluxe King", basePrice: 4500 },
     { id: "rt3", name: "Executive Suite", basePrice: 8000 },
     { id: "rt4", name: "Presidential Suite", basePrice: 15000 },
-  ]
+  ],
+  partyHallHourlyRate: 3000,
+  roomLateCheckoutFeePerHour: 500,
+  checkInStandardTime: "14:00",
+  checkOutStandardTime: "11:00",
+  gracePeriodMinutes: 15,
 };
 
 export function useSettings() {
@@ -27,7 +37,8 @@ export function useSettings() {
       const saved = localStorage.getItem("drb_pms_settings");
       if (saved) {
         try {
-          return JSON.parse(saved);
+          const parsed = JSON.parse(saved);
+          return { ...DEFAULT_SETTINGS, ...parsed };
         } catch (e) {
           console.error("Failed to parse settings", e);
         }
@@ -41,6 +52,12 @@ export function useSettings() {
     if (typeof window !== "undefined") {
       localStorage.setItem("drb_pms_settings", JSON.stringify(newSettings));
     }
+  };
+
+  const updatePolicySettings = (partial: Partial<SettingsState>) => {
+    const updated = { ...settings, ...partial };
+    saveSettings(updated);
+    return updated;
   };
 
   const addFloor = (floor: string) => {
@@ -66,6 +83,5 @@ export function useSettings() {
     saveSettings({ ...settings, roomTypes: settings.roomTypes.filter(t => t.id !== id) });
   };
 
-  return { settings, saveSettings, addFloor, removeFloor, addRoomType, removeRoomType };
+  return { settings, saveSettings, updatePolicySettings, addFloor, removeFloor, addRoomType, removeRoomType };
 }
-
