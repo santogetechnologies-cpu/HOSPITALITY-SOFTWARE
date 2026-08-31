@@ -144,6 +144,16 @@ type Ctx = State & {
   addPartyHallBooking: (b: { customerName: string; phone: string; email: string; eventType: string; guests: number; date: string; startTime: string; endTime: string; baseAmount: number; advance: number; paymentMethod?: string; }) => Promise<{ success: boolean; error?: string }>;
   updatePartyHallBooking: (reservationId: string, updates: { customerName?: string; phone?: string; email?: string; eventType?: string; guests?: number; date?: string; startTime?: string; endTime?: string; baseAmount?: number; status?: string; }) => Promise<{ success: boolean; error?: string }>;
   addReservationExtraCharge: (reservationId: string, additionalAmount: number, reason: string, options?: { newEndTime?: string; collectedAmount?: number; paymentMethod?: "CASH" | "UPI" | "CARD" | "BANK_TRANSFER" | "OTHER" }) => Promise<{ success: boolean; error?: string }>;
+  adjustRoomStay: (reservationId: string, params: {
+    newEndDate: string;
+    newNights: number;
+    newBaseAmount: number;
+    newTotalAmount: number;
+    collectedAmount?: number;
+    paymentMethod?: "CASH" | "UPI" | "CARD" | "BANK_TRANSFER" | "OTHER";
+    isEarlyCheckout?: boolean;
+    reason?: string;
+  }) => Promise<{ success: boolean; error?: string }>;
   
   // Finance Mutators
   settlePayment: (paymentId: string, amount: number, method?: "CASH" | "UPI" | "CARD" | "BANK_TRANSFER" | "OTHER") => Promise<{ success: boolean; error?: string }>;
@@ -1030,6 +1040,59 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         } catch (err: any) {
           console.error("Add extra charge error:", err);
           return { success: false, error: err.message || "Failed to add extra charge" };
+        }
+      },
+
+      adjustRoomStay: async (reservationId, params) => {
+        try {
+          const res = state.reservations.find(r => r.id === reservationId);
+          if (!res) return { success: false, error: "Reservation not found" };
+
+          const resUpdates: any = {
+            end_time: new Date(`${params.newEndDate}T11:00:00`).toISOString(),
+            base_amount: params.newBaseAmount,
+          };
+
+          if (params.isEarlyCheckout) {
+            resUpdates.status = 'COMPLETED';
+            if (res.room_id) {
+              await supabase.from('rooms').update({ status: 'DIRTY' }).eq('id', res.room_id);
+            }
+          }
+
+          const { error: rErr } = await supabase.from('reservations').update(resUpdates).eq('id', reservationId);
+          if (rErr) throw rErr;
+
+          let payment = state.payments.find(p => p.reservation_id === reservationId || (p.reservation_id && reservationId && p.reservation_id.toLowerCase() === reservationId.toLowerCase()));
+          const extraCollected = Number(params.collectedAmount) || 0;
+          const method = params.paymentMethod || 'CASH';
+
+          if (payment) {
+            const currentPaid = Number(payment.paid_amount) || 0;
+            const newPaid = currentPaid + extraCollected;
+            const newTotal = params.newTotalAmount;
+            const status = newPaid >= newTotal && newTotal > 0 ? "COMPLETED" : newPaid > 0 ? "PARTIAL" : "PENDING";
+            const payUpdates: any = { total_amount: newTotal, paid_amount: newPaid, status };
+            if (extraCollected > 0) payUpdates.payment_method = method;
+            const { error: pErr } = await supabase.from('payments').update(payUpdates).eq('id', payment.id);
+            if (pErr) throw pErr;
+          } else {
+            const status = extraCollected >= params.newTotalAmount && params.newTotalAmount > 0 ? "COMPLETED" : extraCollected > 0 ? "PARTIAL" : "PENDING";
+            const { error: pErr } = await supabase.from('payments').insert({
+              reservation_id: reservationId,
+              total_amount: params.newTotalAmount,
+              paid_amount: extraCollected,
+              status,
+              payment_method: method
+            });
+            if (pErr) throw pErr;
+          }
+
+          await fetchData();
+          return { success: true };
+        } catch (err: any) {
+          console.error("Adjust stay error:", err);
+          return { success: false, error: err.message || "Failed to adjust stay" };
         }
       },
 

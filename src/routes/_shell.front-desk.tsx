@@ -30,7 +30,7 @@ export const Route = createFileRoute("/_shell/front-desk")({
 const HK_CHECKLIST = ["Keycards encoded & assigned", "Government ID scanned & verified", "Registration card signed", "Advance deposit settled"];
 
 export function FrontDesk() {
-  const { rooms, reservations, guests, payments, discounts, checkIn, checkOut, addRoomReservation, settlePayment, addReservationExtraCharge } = usePms();
+  const { rooms, reservations, guests, payments, discounts, checkIn, checkOut, addRoomReservation, settlePayment, addReservationExtraCharge, adjustRoomStay } = usePms();
   const { settings } = useSettings();
 
   const [, setTick] = React.useState(0);
@@ -49,6 +49,20 @@ export function FrontDesk() {
 
   const [checkinPayAmount, setCheckinPayAmount] = React.useState("");
   const [checkinPayMethod, setCheckinPayMethod] = React.useState<"CASH" | "UPI" | "CARD" | "BANK_TRANSFER">("CASH");
+
+  // Stay Adjustment & Extra Days Modal State
+  const [adjustModalOpen, setAdjustModalOpen] = React.useState(false);
+  const [selectedResForAdjust, setSelectedResForAdjust] = React.useState<typeof reservations[0] | null>(null);
+  const [adjustMode, setAdjustMode] = React.useState<"EXTEND" | "EARLY_CHECKOUT" | "EXTRA_CHARGE">("EXTEND");
+  const [adjustExtraDays, setAdjustExtraDays] = React.useState(1);
+  const [adjustNewEndDate, setAdjustNewEndDate] = React.useState("");
+  const [adjustActualNights, setAdjustActualNights] = React.useState(1);
+  const [adjustCollectNow, setAdjustCollectNow] = React.useState(false);
+  const [adjustCollectAmount, setAdjustCollectAmount] = React.useState("");
+  const [adjustPaymentMethod, setAdjustPaymentMethod] = React.useState<"CASH" | "UPI" | "CARD" | "BANK_TRANSFER" | "OTHER">("CASH");
+  const [adjustExtraReason, setAdjustExtraReason] = React.useState("Room Service / Laundry / Addon");
+  const [adjustExtraAmount, setAdjustExtraAmount] = React.useState("");
+  const [adjustSubmitting, setAdjustSubmitting] = React.useState(false);
 
   const getGuest = (guestId: string) => guests.find((g) => g.id === guestId);
   const getGuestName = (guestId: string) => getGuest(guestId)?.name || "Guest";
@@ -330,6 +344,136 @@ export function FrontDesk() {
     }
   };
 
+  const handleOpenExtendStay = (r: typeof reservations[0]) => {
+    setSelectedResForAdjust(r);
+    setAdjustMode("EXTEND");
+    setAdjustExtraDays(1);
+    const currEnd = r.end_time ? new Date(r.end_time) : new Date();
+    const newEnd = new Date(currEnd);
+    newEnd.setDate(newEnd.getDate() + 1);
+    setAdjustNewEndDate(newEnd.toISOString().split("T")[0]);
+    
+    const room = rooms.find(rm => rm.id === r.room_id);
+    const ratePerNight = Number(room?.price) || 1600;
+    const extraTotal = ratePerNight + Number(((ratePerNight * 5) / 100).toFixed(2));
+    setAdjustCollectAmount(String(extraTotal));
+    setAdjustCollectNow(false);
+    setAdjustPaymentMethod("CASH");
+    setAdjustModalOpen(true);
+  };
+
+  const handleOpenEarlyCheckout = (r: typeof reservations[0]) => {
+    setSelectedResForAdjust(r);
+    setAdjustMode("EARLY_CHECKOUT");
+    const sDate = r.start_time ? new Date(r.start_time) : new Date();
+    const today = new Date();
+    const diffNights = Math.max(1, Math.ceil((today.getTime() - sDate.getTime()) / (1000 * 60 * 60 * 24)));
+    setAdjustActualNights(diffNights);
+    setAdjustNewEndDate(today.toISOString().split("T")[0]);
+    setAdjustModalOpen(true);
+  };
+
+  const handleOpenExtraChargeModal = (r: typeof reservations[0]) => {
+    setSelectedResForAdjust(r);
+    setAdjustMode("EXTRA_CHARGE");
+    setAdjustExtraReason("Room Service / Laundry / Addon");
+    setAdjustExtraAmount("500");
+    setAdjustCollectNow(false);
+    setAdjustCollectAmount("500");
+    setAdjustPaymentMethod("CASH");
+    setAdjustModalOpen(true);
+  };
+
+  const handleSaveStayAdjustment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedResForAdjust) return;
+
+    setAdjustSubmitting(true);
+    try {
+      const r = selectedResForAdjust;
+      const room = rooms.find(rm => rm.id === r.room_id);
+      const ratePerNight = Number(room?.price) || 1600;
+      const currentResBase = Number(r.base_amount) || 0;
+      const p = getReservationPayment(r.id);
+      const currentPayTotal = Number(p?.total_amount) || (currentResBase * 1.05);
+
+      if (adjustMode === "EXTEND") {
+        const extraDays = Math.max(1, adjustExtraDays);
+        const extraBase = ratePerNight * extraDays;
+        const extraGst = Number(((extraBase * 5) / 100).toFixed(2));
+        const extraTotal = extraBase + extraGst;
+
+        const newBase = currentResBase + extraBase;
+        const newTotal = currentPayTotal + extraTotal;
+        const collected = adjustCollectNow ? (parseFloat(adjustCollectAmount) || 0) : 0;
+
+        const res = await adjustRoomStay(r.id, {
+          newEndDate: adjustNewEndDate,
+          newNights: extraDays,
+          newBaseAmount: newBase,
+          newTotalAmount: newTotal,
+          collectedAmount: collected,
+          paymentMethod: adjustPaymentMethod,
+          isEarlyCheckout: false,
+          reason: `Stay Extended (+${extraDays} days)`
+        });
+
+        if (res.success) {
+          toast.success(`Stay extended by ${extraDays} day(s). Check-out updated to ${adjustNewEndDate}.`);
+          setAdjustModalOpen(false);
+          setSelectedResForAdjust(null);
+        } else {
+          toast.error(res.error || "Failed to extend stay");
+        }
+      } else if (adjustMode === "EARLY_CHECKOUT") {
+        const actualNights = Math.max(1, adjustActualNights);
+        const newBase = ratePerNight * actualNights;
+        const newGst = Number(((newBase * 5) / 100).toFixed(2));
+        const newTotal = newBase + newGst;
+
+        const res = await adjustRoomStay(r.id, {
+          newEndDate: adjustNewEndDate,
+          newNights: actualNights,
+          newBaseAmount: newBase,
+          newTotalAmount: newTotal,
+          isEarlyCheckout: true,
+          reason: `Early Check-out (${actualNights} nights stayed)`
+        });
+
+        if (res.success) {
+          toast.success(`Early check-out processed. Folio reduced to ${inr(newTotal)} and room marked for housekeeping.`);
+          setAdjustModalOpen(false);
+          setSelectedResForAdjust(null);
+        } else {
+          toast.error(res.error || "Failed to process early checkout");
+        }
+      } else if (adjustMode === "EXTRA_CHARGE") {
+        const extraAmt = parseFloat(adjustExtraAmount) || 0;
+        if (extraAmt <= 0) {
+          toast.error("Please enter a valid extra amount");
+          setAdjustSubmitting(false);
+          return;
+        }
+
+        const collected = adjustCollectNow ? (parseFloat(adjustCollectAmount) || 0) : 0;
+        const res = await addReservationExtraCharge(r.id, extraAmt, adjustExtraReason, {
+          collectedAmount: collected,
+          paymentMethod: adjustPaymentMethod
+        });
+
+        if (res.success) {
+          toast.success(`Added extra charge of ${inr(extraAmt)} for ${adjustExtraReason}.`);
+          setAdjustModalOpen(false);
+          setSelectedResForAdjust(null);
+        } else {
+          toast.error(res.error || "Failed to add extra charge");
+        }
+      }
+    } finally {
+      setAdjustSubmitting(false);
+    }
+  };
+
   return (
     <>
       <PageHeader
@@ -532,11 +676,44 @@ export function FrontDesk() {
                             </Button>
                           )}
 
+                          {!isPartyHall && (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="rounded-lg h-8 text-xs font-medium border-gold/40 text-gold hover:bg-gold/10"
+                                onClick={() => handleOpenExtendStay(r)}
+                                title="Add extra days to stay and compute extra tariff"
+                              >
+                                <Plus className="size-3 mr-1" /> Extend (+Days)
+                              </Button>
+
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="rounded-lg h-8 text-xs font-medium text-amber-600 hover:bg-amber-500/10 border-amber-500/30"
+                                onClick={() => handleOpenEarlyCheckout(r)}
+                                title="Guest checking out early: reduce tariff and bill"
+                              >
+                                <LogOut className="size-3 mr-1" /> Early Check-Out
+                              </Button>
+                            </>
+                          )}
+
                           <Button
                             size="sm"
-                            variant="outline"
+                            variant="ghost"
+                            className="rounded-lg h-8 text-xs text-muted-foreground hover:text-foreground"
+                            onClick={() => handleOpenExtraChargeModal(r)}
+                          >
+                            + Charges
+                          </Button>
+
+                          <Button
+                            size="sm"
+                            variant="default"
                             disabled={checkoutLoading === r.id}
-                            className="rounded-lg h-8 text-xs font-medium"
+                            className="rounded-lg h-8 text-xs font-semibold bg-brass text-gold-foreground hover:opacity-90 shadow-sm"
                             onClick={() => handleCheckoutSubmit(r, timer, balance, isPartyHall, gName, rmNum)}
                           >
                             {checkoutLoading === r.id ? "Checking Out..." : "Check Out"}
@@ -1005,6 +1182,427 @@ export function FrontDesk() {
               {bookingLoading ? "Booking Room..." : "Confirm & Book Room"}
             </Button>
           </div>
+      {/* Stay Modification & Folio Adjustment Modal */}
+      <Dialog open={adjustModalOpen} onOpenChange={setAdjustModalOpen}>
+        <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {adjustMode === "EXTEND" && "Extend Stay & Add Extra Days"}
+              {adjustMode === "EARLY_CHECKOUT" && "Early Check-Out & Bill Reduction"}
+              {adjustMode === "EXTRA_CHARGE" && "Add Extra Room Charges / Services"}
+            </DialogTitle>
+            <DialogDescription>
+              {selectedResForAdjust && (() => {
+                const g = getGuest(selectedResForAdjust.guest_id);
+                const rm = getRoom(selectedResForAdjust.room_id);
+                return `${g?.name || "Guest"} · Room ${rm?.room_number || "—"} (${rm?.room_name || "Standard"})`;
+              })()}
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedResForAdjust && (() => {
+            const r = selectedResForAdjust;
+            const rm = getRoom(r.room_id);
+            const ratePerNight = Number(rm?.price) || 1600;
+            const fin = getReservationFinancials(r);
+            const checkInDate = r.start_time ? new Date(r.start_time) : new Date();
+            const currEndDate = r.end_time ? new Date(r.end_time) : new Date();
+            const currNights = Math.max(1, Math.ceil((currEndDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24)));
+
+            // Extend calculation
+            const extraDays = Math.max(1, adjustExtraDays);
+            const extraBase = ratePerNight * extraDays;
+            const extraGst = Number(((extraBase * 5) / 100).toFixed(2));
+            const extraTotal = extraBase + extraGst;
+            const newExtendedTotal = fin.total + extraTotal;
+
+            // Early checkout calculation
+            const actualNights = Math.max(1, adjustActualNights);
+            const earlyBase = ratePerNight * actualNights;
+            const earlyGst = Number(((earlyBase * 5) / 100).toFixed(2));
+            const earlyGrandTotal = earlyBase + earlyGst;
+            const refundOrCredit = Math.max(0, fin.paid - earlyGrandTotal);
+            const newRemainingDue = Math.max(0, earlyGrandTotal - fin.paid);
+
+            return (
+              <form onSubmit={handleSaveStayAdjustment} className="space-y-4 pt-2">
+                {/* Mode Selector Tabs */}
+                <div className="grid grid-cols-3 gap-2 bg-secondary/80 p-1 rounded-xl">
+                  <Button
+                    type="button"
+                    variant={adjustMode === "EXTEND" ? "default" : "ghost"}
+                    className={adjustMode === "EXTEND" ? "h-8 text-xs font-semibold bg-brass text-gold-foreground" : "h-8 text-xs"}
+                    onClick={() => {
+                      setAdjustMode("EXTEND");
+                      const newEnd = new Date(currEndDate);
+                      newEnd.setDate(newEnd.getDate() + 1);
+                      setAdjustNewEndDate(newEnd.toISOString().split("T")[0]);
+                    }}
+                  >
+                    <Plus className="mr-1 size-3" /> Extend Stay (+Days)
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={adjustMode === "EARLY_CHECKOUT" ? "default" : "ghost"}
+                    className={adjustMode === "EARLY_CHECKOUT" ? "h-8 text-xs font-semibold bg-brass text-gold-foreground" : "h-8 text-xs text-amber-600"}
+                    onClick={() => {
+                      setAdjustMode("EARLY_CHECKOUT");
+                      const today = new Date();
+                      const dNights = Math.max(1, Math.ceil((today.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24)));
+                      setAdjustActualNights(dNights);
+                      setAdjustNewEndDate(today.toISOString().split("T")[0]);
+                    }}
+                  >
+                    <LogOut className="mr-1 size-3" /> Early Check-Out
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={adjustMode === "EXTRA_CHARGE" ? "default" : "ghost"}
+                    className={adjustMode === "EXTRA_CHARGE" ? "h-8 text-xs font-semibold bg-brass text-gold-foreground" : "h-8 text-xs"}
+                    onClick={() => setAdjustMode("EXTRA_CHARGE")}
+                  >
+                    + Extra Charges
+                  </Button>
+                </div>
+
+                {/* Mode 1: EXTEND STAY */}
+                {adjustMode === "EXTEND" && (
+                  <div className="space-y-4">
+                    <div className="p-3.5 rounded-xl border border-border bg-secondary/30 text-xs grid grid-cols-3 gap-3">
+                      <div>
+                        <span className="text-muted-foreground block">Current Stay:</span>
+                        <span className="font-semibold">{currNights} Nights</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block">Current Total Bill:</span>
+                        <span className="font-bold">{inr(fin.total)}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block">Amount Paid So Far:</span>
+                        <span className="font-bold text-emerald-600">{inr(fin.paid)}</span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-medium">Extra Nights to Add *</Label>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="number"
+                            min="1"
+                            max="30"
+                            required
+                            value={adjustExtraDays}
+                            onChange={(e) => {
+                              const days = Math.max(1, parseInt(e.target.value) || 1);
+                              setAdjustExtraDays(days);
+                              const newEnd = new Date(currEndDate);
+                              newEnd.setDate(newEnd.getDate() + days);
+                              setAdjustNewEndDate(newEnd.toISOString().split("T")[0]);
+                              const extB = ratePerNight * days;
+                              const extG = Number(((extB * 5) / 100).toFixed(2));
+                              setAdjustCollectAmount(String(extB + extG));
+                            }}
+                          />
+                          <div className="flex gap-1">
+                            {[1, 2, 3].map((d) => (
+                              <Button
+                                key={d}
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-9 px-2 text-xs"
+                                onClick={() => {
+                                  setAdjustExtraDays(d);
+                                  const newEnd = new Date(currEndDate);
+                                  newEnd.setDate(newEnd.getDate() + d);
+                                  setAdjustNewEndDate(newEnd.toISOString().split("T")[0]);
+                                  const extB = ratePerNight * d;
+                                  const extG = Number(((extB * 5) / 100).toFixed(2));
+                                  setAdjustCollectAmount(String(extB + extG));
+                                }}
+                              >
+                                +{d}d
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-medium">New Check-Out Date *</Label>
+                        <Input
+                          type="date"
+                          required
+                          value={adjustNewEndDate}
+                          onChange={(e) => {
+                            setAdjustNewEndDate(e.target.value);
+                            const nEnd = new Date(e.target.value);
+                            const nDays = Math.max(1, Math.round((nEnd.getTime() - currEndDate.getTime()) / (1000 * 60 * 60 * 24)));
+                            setAdjustExtraDays(nDays);
+                            const extB = ratePerNight * nDays;
+                            const extG = Number(((extB * 5) / 100).toFixed(2));
+                            setAdjustCollectAmount(String(extB + extG));
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Cost Calculation Box */}
+                    <div className="rounded-xl border border-gold/30 bg-gold/5 p-4 text-xs space-y-2">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Additional Room Tariff ({extraDays} night(s) @ {inr(ratePerNight)}):</span>
+                        <span className="font-semibold">{inr(extraBase)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Additional GST 5% (2.5% CGST + 2.5% SGST):</span>
+                        <span className="font-semibold">+{inr(extraGst)}</span>
+                      </div>
+                      <div className="flex justify-between font-bold text-sm border-t border-gold/20 pt-1.5 text-gold">
+                        <span>Extra Amount Added to Bill:</span>
+                        <span>+{inr(extraTotal)}</span>
+                      </div>
+                      <div className="flex justify-between font-bold text-foreground border-t border-border pt-1">
+                        <span>New Total Bill Payable:</span>
+                        <span>{inr(newExtendedTotal)}</span>
+                      </div>
+                    </div>
+
+                    {/* Immediate Collection Option */}
+                    <div className="rounded-xl border border-border p-3.5 space-y-3 bg-secondary/20">
+                      <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer">
+                        <Checkbox
+                          checked={adjustCollectNow}
+                          onCheckedChange={(c) => setAdjustCollectNow(!!c)}
+                        />
+                        Collect extra payment ({inr(extraTotal)}) immediately from guest
+                      </label>
+
+                      {adjustCollectNow && (
+                        <div className="grid grid-cols-2 gap-3 pt-1 border-t border-border/60">
+                          <div className="space-y-1">
+                            <Label className="text-xs">Amount Collected (₹)</Label>
+                            <Input
+                              type="number"
+                              className="font-bold text-emerald-600"
+                              value={adjustCollectAmount}
+                              onChange={(e) => setAdjustCollectAmount(e.target.value)}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs">Payment Mode</Label>
+                            <Select
+                              value={adjustPaymentMethod}
+                              onValueChange={(v: any) => setAdjustPaymentMethod(v)}
+                            >
+                              <SelectTrigger className="h-9">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="CASH">Cash Payment</SelectItem>
+                                <SelectItem value="UPI">UPI / QR (GPay, PhonePe, Paytm)</SelectItem>
+                                <SelectItem value="CARD">Credit / Debit Card (POS)</SelectItem>
+                                <SelectItem value="BANK_TRANSFER">Bank Transfer / NEFT</SelectItem>
+                                <SelectItem value="OTHER">Other</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Mode 2: EARLY CHECK-OUT */}
+                {adjustMode === "EARLY_CHECKOUT" && (
+                  <div className="space-y-4">
+                    <div className="p-3.5 rounded-xl border border-amber-500/30 bg-amber-500/5 text-xs grid grid-cols-3 gap-3">
+                      <div>
+                        <span className="text-muted-foreground block">Original Stay:</span>
+                        <span className="font-semibold">{currNights} Nights</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block">Original Total Billed:</span>
+                        <span className="font-bold">{inr(fin.total)}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block">Amount Paid So Far:</span>
+                        <span className="font-bold text-emerald-600">{inr(fin.paid)}</span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-medium">Actual Nights Stayed *</Label>
+                        <Input
+                          type="number"
+                          min="1"
+                          max={currNights}
+                          required
+                          value={adjustActualNights}
+                          onChange={(e) => {
+                            const n = Math.max(1, parseInt(e.target.value) || 1);
+                            setAdjustActualNights(n);
+                            const nEnd = new Date(checkInDate);
+                            nEnd.setDate(nEnd.getDate() + n);
+                            setAdjustNewEndDate(nEnd.toISOString().split("T")[0]);
+                          }}
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-medium">Actual Early Departure Date *</Label>
+                        <Input
+                          type="date"
+                          required
+                          value={adjustNewEndDate}
+                          onChange={(e) => {
+                            setAdjustNewEndDate(e.target.value);
+                            const nEnd = new Date(e.target.value);
+                            const n = Math.max(1, Math.round((nEnd.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24)));
+                            setAdjustActualNights(n);
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Adjusted Bill Computation Box */}
+                    <div className="rounded-xl border border-border bg-secondary/30 p-4 text-xs space-y-2">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Adjusted Room Tariff ({actualNights} night(s) @ {inr(ratePerNight)}):</span>
+                        <span className="font-semibold">{inr(earlyBase)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Adjusted GST 5% (2.5% CGST + 2.5% SGST):</span>
+                        <span className="font-semibold">+{inr(earlyGst)}</span>
+                      </div>
+                      <div className="flex justify-between font-bold text-sm border-t border-border pt-1.5 text-foreground">
+                        <span>New Reduced Grand Total:</span>
+                        <span>{inr(earlyGrandTotal)}</span>
+                      </div>
+
+                      {refundOrCredit > 0 ? (
+                        <div className="flex justify-between font-bold text-sm border-t border-emerald-500/30 pt-1.5 text-emerald-600 bg-emerald-500/10 p-2 rounded-lg mt-2">
+                          <span>Refund / Credit Due to Guest:</span>
+                          <span>{inr(refundOrCredit)}</span>
+                        </div>
+                      ) : newRemainingDue > 0 ? (
+                        <div className="flex justify-between font-bold text-sm border-t border-amber-500/30 pt-1.5 text-amber-600 bg-amber-500/10 p-2 rounded-lg mt-2">
+                          <span>Remaining Balance Due:</span>
+                          <span>{inr(newRemainingDue)}</span>
+                        </div>
+                      ) : (
+                        <div className="text-emerald-600 font-semibold pt-1">
+                          ✓ Exact amount cleared. No refund or balance due.
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="text-xs text-muted-foreground bg-secondary/40 p-3 rounded-lg border border-border">
+                      ℹ️ Confirming early check-out will update the room folio, release Room {rm?.room_number}, and mark it as <span className="font-semibold text-warning">DIRTY</span> for housekeeping.
+                    </div>
+                  </div>
+                )}
+
+                {/* Mode 3: EXTRA CHARGE */}
+                {adjustMode === "EXTRA_CHARGE" && (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-medium">Charge Reason / Service</Label>
+                        <Select
+                          value={adjustExtraReason}
+                          onValueChange={setAdjustExtraReason}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Room Service / Food & Beverage">Room Service / Food & Beverage</SelectItem>
+                            <SelectItem value="Laundry & Dry Cleaning">Laundry & Dry Cleaning</SelectItem>
+                            <SelectItem value="Minibar Consumption">Minibar Consumption</SelectItem>
+                            <SelectItem value="Late Check-out Extra Hours">Late Check-out Extra Hours</SelectItem>
+                            <SelectItem value="Damage & Special Cleaning Fee">Damage & Special Cleaning Fee</SelectItem>
+                            <SelectItem value="Extra Bed / Rollaway Mattress">Extra Bed / Rollaway Mattress</SelectItem>
+                            <SelectItem value="Other Miscellaneous Addon">Other Miscellaneous Addon</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-medium">Extra Amount (₹) *</Label>
+                        <Input
+                          type="number"
+                          required
+                          value={adjustExtraAmount}
+                          onChange={(e) => {
+                            setAdjustExtraAmount(e.target.value);
+                            setAdjustCollectAmount(e.target.value);
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Immediate Collection Option */}
+                    <div className="rounded-xl border border-border p-3.5 space-y-3 bg-secondary/20">
+                      <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer">
+                        <Checkbox
+                          checked={adjustCollectNow}
+                          onCheckedChange={(c) => setAdjustCollectNow(!!c)}
+                        />
+                        Collect extra charge immediately from guest
+                      </label>
+
+                      {adjustCollectNow && (
+                        <div className="grid grid-cols-2 gap-3 pt-1 border-t border-border/60">
+                          <div className="space-y-1">
+                            <Label className="text-xs">Amount Collected (₹)</Label>
+                            <Input
+                              type="number"
+                              className="font-bold text-emerald-600"
+                              value={adjustCollectAmount}
+                              onChange={(e) => setAdjustCollectAmount(e.target.value)}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs">Payment Mode</Label>
+                            <Select
+                              value={adjustPaymentMethod}
+                              onValueChange={(v: any) => setAdjustPaymentMethod(v)}
+                            >
+                              <SelectTrigger className="h-9">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="CASH">Cash Payment</SelectItem>
+                                <SelectItem value="UPI">UPI / QR (GPay, PhonePe, Paytm)</SelectItem>
+                                <SelectItem value="CARD">Credit / Debit Card (POS)</SelectItem>
+                                <SelectItem value="BANK_TRANSFER">Bank Transfer / NEFT</SelectItem>
+                                <SelectItem value="OTHER">Other</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-2 pt-4 border-t border-border">
+                  <Button variant="ghost" type="button" onClick={() => setAdjustModalOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={adjustSubmitting}
+                    className="bg-brass text-gold-foreground hover:opacity-90 font-semibold shadow-brass"
+                  >
+                    {adjustSubmitting ? "Processing..." : adjustMode === "EARLY_CHECKOUT" ? "Confirm Early Check-Out" : adjustMode === "EXTEND" ? "Confirm Stay Extension" : "Apply Extra Charge"}
+                  </Button>
+                </div>
+              </form>
+            );
+          })()}
         </DialogContent>
       </Dialog>
     </>

@@ -106,6 +106,31 @@ export function RoomDrawer({
                       <span className="text-muted-foreground">Booking ID</span>
                       <span className="font-mono text-xs text-gold">{activeReservation.id.slice(0, 10).toUpperCase()}</span>
                     </div>
+
+                    <div className="pt-2 flex flex-col gap-1.5 border-t border-border/60">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full text-xs h-8 justify-center border-gold/40 text-gold hover:bg-gold/10"
+                        onClick={() => {
+                          onOpenChange(false);
+                          void navigate({ to: "/front-desk" });
+                        }}
+                      >
+                        <CalendarCheck className="mr-1.5 size-3.5" /> Modify Stay / Extend / Early Check-Out
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="w-full text-xs h-8 justify-center text-muted-foreground hover:text-foreground"
+                        onClick={() => {
+                          onOpenChange(false);
+                          void navigate({ to: "/billing" });
+                        }}
+                      >
+                        View Official Tax Invoice
+                      </Button>
+                    </div>
                   </div>
                 ) : (
                   <div className="rounded-xl border border-dashed border-border p-4 text-center text-sm text-muted-foreground">
