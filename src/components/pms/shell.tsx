@@ -70,7 +70,6 @@ const NAV: { section: string; items: NavItem[] }[] = [
       { to: "/front-desk", label: "Check-In / Out", icon: ConciergeBell },
       { to: "/housekeeping", label: "Cleaning", icon: Sparkles },
       { to: "/party-hall", label: "Party Hall", icon: PartyPopper },
-      { to: "/complaints", label: "Complaints", icon: Settings },
     ],
   },
   {
