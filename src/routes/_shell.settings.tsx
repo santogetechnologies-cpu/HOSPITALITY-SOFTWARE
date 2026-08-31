@@ -115,6 +115,17 @@ function SettingsPage() {
     }
   };
 
+  if (session && session.role === "FRONT_DESK") {
+    return (
+      <div className="space-y-6 pb-12">
+        <PageHeader eyebrow="Configuration" title="Settings" subtitle="Property configuration for DRB Hotel" />
+        <Panel className="p-12 text-center">
+          <EmptyState title="Access Restricted" body="Property configuration is only accessible by General Managers and Super Admins." icon={Settings} />
+        </Panel>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 pb-12">
       <PageHeader eyebrow="Configuration" title="Settings" subtitle="Property configuration for DRB Hotel" />

@@ -77,9 +77,9 @@ const NAV: { section: string; items: NavItem[] }[] = [
     section: "Finance",
     items: [
       { to: "/profits", label: "Profit & Loss (P&L)", icon: TrendingUp, roles: ["SUPER_ADMIN"] },
-      { to: "/payments", label: "Payment Dashboard", icon: Receipt },
+      { to: "/payments", label: "Payment Dashboard", icon: Receipt, roles: ["SUPER_ADMIN"] },
       { to: "/pending-payments", label: "Pending Payments", icon: Receipt },
-      { to: "/payment-history", label: "Payment History", icon: Receipt },
+      { to: "/payment-history", label: "Payment History", icon: Receipt, roles: ["SUPER_ADMIN"] },
       { to: "/discounts", label: "Raised Discounts", icon: TrendingUp },
       { to: "/expenses", label: "Expenses", icon: Receipt, roles: ["SUPER_ADMIN", "GM"] },
     ],
@@ -510,13 +510,18 @@ function QuickAdd() {
 }
 
 function MobileNav() {
+  const { session } = usePms();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const isFrontDesk = session?.role === "FRONT_DESK";
+  
   const items = [
     { to: "/dashboard", label: "Home", icon: LayoutDashboard },
     { to: "/front-desk", label: "Desk", icon: ConciergeBell },
     { to: "/rooms", label: "Rooms", icon: BedDouble },
     { to: "/housekeeping", label: "HK", icon: Sparkles },
-    { to: "/settings", label: "More", icon: Settings },
+    isFrontDesk
+      ? { to: "/party-hall", label: "Events", icon: PartyPopper }
+      : { to: "/settings", label: "Config", icon: Settings },
   ];
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 flex border-t border-border bg-card/95 backdrop-blur lg:hidden">

@@ -25,6 +25,17 @@ function PaymentsDashboard() {
 
   const frozenPayments = payments.filter(p => p.status === 'FROZEN');
 
+  if (session && session.role !== "SUPER_ADMIN") {
+    return (
+      <div className="space-y-6 pb-12">
+        <PageHeader eyebrow="Finance" title="Payment Dashboard" subtitle="Financial Management" />
+        <Panel className="p-12 text-center">
+          <EmptyState title="Super Admin Access Only" body="Payment analytics and financial dashboards are restricted to Super Administrators." icon={Receipt} />
+        </Panel>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 pb-12">
       <PageHeader 

@@ -67,6 +67,17 @@ function StaffPage() {
     }
   };
 
+  if (session && session.role !== "SUPER_ADMIN") {
+    return (
+      <div className="space-y-6 pb-12">
+        <PageHeader eyebrow="Configuration" title="Staff & Access" subtitle="Employee Access Management" />
+        <Panel className="p-12 text-center">
+          <EmptyState title="Super Admin Access Only" body="Staff account creation, password resets, and access control are restricted to Super Administrators." icon={Shield} />
+        </Panel>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 pb-12">
       <PageHeader
