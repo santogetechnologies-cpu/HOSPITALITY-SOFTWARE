@@ -28,6 +28,15 @@ import { Route as ShellRevenueRouteImport } from './routes/_shell.revenue'
 import { Route as ShellRoomsRouteImport } from './routes/_shell.rooms'
 import { Route as ShellSettingsRouteImport } from './routes/_shell.settings'
 import { Route as ShellStaffRouteImport } from './routes/_shell.staff'
+import { Route as ShellProfitsRouteImport } from './routes/_shell.profits'
+import { Route as ShellExpensesRouteImport } from './routes/_shell.expenses'
+import { Route as ShellDiscountsRouteImport } from './routes/_shell.discounts'
+import { Route as ShellPendingPaymentsRouteImport } from './routes/_shell.pending-payments'
+import { Route as ShellPaymentHistoryRouteImport } from './routes/_shell.payment-history'
+import { Route as ShellPaymentsRouteImport } from './routes/_shell.payments'
+import { Route as ShellPartyHallRouteImport } from './routes/_shell.party-hall'
+import { Route as ShellVisitorsRouteImport } from './routes/_shell.visitors'
+import { Route as ShellComplaintsRouteImport } from './routes/_shell.complaints'
 import { Route as ShellReservationsIndexRouteImport } from './routes/_shell.reservations.index'
 import { Route as ShellReservationsNewRouteImport } from './routes/_shell.reservations.new'
 import { Route as ShellSystemWorkflowRouteImport } from './routes/_shell.system-workflow'
@@ -124,6 +133,51 @@ const ShellSettingsRoute = ShellSettingsRouteImport.update({
 const ShellStaffRoute = ShellStaffRouteImport.update({
   id: '/staff',
   path: '/staff',
+  getParentRoute: () => ShellRoute,
+} as any)
+const ShellProfitsRoute = ShellProfitsRouteImport.update({
+  id: '/profits',
+  path: '/profits',
+  getParentRoute: () => ShellRoute,
+} as any)
+const ShellExpensesRoute = ShellExpensesRouteImport.update({
+  id: '/expenses',
+  path: '/expenses',
+  getParentRoute: () => ShellRoute,
+} as any)
+const ShellDiscountsRoute = ShellDiscountsRouteImport.update({
+  id: '/discounts',
+  path: '/discounts',
+  getParentRoute: () => ShellRoute,
+} as any)
+const ShellPendingPaymentsRoute = ShellPendingPaymentsRouteImport.update({
+  id: '/pending-payments',
+  path: '/pending-payments',
+  getParentRoute: () => ShellRoute,
+} as any)
+const ShellPaymentHistoryRoute = ShellPaymentHistoryRouteImport.update({
+  id: '/payment-history',
+  path: '/payment-history',
+  getParentRoute: () => ShellRoute,
+} as any)
+const ShellPaymentsRoute = ShellPaymentsRouteImport.update({
+  id: '/payments',
+  path: '/payments',
+  getParentRoute: () => ShellRoute,
+} as any)
+const ShellPartyHallRoute = ShellPartyHallRouteImport.update({
+  id: '/party-hall',
+  path: '/party-hall',
+  getParentRoute: () => ShellRoute,
+} as any)
+const ShellVisitorsRoute = ShellVisitorsRouteImport.update({
+  id: '/visitors',
+  path: '/visitors',
+  getParentRoute: () => ShellRoute,
+} as any)
+const ShellComplaintsRoute = ShellComplaintsRouteImport.update({
+  id: '/complaints',
+  path: '/complaints',
   getParentRoute: () => ShellRoute,
 } as any)
 const ShellReservationsIndexRoute = ShellReservationsIndexRouteImport.update({
@@ -485,6 +539,15 @@ const ShellRouteChildren: ShellRouteChildren = {
   ShellRoomsRoute: ShellRoomsRoute,
   ShellSettingsRoute: ShellSettingsRoute,
   ShellStaffRoute: ShellStaffRoute,
+  ShellProfitsRoute: ShellProfitsRoute,
+  ShellExpensesRoute: ShellExpensesRoute,
+  ShellDiscountsRoute: ShellDiscountsRoute,
+  ShellPendingPaymentsRoute: ShellPendingPaymentsRoute,
+  ShellPaymentHistoryRoute: ShellPaymentHistoryRoute,
+  ShellPaymentsRoute: ShellPaymentsRoute,
+  ShellPartyHallRoute: ShellPartyHallRoute,
+  ShellVisitorsRoute: ShellVisitorsRoute,
+  ShellComplaintsRoute: ShellComplaintsRoute,
   ShellReservationsNewRoute: ShellReservationsNewRoute,
   ShellReservationsIndexRoute: ShellReservationsIndexRoute,
   ShellSystemWorkflowRoute: ShellSystemWorkflowRoute,
