@@ -29,10 +29,13 @@ interface PendingItem {
   paidAmount: number;
   balance: number;
   status: string;
+  discountAmount?: number;
+  discountReason?: string;
+  originalAmount?: number;
 }
 
 function PendingPaymentsPage() {
-  const { payments, reservations, guests, rooms, settlePayment, freezePayment } = usePms();
+  const { payments, reservations, guests, rooms, discounts, settlePayment, freezePayment } = usePms();
   const [selectedItem, setSelectedItem] = React.useState<PendingItem | null>(null);
   const [collectionAmount, setCollectionAmount] = React.useState("");
   const [method, setMethod] = React.useState<"CASH" | "UPI" | "CARD" | "BANK_TRANSFER">("CASH");
@@ -41,6 +44,18 @@ function PendingPaymentsPage() {
   const getGuest = (id?: string) => guests.find(g => g.id === id);
   const getRoom = (roomId?: string) => rooms.find(rm => rm.id === roomId);
 
+  const getApprovedDiscount = (resId?: string) => {
+    if (!resId) return 0;
+    return discounts
+      .filter(d => (d.reservation_id === resId || d.reservation_id?.toLowerCase() === resId.toLowerCase()) && d.status === 'APPROVED')
+      .reduce((sum, d) => sum + (Number(d.requested_amount) || 0), 0);
+  };
+
+  const getPendingDiscount = (resId?: string) => {
+    if (!resId) return false;
+    return discounts.some(d => (d.reservation_id === resId || d.reservation_id?.toLowerCase() === resId.toLowerCase()) && d.status === 'PENDING');
+  };
+
   // Unified Pending Ledger
   const pendingItems: PendingItem[] = React.useMemo(() => {
     const list: PendingItem[] = [];
@@ -48,18 +63,27 @@ function PendingPaymentsPage() {
 
     // 1. Process all existing payment records with outstanding balance
     payments.forEach((p) => {
-      const res = reservations.find(r => r.id === p.reservation_id);
+      const res = reservations.find(r => r.id === p.reservation_id || r.id?.toLowerCase() === p.reservation_id?.toLowerCase());
       const guest = res ? getGuest(res.guest_id) : null;
       const room = res ? getRoom(res.room_id) : null;
-      const total = Number(p.total_amount) || 0;
-      const paid = Number(p.paid_amount) || 0;
-      const balance = total - paid;
+      const originalAmount = Number(res?.base_amount) || Number(p.total_amount) || 0;
+      const approvedDiscount = getApprovedDiscount(p.reservation_id);
+      const hasPendingDiscount = getPendingDiscount(p.reservation_id);
 
-      if (balance > 0 || p.status === 'PENDING' || p.status === 'PARTIAL' || p.status === 'FROZEN') {
+      // Effective total bill: apply approved discount if not already deducted
+      let effectiveTotal = Number(p.total_amount) || 0;
+      if (approvedDiscount > 0 && effectiveTotal >= originalAmount && originalAmount > approvedDiscount) {
+        effectiveTotal = Math.max(0, originalAmount - approvedDiscount);
+      }
+      
+      const paid = Number(p.paid_amount) || 0;
+      const balance = Math.max(0, effectiveTotal - paid);
+
+      if (balance > 0 || p.status === 'PENDING' || p.status === 'PARTIAL' || p.status === 'FROZEN' || hasPendingDiscount) {
         if (p.reservation_id) processedResIds.add(p.reservation_id);
 
         let stage: PendingItem['stage'] = 'PRE_CHECKIN';
-        if (p.status === 'FROZEN') stage = 'FROZEN';
+        if (p.status === 'FROZEN' || hasPendingDiscount) stage = 'FROZEN';
         else if (res?.status === 'OCCUPIED') stage = 'IN_HOUSE';
         else if (res?.status === 'COMPLETED') stage = 'CHECKED_OUT';
         else stage = 'PRE_CHECKIN';
@@ -73,10 +97,12 @@ function PendingPaymentsPage() {
           resourceName: res?.resource_type === 'PARTY_HALL' ? `Party Hall (${res.event_type || 'Event'})` : room ? `Room ${room.room_number || (room as any).number}` : 'Room Booking',
           bookingDate: res?.booking_date || "—",
           stage,
-          totalAmount: total,
+          totalAmount: effectiveTotal,
           paidAmount: paid,
-          balance: balance > 0 ? balance : 0,
-          status: p.status
+          balance,
+          status: hasPendingDiscount ? 'FROZEN' : p.status,
+          discountAmount: approvedDiscount,
+          originalAmount: approvedDiscount > 0 ? (originalAmount > effectiveTotal ? originalAmount : effectiveTotal + approvedDiscount) : undefined
         });
       }
     });
@@ -86,15 +112,19 @@ function PendingPaymentsPage() {
       if (r.status === 'CANCELLED') return;
       if (processedResIds.has(r.id)) return;
 
-      const matchingPayment = payments.find(p => p.reservation_id === r.id);
-      const total = Number(r.base_amount) || 0;
+      const matchingPayment = payments.find(p => p.reservation_id === r.id || p.reservation_id?.toLowerCase() === r.id.toLowerCase());
+      const originalAmount = Number(r.base_amount) || 0;
+      const approvedDiscount = getApprovedDiscount(r.id);
+      const hasPendingDiscount = getPendingDiscount(r.id);
+      const total = approvedDiscount > 0 ? Math.max(0, originalAmount - approvedDiscount) : originalAmount;
       const paid = matchingPayment ? Number(matchingPayment.paid_amount) || 0 : 0;
-      const balance = total - paid;
+      const balance = Math.max(0, total - paid);
 
-      if (balance > 0) {
+      if (balance > 0 || hasPendingDiscount) {
         const guest = getGuest(r.guest_id);
         const room = getRoom(r.room_id);
-        const stage: PendingItem['stage'] = r.status === 'OCCUPIED' ? 'IN_HOUSE' : r.status === 'COMPLETED' ? 'CHECKED_OUT' : 'PRE_CHECKIN';
+        let stage: PendingItem['stage'] = r.status === 'OCCUPIED' ? 'IN_HOUSE' : r.status === 'COMPLETED' ? 'CHECKED_OUT' : 'PRE_CHECKIN';
+        if (hasPendingDiscount) stage = 'FROZEN';
 
         list.push({
           id: matchingPayment?.id || r.id,
@@ -108,13 +138,15 @@ function PendingPaymentsPage() {
           totalAmount: total,
           paidAmount: paid,
           balance,
-          status: paid > 0 ? 'PARTIAL' : 'PENDING'
+          status: hasPendingDiscount ? 'FROZEN' : (paid > 0 ? 'PARTIAL' : 'PENDING'),
+          discountAmount: approvedDiscount,
+          originalAmount: approvedDiscount > 0 ? originalAmount : undefined
         });
       }
     });
 
     return list;
-  }, [payments, reservations, guests, rooms]);
+  }, [payments, reservations, guests, rooms, discounts]);
 
   const totalOutstanding = pendingItems.reduce((acc, i) => acc + i.balance, 0);
 
@@ -199,10 +231,17 @@ function PendingPaymentsPage() {
                 </TableCell>
                 <TableCell>
                   <Pill tone={item.stage === 'PRE_CHECKIN' ? 'info' : item.stage === 'IN_HOUSE' ? 'warning' : item.stage === 'FROZEN' ? 'destructive' : 'gold'}>
-                    {item.stage === 'PRE_CHECKIN' ? 'Pre-Arrival Due' : item.stage === 'IN_HOUSE' ? 'In-House Folio' : item.stage === 'FROZEN' ? 'Frozen' : 'Departure Balance'}
+                    {item.stage === 'PRE_CHECKIN' ? 'Pre-Arrival Due' : item.stage === 'IN_HOUSE' ? 'In-House Folio' : item.stage === 'FROZEN' ? 'Frozen (Discount Pending)' : 'Departure Balance'}
                   </Pill>
                 </TableCell>
-                <TableCell className="font-medium">{inr(item.totalAmount)}</TableCell>
+                <TableCell className="font-medium">
+                  <div>{inr(item.totalAmount)}</div>
+                  {item.discountAmount && item.discountAmount > 0 ? (
+                    <div className="text-[11px] text-success font-medium">
+                      -{inr(item.discountAmount)} discount applied
+                    </div>
+                  ) : null}
+                </TableCell>
                 <TableCell className="text-success font-medium">{inr(item.paidAmount)}</TableCell>
                 <TableCell className="font-bold text-warning tabular-nums">
                   {inr(item.balance)}
@@ -256,8 +295,13 @@ function PendingPaymentsPage() {
             <div className="space-y-4 pt-2">
               <div className="flex justify-between items-center rounded-xl border border-border bg-secondary/40 p-4">
                 <div>
-                  <div className="text-xs text-muted-foreground">Total Bill: {inr(selectedItem.totalAmount)}</div>
-                  <div className="text-xs text-success">Already Paid: {inr(selectedItem.paidAmount)}</div>
+                  <div className="text-xs text-muted-foreground">
+                    Total Bill: <span className="font-semibold text-foreground">{inr(selectedItem.totalAmount)}</span>
+                    {selectedItem.discountAmount && selectedItem.discountAmount > 0 ? (
+                      <span className="ml-1 text-success">(-{inr(selectedItem.discountAmount)} discount)</span>
+                    ) : null}
+                  </div>
+                  <div className="text-xs text-success mt-0.5">Already Paid: {inr(selectedItem.paidAmount)}</div>
                 </div>
                 <div className="text-right">
                   <div className="text-[10px] uppercase font-semibold text-muted-foreground">Outstanding Due</div>

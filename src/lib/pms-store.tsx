@@ -188,13 +188,31 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         supabase.from('tickets').select('*')
       ]);
 
+      const loadedDiscounts = (discounts as any) || [];
+      const loadedPayments = (payments as any) || [];
+      const loadedReservations = (reservations as any) || [];
+
+      // Auto-reconciliation of approved discounts & frozen payment statuses
+      loadedDiscounts.forEach((d: any) => {
+        if (d.status === 'APPROVED' && d.reservation_id) {
+          const pay = loadedPayments.find((p: any) => p.reservation_id === d.reservation_id);
+          if (pay && pay.status === 'FROZEN') {
+            const total = Number(pay.total_amount) || 0;
+            const paid = Number(pay.paid_amount) || 0;
+            const newStatus = paid >= total && total > 0 ? 'COMPLETED' : (paid > 0 ? 'PARTIAL' : 'PENDING');
+            pay.status = newStatus;
+            void supabase.from('payments').update({ status: newStatus }).eq('id', pay.id);
+          }
+        }
+      });
+
       setState(s => ({
         ...s,
         rooms: (rooms as any) || [],
-        reservations: (reservations as any) || [],
+        reservations: loadedReservations,
         guests: (guests as any) || [],
-        payments: (payments as any) || [],
-        discounts: (discounts as any) || [],
+        payments: loadedPayments,
+        discounts: loadedDiscounts,
         expenses: (expenses as any) || [],
         profiles: (profiles as any) || [],
         notifications: (notifications as any) || [],
@@ -708,40 +726,56 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
           if (!discount) return { success: false, error: "Discount request not found" };
 
           const approver = state.session?.name || state.session?.username || "Super Admin";
-          const { error } = await supabase.from('discounts').update({ 
+          const { error: dErr } = await supabase.from('discounts').update({ 
             status, 
             approved_by: approver
           }).eq('id', discountId);
-          if (error) throw error;
+          if (dErr) throw dErr;
 
-          const payment = state.payments.find(p => p.reservation_id === discount.reservation_id);
-          const reservation = state.reservations.find(r => r.id === discount.reservation_id);
+          const resId = discount.reservation_id;
+          const reservation = state.reservations.find(r => r.id === resId || (r.id && resId && r.id.toLowerCase() === resId.toLowerCase()));
+          const payment = state.payments.find(p => p.reservation_id === resId || (p.reservation_id && resId && p.reservation_id.toLowerCase() === resId.toLowerCase()));
 
-          if (payment) {
-            if (status === "APPROVED") {
-              // Apply discounted amount: newTotal = original_total - discount
-              const originalTotal = Number(payment.total_amount) || Number(reservation?.base_amount) || 0;
-              const newTotal = Math.max(0, originalTotal - Number(discount.requested_amount));
-              const paid = Number(payment.paid_amount) || 0;
-              const newStatus = paid >= newTotal ? "COMPLETED" : (paid > 0 ? "PARTIAL" : "PENDING");
+          if (status === "APPROVED") {
+            const discountAmt = Number(discount.requested_amount) || 0;
+            const originalTotal = Number(reservation?.base_amount) || Number(payment?.total_amount) || 0;
+            const newTotal = Math.max(0, originalTotal - discountAmt);
+            const paid = Number(payment?.paid_amount) || 0;
+            const newStatus = paid >= newTotal && newTotal > 0 ? "COMPLETED" : (paid > 0 ? "PARTIAL" : "PENDING");
 
-              await supabase.from('payments').update({ 
+            if (payment) {
+              const { error: pErr } = await supabase.from('payments').update({ 
                 total_amount: newTotal,
                 status: newStatus
               }).eq('id', payment.id);
+              if (pErr) console.error("Error updating payment amount:", pErr);
+            } else if (resId) {
+              const { error: pErr } = await supabase.from('payments').insert({
+                id: crypto.randomUUID(),
+                reservation_id: resId,
+                total_amount: newTotal,
+                paid_amount: 0,
+                status: 'PENDING',
+                payment_method: 'CASH'
+              });
+              if (pErr) console.error("Error inserting payment record:", pErr);
+            }
 
-              if (reservation) {
-                await supabase.from('reservations').update({ base_amount: newTotal }).eq('id', reservation.id);
-              }
-            } else {
-              // REJECTED: Restore payment with original amount and unfreeze
+            if (reservation) {
+              const { error: rErr } = await supabase.from('reservations').update({ base_amount: newTotal }).eq('id', reservation.id);
+              if (rErr) console.error("Error updating reservation base_amount:", rErr);
+            }
+          } else {
+            // REJECTED: Restore payment with original status and unfreeze
+            if (payment) {
               const total = Number(payment.total_amount) || 0;
               const paid = Number(payment.paid_amount) || 0;
-              const originalStatus = paid >= total ? "COMPLETED" : (paid > 0 ? "PARTIAL" : "PENDING");
+              const originalStatus = paid >= total && total > 0 ? "COMPLETED" : (paid > 0 ? "PARTIAL" : "PENDING");
 
-              await supabase.from('payments').update({ 
+              const { error: pErr } = await supabase.from('payments').update({ 
                 status: originalStatus
               }).eq('id', payment.id);
+              if (pErr) console.error("Error unfreezing payment:", pErr);
             }
           }
 
