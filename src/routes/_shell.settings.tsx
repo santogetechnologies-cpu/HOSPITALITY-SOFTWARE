@@ -31,8 +31,7 @@ const SECTIONS = ["Hotel Profile", "Rooms", "Timers & Overtime Policies", "Notif
 
 function SettingsPage() {
   const { rooms, addRoom, deleteRoom, session } = usePms();
-  const isSuperAdmin = session?.role === "SUPER_ADMIN" || !session;
-  const { settings, addFloor, removeFloor, addRoomType, removeRoomType, updatePolicySettings } = useSettings();
+  const { settings, addFloor, removeFloor, addRoomType, removeRoomType, updatePolicySettings, updateHotelProfile } = useSettings();
   
   const [active, setActive] = React.useState("Rooms");
   
@@ -40,6 +39,32 @@ function SettingsPage() {
   const [r, setR] = React.useState({ number: "", type: "", floor: "", price: 0 });
   const [newFloor, setNewFloor] = React.useState("");
   const [newType, setNewType] = React.useState({ name: "", price: "" });
+
+  // Hotel Profile Form State
+  const [profileForm, setProfileForm] = React.useState({
+    name: settings.hotelProfile?.name || "DRB Hotel",
+    legalEntity: settings.hotelProfile?.legalEntity || "DRB Hospitality Pvt Ltd",
+    gstin: settings.hotelProfile?.gstin || "000",
+    phone: settings.hotelProfile?.phone || "+91 80 4000 1200",
+    address: settings.hotelProfile?.address || "DRB Hotel, 5/116F1, 5, Market Rd, near Over bridge, Marthandam, Tamil Nadu 629165",
+  });
+
+  React.useEffect(() => {
+    if (settings.hotelProfile) {
+      setProfileForm({
+        name: settings.hotelProfile.name || "DRB Hotel",
+        legalEntity: settings.hotelProfile.legalEntity || "DRB Hospitality Pvt Ltd",
+        gstin: settings.hotelProfile.gstin || "000",
+        phone: settings.hotelProfile.phone || "+91 80 4000 1200",
+        address: settings.hotelProfile.address || "DRB Hotel, 5/116F1, 5, Market Rd, near Over bridge, Marthandam, Tamil Nadu 629165",
+      });
+    }
+  }, [settings.hotelProfile]);
+
+  const handleSaveHotelProfile = () => {
+    updateHotelProfile(profileForm);
+    toast.success("Hotel profile saved successfully");
+  };
 
   // Policy Form State
   const [policyForm, setPolicyForm] = React.useState({
@@ -140,12 +165,31 @@ function SettingsPage() {
         <Panel title={active} description={active === "Rooms" ? "Configure floors, room categories, and physical room keys" : "General property configuration"}>
           {active === "Hotel Profile" ? (
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2"><Label>Hotel name</Label><Input defaultValue="DRB Hotel" /></div>
-              <div className="space-y-2"><Label>Legal entity</Label><Input defaultValue="DRB Hospitality Pvt Ltd" /></div>
-              <div className="space-y-2"><Label>GSTIN</Label><Input defaultValue="29ABCDE1234F1Z5" /></div>
-              <div className="space-y-2"><Label>Contact</Label><Input defaultValue="+91 80 4000 1200" /></div>
-              <div className="space-y-2 sm:col-span-2"><Label>Address</Label><Input defaultValue="14 Residency Avenue, Bengaluru 560001" /></div>
-              <div className="sm:col-span-2"><Button className="rounded-xl bg-brass text-gold-foreground hover:opacity-90" onClick={() => toast.success("Hotel profile saved")}>Save changes</Button></div>
+              <div className="space-y-2">
+                <Label>Hotel name</Label>
+                <Input value={profileForm.name} onChange={e => setProfileForm(p => ({ ...p, name: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label>Legal entity</Label>
+                <Input value={profileForm.legalEntity} onChange={e => setProfileForm(p => ({ ...p, legalEntity: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label>GSTIN</Label>
+                <Input value={profileForm.gstin} onChange={e => setProfileForm(p => ({ ...p, gstin: e.target.value }))} placeholder="000" />
+              </div>
+              <div className="space-y-2">
+                <Label>Contact</Label>
+                <Input value={profileForm.phone} onChange={e => setProfileForm(p => ({ ...p, phone: e.target.value }))} />
+              </div>
+              <div className="space-y-2 sm:col-span-2">
+                <Label>Address</Label>
+                <Input value={profileForm.address} onChange={e => setProfileForm(p => ({ ...p, address: e.target.value }))} />
+              </div>
+              <div className="sm:col-span-2">
+                <Button className="rounded-xl bg-brass text-gold-foreground hover:opacity-90" onClick={handleSaveHotelProfile}>
+                  Save changes
+                </Button>
+              </div>
             </div>
           ) : active === "Rooms" ? (
             <div className="space-y-8">

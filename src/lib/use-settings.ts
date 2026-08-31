@@ -6,7 +6,16 @@ export type RoomTypeConfig = {
   basePrice: number;
 };
 
+export type HotelProfile = {
+  name: string;
+  legalEntity: string;
+  gstin: string;
+  phone: string;
+  address: string;
+};
+
 export type SettingsState = {
+  hotelProfile: HotelProfile;
   floors: string[];
   roomTypes: RoomTypeConfig[];
   partyHallHourlyRate: number;
@@ -17,6 +26,13 @@ export type SettingsState = {
 };
 
 const DEFAULT_SETTINGS: SettingsState = {
+  hotelProfile: {
+    name: "DRB Hotel",
+    legalEntity: "DRB Hospitality Pvt Ltd",
+    gstin: "000",
+    phone: "+91 80 4000 1200",
+    address: "DRB Hotel, 5/116F1, 5, Market Rd, near Over bridge, Marthandam, Tamil Nadu 629165",
+  },
   floors: ["Ground", "1", "2", "3", "4", "5"],
   roomTypes: [
     { id: "rt1", name: "Standard Room", basePrice: 2500 },
@@ -83,5 +99,17 @@ export function useSettings() {
     saveSettings({ ...settings, roomTypes: settings.roomTypes.filter(t => t.id !== id) });
   };
 
-  return { settings, saveSettings, updatePolicySettings, addFloor, removeFloor, addRoomType, removeRoomType };
+  const updateHotelProfile = (profile: Partial<HotelProfile>) => {
+    const updated = {
+      ...settings,
+      hotelProfile: {
+        ...(settings.hotelProfile || DEFAULT_SETTINGS.hotelProfile),
+        ...profile,
+      },
+    };
+    saveSettings(updated);
+    return updated;
+  };
+
+  return { settings, saveSettings, updatePolicySettings, updateHotelProfile, addFloor, removeFloor, addRoomType, removeRoomType };
 }

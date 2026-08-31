@@ -96,7 +96,7 @@ function Billing() {
 
       <Dialog open={invoice} onOpenChange={setInvoice}>
         <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>GST Invoice preview</DialogTitle><DialogDescription>DRB Hotel · GSTIN 29ABCDE1234F1Z5</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>GST Invoice preview</DialogTitle><DialogDescription>DRB Hotel · GSTIN 000</DialogDescription></DialogHeader>
           <div className="space-y-2 rounded-xl border border-border p-4 text-sm">
             <div className="flex justify-between"><span>Invoice #</span><span className="font-mono">DRB/2026/0842</span></div>
             <div className="flex justify-between"><span>Guest</span><span>Vikram Sethi</span></div>
