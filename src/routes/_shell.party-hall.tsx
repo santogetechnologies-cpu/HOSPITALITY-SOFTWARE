@@ -211,6 +211,11 @@ export function PartyHallPage() {
     setLoading(true);
     setErrorMsg("");
 
+    const base = parseFloat(form.baseAmount) || 0;
+    const gst = Number(((base * 5) / 100).toFixed(2));
+    const grandTotal = base + gst;
+    const adv = parseFloat(form.advance) || 0;
+
     const res = await addPartyHallBooking({
       customerName: form.customerName,
       phone: form.phone,
@@ -220,8 +225,8 @@ export function PartyHallPage() {
       date: form.date,
       startTime: form.startTime,
       endTime: form.endTime,
-      baseAmount: parseFloat(form.baseAmount) || 0,
-      advance: parseFloat(form.advance) || 0,
+      baseAmount: grandTotal,
+      advance: adv,
       paymentMethod: form.paymentMethod,
     });
 
