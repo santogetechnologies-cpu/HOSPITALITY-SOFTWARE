@@ -148,7 +148,7 @@ export function FrontDesk() {
     nights: 1,
     baseAmount: 0,
     totalAmount: 0,
-    paidAmount: 0,
+    paidAmount: "",
     paymentMethod: "CASH",
     notes: "",
   });
@@ -183,7 +183,6 @@ export function FrontDesk() {
       nights: calcNights,
       baseAmount,
       totalAmount,
-      paidAmount: totalAmount,
     });
   };
 
@@ -205,7 +204,6 @@ export function FrontDesk() {
       nights: calcNights,
       baseAmount,
       totalAmount,
-      paidAmount: totalAmount,
     });
   };
 
@@ -224,7 +222,6 @@ export function FrontDesk() {
       endDate: newEndStr,
       baseAmount,
       totalAmount,
-      paidAmount: totalAmount,
     });
   };
 
@@ -236,13 +233,23 @@ export function FrontDesk() {
     if (bookingLoading) return;
     if (!b.guestName.trim()) return toast.error("Please enter guest name");
     if (!b.roomId) return toast.error("Please select a room");
+    if (b.paidAmount === "" || b.paidAmount === null || b.paidAmount === undefined || String(b.paidAmount).trim() === "") {
+      return toast.error("Please enter the Amount Paid / Advance (enter 0 if unpaid)");
+    }
+    const paidNum = parseFloat(String(b.paidAmount));
+    if (isNaN(paidNum) || paidNum < 0) {
+      return toast.error("Please enter a valid Amount Paid / Advance (enter 0 if unpaid)");
+    }
     if (isRoomBookedForDates(b.roomId, b.startDate, b.endDate)) {
       return toast.error("This room is already reserved for the selected dates. Please select another room.");
     }
 
     setBookingLoading(true);
     try {
-      const res = await addRoomReservation(b);
+      const res = await addRoomReservation({
+        ...b,
+        paidAmount: paidNum,
+      });
       if (res?.success) {
         toast.success("Room booked successfully!");
         setBookingOpen(false);
@@ -261,7 +268,7 @@ export function FrontDesk() {
           nights: 1,
           baseAmount: 0,
           totalAmount: 0,
-          paidAmount: 0,
+          paidAmount: "",
           paymentMethod: "CASH",
           notes: "",
         });
@@ -939,7 +946,6 @@ export function FrontDesk() {
                           roomId: v,
                           baseAmount,
                           totalAmount,
-                          paidAmount: totalAmount,
                         });
                       }
                     }}
@@ -1102,7 +1108,7 @@ export function FrontDesk() {
                       const base = parseFloat(e.target.value) || 0;
                       const gst = Number(((base * 5) / 100).toFixed(2));
                       const grand = base + gst;
-                      setB({ ...b, baseAmount: base, totalAmount: grand, paidAmount: grand });
+                      setB({ ...b, baseAmount: base, totalAmount: grand });
                     }}
                   />
                 </div>
@@ -1126,22 +1132,49 @@ export function FrontDesk() {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-bold text-foreground">Amount Paid / Advance (₹)</Label>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-bold text-foreground">Amount Paid / Advance (₹) *</Label>
+                  </div>
                   <Input
                     type="number"
+                    placeholder="Enter amount (or 0)..."
+                    required
                     className="font-bold text-emerald-600"
                     value={b.paidAmount}
-                    onChange={(e) => setB({ ...b, paidAmount: parseFloat(e.target.value) || 0 })}
+                    onChange={(e) => setB({ ...b, paidAmount: e.target.value })}
                   />
+                  <div className="flex items-center gap-2 pt-0.5">
+                    <button
+                      type="button"
+                      className="text-[11px] font-semibold text-gold hover:underline"
+                      onClick={() => setB({ ...b, paidAmount: String(b.totalAmount) })}
+                    >
+                      + Full ({inr(b.totalAmount)})
+                    </button>
+                    <span className="text-muted-foreground text-[10px]">·</span>
+                    <button
+                      type="button"
+                      className="text-[11px] font-medium text-muted-foreground hover:underline"
+                      onClick={() => setB({ ...b, paidAmount: "0" })}
+                    >
+                      ₹0 (Unpaid)
+                    </button>
+                  </div>
                 </div>
               </div>
 
               <div className="flex items-center justify-between text-xs pt-1 px-1 text-muted-foreground border-t border-border/50">
                 <div>
                   Payment Status:{" "}
-                  <span className={b.paidAmount >= b.totalAmount && b.totalAmount > 0 ? "font-bold text-emerald-600" : "font-bold text-amber-600"}>
-                    {b.paidAmount >= b.totalAmount && b.totalAmount > 0 ? "PAID IN FULL (₹0 Balance)" : `ADVANCE PAID (Balance Due: ${inr(Math.max(0, b.totalAmount - b.paidAmount))})`}
-                  </span>
+                  {b.paidAmount === "" ? (
+                    <span className="text-muted-foreground italic">Type advance or 0 above to confirm</span>
+                  ) : Number(b.paidAmount) >= b.totalAmount && b.totalAmount > 0 ? (
+                    <span className="font-bold text-emerald-600">PAID IN FULL (₹0 Balance)</span>
+                  ) : Number(b.paidAmount) > 0 ? (
+                    <span className="font-bold text-amber-600">ADVANCE PAID (Balance Due: {inr(Math.max(0, b.totalAmount - Number(b.paidAmount)))})</span>
+                  ) : (
+                    <span className="font-bold text-destructive">UNPAID (Balance Due: {inr(b.totalAmount)})</span>
+                  )}
                 </div>
               </div>
 

@@ -160,16 +160,34 @@ function BillingPage() {
   const getReservationFinancials = (r: (typeof reservations)[0]) => {
     const p = getPayment(r.id);
     const approvedDiscount = getApprovedDiscount(r.id);
-    const baseAmt = Number(r.base_amount) || 0;
     const addlCharges = Number(r.additional_charges) || 0;
-    const rawTotal = baseAmt + addlCharges;
-    const taxableValue = Math.max(0, rawTotal - approvedDiscount);
+    
+    const payTotal = Number(p?.total_amount) || 0;
+    const resBase = Number(r.base_amount) || 0;
+
+    let grandTotal = 0;
+    let taxableValue = 0;
+
+    if (payTotal > 0) {
+      grandTotal = Math.max(0, payTotal + addlCharges - approvedDiscount);
+      taxableValue = Math.round(grandTotal / 1.05);
+    } else if (resBase > 0) {
+      const selRoom = getRoom(r.room_id);
+      const isRoomTotalInclusive = selRoom && (resBase === selRoom.total_bill || resBase > Number(selRoom.price));
+      
+      if (isRoomTotalInclusive || r.resource_type === "PARTY_HALL") {
+        grandTotal = Math.max(0, resBase + addlCharges - approvedDiscount);
+        taxableValue = Math.round(grandTotal / 1.05);
+      } else {
+        taxableValue = Math.max(0, resBase + addlCharges - approvedDiscount);
+        grandTotal = Math.round(taxableValue * 1.05);
+      }
+    }
 
     // 5% GST computation (2.5% CGST + 2.5% SGST)
-    const cgst = Number(((taxableValue * 2.5) / 100).toFixed(2));
-    const sgst = Number(((taxableValue * 2.5) / 100).toFixed(2));
-    const totalGst = cgst + sgst;
-    const grandTotal = taxableValue + totalGst;
+    const totalGst = Math.max(0, grandTotal - taxableValue);
+    const cgst = Number((totalGst / 2).toFixed(2));
+    const sgst = Number((totalGst - cgst).toFixed(2));
 
     const paid = Number(p?.paid_amount) || 0;
     const balance = Math.max(0, grandTotal - paid);
@@ -177,9 +195,9 @@ function BillingPage() {
     const isPartial = !isPaid && (p?.status === "PARTIAL" || paid > 0);
 
     return {
-      baseAmt,
+      baseAmt: taxableValue,
       addlCharges,
-      rawTotal,
+      rawTotal: grandTotal,
       approvedDiscount,
       taxableValue,
       cgst,

@@ -701,7 +701,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             start_time: new Date(`${b.startDate}T14:00:00`).toISOString(),
             end_time: new Date(`${b.endDate}T11:00:00`).toISOString(),
             status: 'CONFIRMED',
-            base_amount: totalAmt,
+            base_amount: Number(b.baseAmount) || Math.round(totalAmt / 1.05),
             notes: b.notes?.trim() || null
           });
           if (rErr) throw rErr;

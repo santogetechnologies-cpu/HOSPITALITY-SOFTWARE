@@ -85,7 +85,7 @@ export function PartyHallPage() {
     startTime: "10:00",
     endTime: "14:00",
     baseAmount: "12000",
-    advance: "2000",
+    advance: "",
     paymentMethod: "CASH" as "CASH" | "UPI" | "CARD" | "BANK_TRANSFER" | "OTHER",
   });
 
@@ -211,10 +211,21 @@ export function PartyHallPage() {
     setLoading(true);
     setErrorMsg("");
 
+    if (form.advance === "" || form.advance === null || form.advance === undefined || String(form.advance).trim() === "") {
+      setErrorMsg("Please enter the Advance / Amount Paid (enter 0 if unpaid)");
+      setLoading(false);
+      return;
+    }
+    const adv = parseFloat(form.advance);
+    if (isNaN(adv) || adv < 0) {
+      setErrorMsg("Please enter a valid Advance / Amount Paid (enter 0 if unpaid)");
+      setLoading(false);
+      return;
+    }
+
     const base = parseFloat(form.baseAmount) || 0;
     const gst = Number(((base * 5) / 100).toFixed(2));
     const grandTotal = base + gst;
-    const adv = parseFloat(form.advance) || 0;
 
     const res = await addPartyHallBooking({
       customerName: form.customerName,
@@ -245,7 +256,7 @@ export function PartyHallPage() {
         startTime: "10:00",
         endTime: "14:00",
         baseAmount: String(calculateHallPrice("10:00", "14:00", hourlyRate)),
-        advance: "500",
+        advance: "",
         paymentMethod: "CASH",
       });
     } else {
@@ -559,10 +570,7 @@ export function PartyHallPage() {
                     placeholder="Base price"
                     value={form.baseAmount}
                     onChange={(e) => {
-                      const base = parseFloat(e.target.value) || 0;
-                      const gst = Number(((base * 5) / 100).toFixed(2));
-                      const grand = base + gst;
-                      setForm({ ...form, baseAmount: e.target.value, advance: String(grand) });
+                      setForm({ ...form, baseAmount: e.target.value });
                     }}
                   />
                   <div className="text-[10px] text-muted-foreground">Custom package rate</div>
@@ -589,11 +597,32 @@ export function PartyHallPage() {
                   <Input
                     type="number"
                     required
+                    placeholder="Enter advance (or 0)..."
                     className="font-bold text-emerald-600"
                     value={form.advance}
                     onChange={(e) => setForm({ ...form, advance: e.target.value })}
                   />
-                  <div className="text-[10px] text-muted-foreground">Collected upfront</div>
+                  <div className="flex items-center gap-2 pt-0.5">
+                    <button
+                      type="button"
+                      className="text-[11px] font-semibold text-gold hover:underline"
+                      onClick={() => {
+                        const base = parseFloat(form.baseAmount) || 0;
+                        const gst = Number(((base * 5) / 100).toFixed(2));
+                        setForm({ ...form, advance: String(base + gst) });
+                      }}
+                    >
+                      + Full ({inr((parseFloat(form.baseAmount) || 0) + Number((((parseFloat(form.baseAmount) || 0) * 5) / 100).toFixed(2)))})
+                    </button>
+                    <span className="text-muted-foreground text-[10px]">·</span>
+                    <button
+                      type="button"
+                      className="text-[11px] font-medium text-muted-foreground hover:underline"
+                      onClick={() => setForm({ ...form, advance: "0" })}
+                    >
+                      ₹0 (Unpaid)
+                    </button>
+                  </div>
                 </div>
               </div>
 
