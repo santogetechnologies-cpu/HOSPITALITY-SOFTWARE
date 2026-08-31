@@ -162,8 +162,10 @@ function PaymentsDashboard() {
       const approvedDiscount = getApprovedDiscount(p.reservation_id);
 
       const rawBase = Number(res?.base_amount) || Number(p.total_amount) || 0;
-      const taxableBase = Math.max(0, Math.round((Number(p.total_amount) || rawBase) / 1.05));
-      const totalGst = Math.max(0, (Number(p.total_amount) || rawBase) - taxableBase);
+      const gstDivisor = isPartyHall ? 1.18 : 1.05;
+      const totalBill = Number(p.total_amount) || rawBase;
+      const taxableBase = Math.max(0, Math.round(totalBill / gstDivisor));
+      const totalGst = Math.max(0, totalBill - taxableBase);
       const cgst = Number((totalGst / 2).toFixed(2));
       const sgst = Number((totalGst - cgst).toFixed(2));
       const grandTotal = taxableBase + totalGst;
@@ -340,9 +342,9 @@ function PaymentsDashboard() {
       "Resource Type",
       "Resource Details",
       "Taxable Value (INR)",
-      "CGST 2.5% (INR)",
-      "SGST 2.5% (INR)",
-      "Total GST 5% (INR)",
+      "CGST (INR)",
+      "SGST (INR)",
+      "Total GST (INR)",
       "Gross Total (INR)",
       "Amount Paid (INR)",
       "Balance Due (INR)",
@@ -599,9 +601,9 @@ function PaymentsDashboard() {
                   <TableHead>Service / SAC Category</TableHead>
                   <TableHead className="text-center">SAC Code</TableHead>
                   <TableHead className="text-right">Taxable Turnover (₹)</TableHead>
-                  <TableHead className="text-right">CGST (2.5%)</TableHead>
-                  <TableHead className="text-right">SGST (2.5%)</TableHead>
-                  <TableHead className="text-right font-bold">Total GST (5%)</TableHead>
+                  <TableHead className="text-right">CGST</TableHead>
+                  <TableHead className="text-right">SGST</TableHead>
+                  <TableHead className="text-right font-bold">Total GST</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -609,27 +611,27 @@ function PaymentsDashboard() {
                   <TableCell className="font-semibold">
                     <div className="flex items-center gap-1.5">
                       <BedDouble className="size-4 text-gold" />
-                      <span>Room Stays & Lodging</span>
+                      <span>Room Stays & Lodging (5%)</span>
                     </div>
                   </TableCell>
                   <TableCell className="text-center font-mono text-xs text-muted-foreground">996311</TableCell>
                   <TableCell className="text-right font-mono">{inr(metrics.rooms.taxable)}</TableCell>
-                  <TableCell className="text-right font-mono text-xs">{inr(metrics.rooms.gst / 2)}</TableCell>
-                  <TableCell className="text-right font-mono text-xs">{inr(metrics.rooms.gst / 2)}</TableCell>
-                  <TableCell className="text-right font-mono font-bold text-gold">{inr(metrics.rooms.gst)}</TableCell>
+                  <TableCell className="text-right font-mono text-xs">{inr(metrics.rooms.gst / 2)} <span className="text-[10px] text-muted-foreground block">(2.5%)</span></TableCell>
+                  <TableCell className="text-right font-mono text-xs">{inr(metrics.rooms.gst / 2)} <span className="text-[10px] text-muted-foreground block">(2.5%)</span></TableCell>
+                  <TableCell className="text-right font-mono font-bold text-gold">{inr(metrics.rooms.gst)} <span className="text-[10px] text-muted-foreground font-normal block">(5.0%)</span></TableCell>
                 </TableRow>
                 <TableRow>
                   <TableCell className="font-semibold">
                     <div className="flex items-center gap-1.5">
                       <PartyPopper className="size-4 text-gold" />
-                      <span>Party Hall & Banquet Facility</span>
+                      <span>Party Hall & Banquets (18%)</span>
                     </div>
                   </TableCell>
                   <TableCell className="text-center font-mono text-xs text-muted-foreground">996312</TableCell>
                   <TableCell className="text-right font-mono">{inr(metrics.party.taxable)}</TableCell>
-                  <TableCell className="text-right font-mono text-xs">{inr(metrics.party.gst / 2)}</TableCell>
-                  <TableCell className="text-right font-mono text-xs">{inr(metrics.party.gst / 2)}</TableCell>
-                  <TableCell className="text-right font-mono font-bold text-gold">{inr(metrics.party.gst)}</TableCell>
+                  <TableCell className="text-right font-mono text-xs">{inr(metrics.party.gst / 2)} <span className="text-[10px] text-muted-foreground block">(9.0%)</span></TableCell>
+                  <TableCell className="text-right font-mono text-xs">{inr(metrics.party.gst / 2)} <span className="text-[10px] text-muted-foreground block">(9.0%)</span></TableCell>
+                  <TableCell className="text-right font-mono font-bold text-gold">{inr(metrics.party.gst)} <span className="text-[10px] text-muted-foreground font-normal block">(18.0%)</span></TableCell>
                 </TableRow>
                 <TableRow className="bg-secondary/20 font-bold border-t-2 border-border">
                   <TableCell colSpan={2} className="text-foreground">
@@ -653,7 +655,7 @@ function PaymentsDashboard() {
               </div>
               <div className="space-y-3 pt-3 text-xs">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Gross Output Tax (5%):</span>
+                  <span className="text-muted-foreground">Gross Output Tax:</span>
                   <span className="font-bold text-foreground">{inr(metrics.totalGst)}</span>
                 </div>
                 <div className="flex justify-between">

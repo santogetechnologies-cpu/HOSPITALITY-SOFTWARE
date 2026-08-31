@@ -166,27 +166,30 @@ function BillingPage() {
     
     const payTotal = Number(p?.total_amount) || 0;
     const resBase = Number(r.base_amount) || 0;
+    const isPartyHall = r.resource_type === "PARTY_HALL";
+    const gstRate = isPartyHall ? 0.18 : 0.05;
+    const gstDivisor = 1 + gstRate;
 
     let grandTotal = 0;
     let taxableValue = 0;
 
     if (payTotal > 0) {
       grandTotal = Math.max(0, payTotal + addlCharges - approvedDiscount);
-      taxableValue = Math.round(grandTotal / 1.05);
+      taxableValue = Math.round(grandTotal / gstDivisor);
     } else if (resBase > 0) {
       const selRoom = getRoom(r.room_id);
       const isRoomTotalInclusive = selRoom && (resBase === selRoom.total_bill || resBase > Number(selRoom.price));
       
-      if (isRoomTotalInclusive || r.resource_type === "PARTY_HALL") {
+      if (isRoomTotalInclusive || isPartyHall) {
         grandTotal = Math.max(0, resBase + addlCharges - approvedDiscount);
-        taxableValue = Math.round(grandTotal / 1.05);
+        taxableValue = Math.round(grandTotal / gstDivisor);
       } else {
         taxableValue = Math.max(0, resBase + addlCharges - approvedDiscount);
-        grandTotal = Math.round(taxableValue * 1.05);
+        grandTotal = Math.round(taxableValue * (1 + gstRate));
       }
     }
 
-    // 5% GST computation (2.5% CGST + 2.5% SGST)
+    // GST computation (18% for Party Hall = 9% CGST + 9% SGST; 5% for Rooms = 2.5% CGST + 2.5% SGST)
     const totalGst = Math.max(0, grandTotal - taxableValue);
     const cgst = Number((totalGst / 2).toFixed(2));
     const sgst = Number((totalGst - cgst).toFixed(2));
@@ -211,6 +214,10 @@ function BillingPage() {
       isPaid,
       isPartial,
       payment: p,
+      isPartyHall,
+      gstRatePercent: isPartyHall ? 18 : 5,
+      cgstRatePercent: isPartyHall ? 9 : 2.5,
+      sgstRatePercent: isPartyHall ? 9 : 2.5,
     };
   };
 
@@ -897,24 +904,24 @@ function BillingPage() {
                             <td className="py-1.5 px-3 font-bold">{guest?.name || "Guest"}</td>
                           </tr>
                           <tr>
-                            <td className="py-1.5 px-3 font-bold border-r border-neutral-900">Room No.</td>
-                            <td className="py-1.5 px-3 font-bold">{room?.room_number || "—"}</td>
+                            <td className="py-1.5 px-3 font-bold border-r border-neutral-900">{fin.isPartyHall ? "Resource" : "Room No."}</td>
+                            <td className="py-1.5 px-3 font-bold">{fin.isPartyHall ? "Party Hall / Banquet" : (room?.room_number || "—")}</td>
                           </tr>
                           <tr>
-                            <td className="py-1.5 px-3 font-bold border-r border-neutral-900">Room Type</td>
-                            <td className="py-1.5 px-3">{room?.room_name || "STD AC"}</td>
+                            <td className="py-1.5 px-3 font-bold border-r border-neutral-900">{fin.isPartyHall ? "Event Type" : "Room Type"}</td>
+                            <td className="py-1.5 px-3">{fin.isPartyHall ? (selectedResForBill.event_type || "Event Booking") : (room?.room_name || "STD AC")}</td>
                           </tr>
                           <tr>
-                            <td className="py-1.5 px-3 font-bold border-r border-neutral-900">Check-In</td>
+                            <td className="py-1.5 px-3 font-bold border-r border-neutral-900">{fin.isPartyHall ? "Event Start" : "Check-In"}</td>
                             <td className="py-1.5 px-3">{checkInFormatted}</td>
                           </tr>
                           <tr>
-                            <td className="py-1.5 px-3 font-bold border-r border-neutral-900">Check-Out</td>
+                            <td className="py-1.5 px-3 font-bold border-r border-neutral-900">{fin.isPartyHall ? "Event End" : "Check-Out"}</td>
                             <td className="py-1.5 px-3">{checkOutFormatted}</td>
                           </tr>
                           <tr>
-                            <td className="py-1.5 px-3 font-bold border-r border-neutral-900">No. of Nights</td>
-                            <td className="py-1.5 px-3">{nightsCount}</td>
+                            <td className="py-1.5 px-3 font-bold border-r border-neutral-900">{fin.isPartyHall ? "Duration / Type" : "No. of Nights"}</td>
+                            <td className="py-1.5 px-3">{fin.isPartyHall ? `Event (${selectedResForBill.number_of_guests || 1} Guests)` : `${nightsCount} Night(s)`}</td>
                           </tr>
                           <tr>
                             <td className="py-1.5 px-3 font-bold border-r border-neutral-900">Payment Mode</td>
@@ -934,7 +941,7 @@ function BillingPage() {
                           <tr className="bg-neutral-100 border-b border-neutral-900 font-bold text-neutral-900">
                             <th className="py-2 px-3 border-r border-neutral-900">Date</th>
                             <th className="py-2 px-3 border-r border-neutral-900">Particulars</th>
-                            <th className="py-2 px-3 border-r border-neutral-900 text-right">Room No.</th>
+                            <th className="py-2 px-3 border-r border-neutral-900 text-right">{fin.isPartyHall ? "Venue" : "Room No."}</th>
                             <th className="py-2 px-3 text-right">Amount</th>
                           </tr>
                         </thead>
@@ -942,8 +949,12 @@ function BillingPage() {
                           {dailyTariffRows.map((row, idx) => (
                             <tr key={idx}>
                               <td className="py-1.5 px-3 border-r border-neutral-900">{row.dateStr}</td>
-                              <td className="py-1.5 px-3 border-r border-neutral-900 font-medium">Room Tariff</td>
-                              <td className="py-1.5 px-3 border-r border-neutral-900 text-right">{room?.room_number || "—"}</td>
+                              <td className="py-1.5 px-3 border-r border-neutral-900 font-medium">
+                                {fin.isPartyHall ? `Party Hall Tariff (${selectedResForBill.event_type || "Event"})` : "Room Tariff"}
+                              </td>
+                              <td className="py-1.5 px-3 border-r border-neutral-900 text-right">
+                                {fin.isPartyHall ? "Party Hall" : (room?.room_number || "—")}
+                              </td>
                               <td className="py-1.5 px-3 text-right font-medium">{inr(row.amount)}</td>
                             </tr>
                           ))}
@@ -951,7 +962,7 @@ function BillingPage() {
                             <tr>
                               <td className="py-1.5 px-3 border-r border-neutral-900">{invoiceDateStr}</td>
                               <td className="py-1.5 px-3 border-r border-neutral-900 font-medium">Additional Services / Extra Charges</td>
-                              <td className="py-1.5 px-3 border-r border-neutral-900 text-right">{room?.room_number || "—"}</td>
+                              <td className="py-1.5 px-3 border-r border-neutral-900 text-right">{fin.isPartyHall ? "Party Hall" : (room?.room_number || "—")}</td>
                               <td className="py-1.5 px-3 text-right font-medium">{inr(fin.addlCharges)}</td>
                             </tr>
                           )}
@@ -981,26 +992,28 @@ function BillingPage() {
                         </thead>
                         <tbody className="divide-y divide-neutral-300">
                           <tr>
-                            <td className="py-1.5 px-3 border-r border-neutral-900">Room Accommodation</td>
+                            <td className="py-1.5 px-3 border-r border-neutral-900">
+                              {fin.isPartyHall ? "Party Hall / Banquet Facility" : "Room Accommodation"}
+                            </td>
                             <td className="py-1.5 px-3 border-r border-neutral-900 text-right">—</td>
                             <td className="py-1.5 px-3 border-r border-neutral-900 text-right">{inr(fin.taxableValue)}</td>
                             <td className="py-1.5 px-3 text-right">—</td>
                           </tr>
                           <tr>
                             <td className="py-1.5 px-3 border-r border-neutral-900 font-medium">CGST</td>
-                            <td className="py-1.5 px-3 border-r border-neutral-900 text-right">2.5%</td>
+                            <td className="py-1.5 px-3 border-r border-neutral-900 text-right">{fin.cgstRatePercent}%</td>
                             <td className="py-1.5 px-3 border-r border-neutral-900 text-right">{inr(fin.taxableValue)}</td>
                             <td className="py-1.5 px-3 text-right font-medium">{inr(fin.cgst)}</td>
                           </tr>
                           <tr>
                             <td className="py-1.5 px-3 border-r border-neutral-900 font-medium">SGST</td>
-                            <td className="py-1.5 px-3 border-r border-neutral-900 text-right">2.5%</td>
+                            <td className="py-1.5 px-3 border-r border-neutral-900 text-right">{fin.sgstRatePercent}%</td>
                             <td className="py-1.5 px-3 border-r border-neutral-900 text-right">{inr(fin.taxableValue)}</td>
                             <td className="py-1.5 px-3 text-right font-medium">{inr(fin.sgst)}</td>
                           </tr>
                           <tr className="bg-neutral-50 font-bold border-t-2 border-neutral-900">
                             <td className="py-2 px-3 border-r border-neutral-900">Total GST</td>
-                            <td className="py-2 px-3 border-r border-neutral-900 text-right">5.0%</td>
+                            <td className="py-2 px-3 border-r border-neutral-900 text-right">{fin.gstRatePercent}.0%</td>
                             <td className="py-2 px-3 border-r border-neutral-900 text-right"></td>
                             <td className="py-2 px-3 text-right text-neutral-900">{inr(fin.totalGst)}</td>
                           </tr>
@@ -1038,15 +1051,15 @@ function BillingPage() {
                             <td className="py-1.5 px-3 text-right font-medium">{inr(fin.taxableValue)}</td>
                           </tr>
                           <tr>
-                            <td className="py-1.5 px-3 border-r border-neutral-900">CGST @ 2.5%</td>
+                            <td className="py-1.5 px-3 border-r border-neutral-900">CGST @ {fin.cgstRatePercent}%</td>
                             <td className="py-1.5 px-3 text-right font-medium">{inr(fin.cgst)}</td>
                           </tr>
                           <tr>
-                            <td className="py-1.5 px-3 border-r border-neutral-900">SGST @ 2.5%</td>
+                            <td className="py-1.5 px-3 border-r border-neutral-900">SGST @ {fin.sgstRatePercent}%</td>
                             <td className="py-1.5 px-3 text-right font-medium">{inr(fin.sgst)}</td>
                           </tr>
                           <tr className="font-semibold">
-                            <td className="py-1.5 px-3 border-r border-neutral-900">Total GST</td>
+                            <td className="py-1.5 px-3 border-r border-neutral-900">Total GST ({fin.gstRatePercent}%)</td>
                             <td className="py-1.5 px-3 text-right">{inr(fin.totalGst)}</td>
                           </tr>
                           <tr className="bg-neutral-50 font-bold text-sm border-t-2 border-neutral-900">

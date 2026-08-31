@@ -20,7 +20,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { inr } from "@/lib/pms-data";
 import {
   calculateDurationHours,
-  calculateHallPrice,
   getPartyHallTimerStatus,
 } from "@/lib/timer-utils";
 import {
@@ -84,7 +83,7 @@ export function PartyHallPage() {
     date: new Date().toISOString().split("T")[0],
     startTime: "10:00",
     endTime: "14:00",
-    baseAmount: "12000",
+    baseAmount: "",
     advance: "",
     paymentMethod: "CASH" as "CASH" | "UPI" | "CARD" | "BANK_TRANSFER" | "OTHER",
   });
@@ -96,15 +95,6 @@ export function PartyHallPage() {
       startTime: start,
       endTime: end,
     }));
-  };
-
-  const handleApplyHourlyEstimate = () => {
-    const calculated = calculateHallPrice(form.startTime, form.endTime, hourlyRate);
-    setForm((prev) => ({
-      ...prev,
-      baseAmount: String(calculated),
-    }));
-    toast.info(`Package price set to estimated ${inr(calculated)}`);
   };
 
   // Extra Charges / Overtime Modal State
@@ -223,8 +213,13 @@ export function PartyHallPage() {
       return;
     }
 
-    const base = parseFloat(form.baseAmount) || 0;
-    const gst = Number(((base * 5) / 100).toFixed(2));
+    const base = parseFloat(form.baseAmount);
+    if (isNaN(base) || base <= 0) {
+      setErrorMsg("Please enter a valid Base Tariff amount (₹)");
+      setLoading(false);
+      return;
+    }
+    const gst = Number(((base * 18) / 100).toFixed(2));
     const grandTotal = base + gst;
 
     const res = await addPartyHallBooking({
@@ -255,7 +250,7 @@ export function PartyHallPage() {
         date: new Date().toISOString().split("T")[0],
         startTime: "10:00",
         endTime: "14:00",
-        baseAmount: String(calculateHallPrice("10:00", "14:00", hourlyRate)),
+        baseAmount: "",
         advance: "",
         paymentMethod: "CASH",
       });
@@ -449,7 +444,7 @@ export function PartyHallPage() {
             <DialogHeader>
               <DialogTitle>New Party Hall Booking</DialogTitle>
               <DialogDescription>
-                Auto-computed @ {inr(hourlyRate)}/hr. Enter schedule and customer details.
+                Enter event schedule, customer details, and base tariff. GST 18% (9% CGST + 9% SGST) applied automatically.
               </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleNewBooking} className="space-y-4 pt-2">
@@ -553,21 +548,11 @@ export function PartyHallPage() {
 
               <div className="grid grid-cols-4 gap-3 pt-4 border-t border-border">
                 <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-xs">Base Tariff (₹) *</Label>
-                    <button
-                      type="button"
-                      onClick={handleApplyHourlyEstimate}
-                      className="text-[10px] font-semibold text-gold hover:underline bg-gold/10 hover:bg-gold/20 px-1 py-0.5 rounded cursor-pointer transition-colors"
-                      title="Click to calculate from hourly rate"
-                    >
-                      {bookingDuration}h est: {inr(calculateHallPrice(form.startTime, form.endTime, hourlyRate))}
-                    </button>
-                  </div>
+                  <Label className="text-xs">Base Tariff (₹) *</Label>
                   <Input
                     type="number"
                     required
-                    placeholder="Base price"
+                    placeholder="Enter base tariff (₹)..."
                     value={form.baseAmount}
                     onChange={(e) => {
                       setForm({ ...form, baseAmount: e.target.value });
@@ -577,17 +562,17 @@ export function PartyHallPage() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs">GST 5% (₹)</Label>
+                  <Label className="text-xs">GST 18% (₹)</Label>
                   <div className="h-9 px-3 py-2 rounded-md border border-input bg-muted/50 text-xs font-mono font-medium flex items-center">
-                    +{inr(Number((((parseFloat(form.baseAmount) || 0) * 5) / 100).toFixed(2)))}
+                    +{inr(Number((((parseFloat(form.baseAmount) || 0) * 18) / 100).toFixed(2)))}
                   </div>
-                  <div className="text-[10px] text-muted-foreground">2.5% CGST + 2.5% SGST</div>
+                  <div className="text-[10px] text-muted-foreground">9% CGST + 9% SGST</div>
                 </div>
 
                 <div className="space-y-1.5">
                   <Label className="text-xs font-bold text-foreground">Grand Total (₹)</Label>
                   <div className="h-9 px-3 py-2 rounded-md border border-input bg-gold/10 text-xs font-mono font-bold text-gold flex items-center">
-                    {inr((parseFloat(form.baseAmount) || 0) + Number((((parseFloat(form.baseAmount) || 0) * 5) / 100).toFixed(2)))}
+                    {inr((parseFloat(form.baseAmount) || 0) + Number((((parseFloat(form.baseAmount) || 0) * 18) / 100).toFixed(2)))}
                   </div>
                   <div className="text-[10px] text-muted-foreground">Total Bill Payable</div>
                 </div>
@@ -605,19 +590,19 @@ export function PartyHallPage() {
                   <div className="flex items-center gap-2 pt-0.5">
                     <button
                       type="button"
-                      className="text-[11px] font-semibold text-gold hover:underline"
+                      className="text-[11px] font-semibold text-gold hover:underline cursor-pointer"
                       onClick={() => {
                         const base = parseFloat(form.baseAmount) || 0;
-                        const gst = Number(((base * 5) / 100).toFixed(2));
+                        const gst = Number(((base * 18) / 100).toFixed(2));
                         setForm({ ...form, advance: String(base + gst) });
                       }}
                     >
-                      + Full ({inr((parseFloat(form.baseAmount) || 0) + Number((((parseFloat(form.baseAmount) || 0) * 5) / 100).toFixed(2)))})
+                      + Full ({inr((parseFloat(form.baseAmount) || 0) + Number((((parseFloat(form.baseAmount) || 0) * 18) / 100).toFixed(2)))})
                     </button>
                     <span className="text-muted-foreground text-[10px]">·</span>
                     <button
                       type="button"
-                      className="text-[11px] font-medium text-muted-foreground hover:underline"
+                      className="text-[11px] font-medium text-muted-foreground hover:underline cursor-pointer"
                       onClick={() => setForm({ ...form, advance: "0" })}
                     >
                       ₹0 (Unpaid)
@@ -648,9 +633,18 @@ export function PartyHallPage() {
                 <div className="flex items-end pb-2">
                   <div className="text-xs text-muted-foreground">
                     Status:{" "}
-                    <span className={parseFloat(form.advance) >= (parseFloat(form.baseAmount) || 0) + Number((((parseFloat(form.baseAmount) || 0) * 5) / 100).toFixed(2)) ? "font-bold text-emerald-600" : "font-bold text-amber-600"}>
-                      {parseFloat(form.advance) >= (parseFloat(form.baseAmount) || 0) + Number((((parseFloat(form.baseAmount) || 0) * 5) / 100).toFixed(2)) ? "PAID IN FULL (₹0 Due)" : "PARTIAL / ADVANCE"}
-                    </span>
+                    {(() => {
+                      const base = parseFloat(form.baseAmount) || 0;
+                      const gst = Number(((base * 18) / 100).toFixed(2));
+                      const grand = base + gst;
+                      const adv = parseFloat(form.advance) || 0;
+                      const isFull = adv >= grand && grand > 0;
+                      return (
+                        <span className={isFull ? "font-bold text-emerald-600" : "font-bold text-amber-600"}>
+                          {isFull ? "PAID IN FULL (₹0 Due)" : "PARTIAL / ADVANCE"}
+                        </span>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
