@@ -190,8 +190,25 @@ export function FrontDesk() {
     }
   };
 
+  const [assignedRoomId, setAssignedRoomId] = React.useState<string>("");
+
+  React.useEffect(() => {
+    if (res) {
+      setAssignedRoomId(res.room_id || "");
+    } else {
+      setAssignedRoomId("");
+    }
+  }, [res]);
+
   const handleCompleteCheckIn = async () => {
-    if (!res || !res.room_id) return;
+    if (!res) return;
+    const isPartyHall = res.resource_type === "PARTY_HALL";
+    const targetRoomId = assignedRoomId || res.room_id;
+
+    if (!isPartyHall && !targetRoomId) {
+      return toast.error("Please assign an available room before completing check-in.");
+    }
+
     const { balance } = getReservationFinancials(res);
 
     // If there is an unpaid balance and staff entered an amount, settle it
@@ -200,10 +217,16 @@ export function FrontDesk() {
       await settlePayment(res.id, payAmt, checkinPayMethod);
     }
 
-    await checkIn(res.id, res.room_id);
-    toast.success(`${resGuest?.name || "Guest"} checked in to Room ${resRoom?.room_number}`);
+    await checkIn(res.id, targetRoomId);
+    const assignedRoom = rooms.find((r) => r.id === targetRoomId);
+    toast.success(
+      isPartyHall
+        ? `${resGuest?.name || "Guest"} checked in for Party Hall event`
+        : `${resGuest?.name || "Guest"} checked in to Room ${assignedRoom?.room_number || resRoom?.room_number || "assigned"}`
+    );
     setSelected(null);
     setCheckinPayAmount("");
+    setAssignedRoomId("");
   };
 
   return (
@@ -245,6 +268,7 @@ export function FrontDesk() {
               const gId = g?.id_number ? `${g.id_type || 'ID'}: ${g.id_number}` : null;
               const rmNum = getRoomNum(r.room_id);
               const rm = getRoom(r.room_id);
+              const isPartyHall = r.resource_type === 'PARTY_HALL';
               const { total, paid, balance, isPaid } = getReservationFinancials(r);
 
               const checkInDate = r.start_time ? new Date(r.start_time).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : r.booking_date;
@@ -272,8 +296,14 @@ export function FrontDesk() {
 
                     <dl className="mt-4 grid grid-cols-2 gap-2 text-xs">
                       <div className="rounded-lg bg-secondary/60 p-2">
-                        <dt className="text-muted-foreground">Room Key</dt>
-                        <dd className="font-semibold text-foreground">Room {rmNum} <span className="text-[10px] text-muted-foreground">({rm?.room_name || "Standard"})</span></dd>
+                        <dt className="text-muted-foreground">Resource / Key</dt>
+                        <dd className="font-semibold text-foreground">
+                          {isPartyHall ? (
+                            <span className="text-gold">Party Hall ({r.event_type || 'Event'})</span>
+                          ) : (
+                            <>Room {rmNum} <span className="text-[10px] text-muted-foreground">({rm?.room_name || "Standard"})</span></>
+                          )}
+                        </dd>
                       </div>
                       <div className="rounded-lg bg-secondary/60 p-2">
                         <dt className="text-muted-foreground">Stay Dates</dt>
@@ -296,6 +326,7 @@ export function FrontDesk() {
                     className="mt-4 w-full rounded-xl bg-brass text-gold-foreground hover:opacity-90"
                     onClick={() => {
                       setSelected(r.id);
+                      setAssignedRoomId(r.room_id || "");
                       setCheckinPayAmount(String(balance > 0 ? balance : 0));
                     }}
                   >
@@ -318,7 +349,7 @@ export function FrontDesk() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Guest & Contact</TableHead>
-                  <TableHead>Room</TableHead>
+                  <TableHead>Room / Resource</TableHead>
                   <TableHead>Stay Window</TableHead>
                   <TableHead>Total Bill</TableHead>
                   <TableHead>Paid</TableHead>
@@ -333,6 +364,7 @@ export function FrontDesk() {
                   const gPhone = g?.phone;
                   const gId = g?.id_number ? `${g.id_type || 'ID'}: ${g.id_number}` : null;
                   const rmNum = getRoomNum(r.room_id);
+                  const isPartyHall = r.resource_type === 'PARTY_HALL';
                   const { total, paid, balance } = getReservationFinancials(r);
 
                   const checkInDate = r.start_time ? new Date(r.start_time).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : r.booking_date;
@@ -344,7 +376,13 @@ export function FrontDesk() {
                         <div className="font-semibold">{gName}</div>
                         <div className="text-xs text-muted-foreground">{gPhone || "—"} {gId ? `· ${gId}` : ""}</div>
                       </TableCell>
-                      <TableCell className="font-semibold tabular-nums">Room {rmNum}</TableCell>
+                      <TableCell className="font-semibold tabular-nums">
+                        {isPartyHall ? (
+                          <span className="text-xs font-semibold text-gold">Party Hall ({r.event_type || 'Event'})</span>
+                        ) : (
+                          `Room ${rmNum}`
+                        )}
+                      </TableCell>
                       <TableCell className="text-xs">{checkInDate} → {checkOutDate}</TableCell>
                       <TableCell className="font-medium">{inr(total)}</TableCell>
                       <TableCell className="text-success font-medium">{inr(paid)}</TableCell>
@@ -361,7 +399,7 @@ export function FrontDesk() {
                               if (!confirm(`This guest has an outstanding balance of ${inr(balance)}. Proceed to check out and mark room for housekeeping?`)) return;
                             }
                             await checkOut(r.id);
-                            toast.success(`${gName} checked out · Room ${rmNum} moved to Housekeeping`);
+                            toast.success(`${gName} checked out · ${isPartyHall ? "Party Hall cleared" : `Room ${rmNum} moved to Housekeeping`}`);
                           }}
                         >
                           Check Out
@@ -386,11 +424,17 @@ export function FrontDesk() {
         <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Check In · {resGuest?.name}</DialogTitle>
-            <DialogDescription>Room {resRoom?.room_number} · Arrival Confirmation #{res?.id.slice(0, 8).toUpperCase()}</DialogDescription>
+            <DialogDescription>
+              {res?.resource_type === 'PARTY_HALL'
+                ? `Party Hall (${res.event_type || 'Event'})`
+                : `Room ${resRoom?.room_number || (rooms.find(r => r.id === assignedRoomId)?.room_number) || 'Assignment Required'}`
+              } · Arrival Confirmation #{res?.id.slice(0, 8).toUpperCase()}
+            </DialogDescription>
           </DialogHeader>
 
           {res && (() => {
             const { total, paid, balance } = getReservationFinancials(res);
+            const isPartyHall = res.resource_type === 'PARTY_HALL';
 
             return (
               <div className="space-y-4 pt-2">
@@ -408,9 +452,34 @@ export function FrontDesk() {
                   </div>
 
                   <div className="rounded-xl border border-border p-3">
-                    <div className="text-xs font-semibold uppercase text-gold">Room Assignment</div>
-                    <div className="mt-1 text-sm font-semibold">Room {resRoom?.room_number || "TBD"} ({resRoom?.room_name || "Standard"})</div>
-                    <div className="text-xs text-muted-foreground">Floor {resRoom?.floor || "1"} · Capacity: {resRoom?.capacity || 2} Guests</div>
+                    <div className="text-xs font-semibold uppercase text-gold">Resource / Key Assignment</div>
+                    {isPartyHall ? (
+                      <div className="mt-1 text-sm font-semibold text-gold">Party Hall ({res.event_type || 'Event'})</div>
+                    ) : (
+                      <div className="mt-1 space-y-1">
+                        <Label className="text-xs font-medium">Select Room Key *</Label>
+                        <Select value={assignedRoomId} onValueChange={setAssignedRoomId}>
+                          <SelectTrigger className="h-9">
+                            <SelectValue placeholder="Choose a room..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {rooms.map((r) => {
+                              const isOccupied = r.status === "OCCUPIED" && r.id !== res.room_id;
+                              return (
+                                <SelectItem
+                                  key={r.id}
+                                  value={r.id}
+                                  disabled={isOccupied}
+                                  className={isOccupied ? "opacity-50 line-through" : ""}
+                                >
+                                  Room {r.room_number} · {r.room_name || "Standard"} ({inr(r.price)}/night) {isOccupied ? "— [Occupied]" : `— [${r.status}]`}
+                                </SelectItem>
+                              );
+                            })}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
                   </div>
                 </div>
 

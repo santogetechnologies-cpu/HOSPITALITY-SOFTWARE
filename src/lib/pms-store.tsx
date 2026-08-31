@@ -399,11 +399,13 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
       },
       
       checkIn: async (reservationId, roomId) => {
-        await supabase.from('reservations').update({ status: 'OCCUPIED' }).eq('id', reservationId);
+        const updateData: any = { status: 'OCCUPIED' };
+        if (roomId) updateData.room_id = roomId;
+        await supabase.from('reservations').update(updateData).eq('id', reservationId);
         if (roomId) {
           await supabase.from('rooms').update({ status: 'OCCUPIED' }).eq('id', roomId);
         }
-        fetchData();
+        await fetchData();
       },
       
       checkOut: async (reservationId) => {
