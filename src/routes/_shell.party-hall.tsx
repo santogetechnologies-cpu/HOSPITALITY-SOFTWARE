@@ -6,9 +6,32 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Calendar, Clock, Users, PlusCircle, AlertCircle } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Checkbox } from "@/components/ui/checkbox";
+import { inr } from "@/lib/pms-data";
+import {
+  Calendar,
+  Clock,
+  Users,
+  PlusCircle,
+  AlertCircle,
+  MoreHorizontal,
+  Plus,
+  CreditCard,
+  Edit,
+  CheckCircle2,
+  Hourglass,
+  Receipt,
+  Sparkles,
+} from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
@@ -16,13 +39,24 @@ export const Route = createFileRoute("/_shell/party-hall")({
   component: PartyHallPage,
 });
 
-function PartyHallPage() {
-  const { reservations, guests, addPartyHallBooking } = usePms();
+export function PartyHallPage() {
+  const {
+    reservations,
+    guests,
+    payments,
+    discounts,
+    addPartyHallBooking,
+    updatePartyHallBooking,
+    addReservationExtraCharge,
+    settlePayment,
+    checkOut,
+  } = usePms();
+
   const [open, setOpen] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [errorMsg, setErrorMsg] = React.useState("");
 
-  // Form State
+  // New Booking Form State
   const [form, setForm] = React.useState({
     customerName: "",
     phone: "",
@@ -34,19 +68,81 @@ function PartyHallPage() {
     endTime: "14:00",
     baseAmount: "15000",
     advance: "5000",
-    paymentMethod: "CASH",
+    paymentMethod: "CASH" as "CASH" | "UPI" | "CARD" | "BANK_TRANSFER" | "OTHER",
+  });
+
+  // Extra Charges / Overtime Modal State
+  const [extraChargeModalOpen, setExtraChargeModalOpen] = React.useState(false);
+  const [selectedResForCharge, setSelectedResForCharge] = React.useState<any>(null);
+  const [extraChargeForm, setExtraChargeForm] = React.useState({
+    reason: "Extra Hours / Overtime",
+    amount: "2000",
+    extendEndTime: false,
+    newEndTime: "16:00",
+    collectNow: true,
+    collectAmount: "2000",
+    paymentMethod: "CASH" as "CASH" | "UPI" | "CARD" | "BANK_TRANSFER" | "OTHER",
+  });
+
+  // Collect Balance Modal State
+  const [collectModalOpen, setCollectModalOpen] = React.useState(false);
+  const [selectedResForCollect, setSelectedResForCollect] = React.useState<any>(null);
+  const [collectForm, setCollectForm] = React.useState({
+    amount: "",
+    paymentMethod: "CASH" as "CASH" | "UPI" | "CARD" | "BANK_TRANSFER" | "OTHER",
+  });
+
+  // Edit Booking Modal State
+  const [editModalOpen, setEditModalOpen] = React.useState(false);
+  const [selectedResForEdit, setSelectedResForEdit] = React.useState<any>(null);
+  const [editForm, setEditForm] = React.useState({
+    customerName: "",
+    phone: "",
+    email: "",
+    eventType: "Birthday",
+    guests: "50",
+    date: "",
+    startTime: "10:00",
+    endTime: "14:00",
+    baseAmount: "15000",
+    status: "CONFIRMED",
   });
 
   const hallBookings = reservations
     .filter((r: any) => r.resource_type === "PARTY_HALL")
     .sort((a: any, b: any) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
 
-  const getGuestName = (guestId: string) => {
-    const g = guests.find((x: any) => x.id === guestId);
-    return g ? g.name : "Unknown";
+  const getGuest = (guestId: string) => guests.find((x: any) => x.id === guestId);
+  const getGuestName = (guestId: string) => getGuest(guestId)?.name || "Guest";
+  const getGuestPhone = (guestId: string) => getGuest(guestId)?.phone || "";
+
+  const getReservationPayment = (resId: string) =>
+    payments.find(
+      (p) => p.reservation_id === resId || p.reservation_id?.toLowerCase() === resId.toLowerCase()
+    );
+
+  const getReservationFinancials = (r: (typeof reservations)[0]) => {
+    const p = getReservationPayment(r.id);
+    const approvedDiscount = discounts
+      .filter(
+        (d) =>
+          (d.reservation_id === r.id || d.reservation_id?.toLowerCase() === r.id.toLowerCase()) &&
+          d.status === "APPROVED"
+      )
+      .reduce((sum, d) => sum + (Number(d.requested_amount) || 0), 0);
+
+    const originalAmount = Number(r.base_amount) || Number(p?.total_amount) || 0;
+    let total = Number(p?.total_amount) || originalAmount;
+    if (approvedDiscount > 0 && total >= originalAmount && originalAmount > approvedDiscount) {
+      total = Math.max(0, originalAmount - approvedDiscount);
+    }
+    const paid = Number(p?.paid_amount) || 0;
+    const balance = total - paid > 0 ? total - paid : 0;
+    const isPaid = balance === 0 && total > 0;
+    return { total, paid, balance, isPaid, payment: p, approvedDiscount };
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleNewBooking = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setErrorMsg("");
@@ -88,39 +184,185 @@ function PartyHallPage() {
     }
   };
 
+  const handleOpenExtraCharge = (r: any) => {
+    setSelectedResForCharge(r);
+    const endTimeStr = r.end_time ? new Date(r.end_time).toTimeString().slice(0, 5) : "16:00";
+    setExtraChargeForm({
+      reason: "Extra Hours / Overtime",
+      amount: "2000",
+      extendEndTime: true,
+      newEndTime: endTimeStr,
+      collectNow: true,
+      collectAmount: "2000",
+      paymentMethod: "CASH",
+    });
+    setExtraChargeModalOpen(true);
+  };
+
+  const handleSaveExtraCharge = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedResForCharge) return;
+
+    const amt = parseFloat(extraChargeForm.amount);
+    if (isNaN(amt) || amt <= 0) {
+      return toast.error("Please enter a valid extra amount");
+    }
+
+    const collectAmt = extraChargeForm.collectNow ? parseFloat(extraChargeForm.collectAmount) || 0 : 0;
+    let newEndTs: string | undefined = undefined;
+    if (extraChargeForm.extendEndTime && extraChargeForm.newEndTime) {
+      newEndTs = new Date(`${selectedResForCharge.booking_date}T${extraChargeForm.newEndTime}`).toISOString();
+    }
+
+    setLoading(true);
+    const res = await addReservationExtraCharge(selectedResForCharge.id, amt, extraChargeForm.reason, {
+      newEndTime: newEndTs,
+      collectedAmount: collectAmt,
+      paymentMethod: extraChargeForm.paymentMethod,
+    });
+    setLoading(false);
+
+    if (res.success) {
+      toast.success(
+        `Added ${inr(amt)} extra charges for ${extraChargeForm.reason}${
+          collectAmt > 0 ? ` (${inr(collectAmt)} collected via ${extraChargeForm.paymentMethod})` : ""
+        }`
+      );
+      setExtraChargeModalOpen(false);
+      setSelectedResForCharge(null);
+    } else {
+      toast.error(res.error || "Failed to add extra charge");
+    }
+  };
+
+  const handleOpenCollectBalance = (r: any) => {
+    const fin = getReservationFinancials(r);
+    setSelectedResForCollect(r);
+    setCollectForm({
+      amount: String(fin.balance > 0 ? fin.balance : 0),
+      paymentMethod: "CASH",
+    });
+    setCollectModalOpen(true);
+  };
+
+  const handleSaveCollectBalance = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedResForCollect) return;
+
+    const amt = parseFloat(collectForm.amount);
+    if (isNaN(amt) || amt <= 0) {
+      return toast.error("Please enter a valid collection amount");
+    }
+
+    setLoading(true);
+    const res = await settlePayment(selectedResForCollect.id, amt, collectForm.paymentMethod);
+    setLoading(false);
+
+    if (res.success) {
+      toast.success(`Collected ${inr(amt)} via ${collectForm.paymentMethod}`);
+      setCollectModalOpen(false);
+      setSelectedResForCollect(null);
+    } else {
+      toast.error(res.error || "Failed to collect payment");
+    }
+  };
+
+  const handleOpenEdit = (r: any) => {
+    const g = getGuest(r.guest_id);
+    const startDate = r.booking_date || (r.start_time ? r.start_time.split("T")[0] : "");
+    const sTime = r.start_time ? new Date(r.start_time).toTimeString().slice(0, 5) : "10:00";
+    const eTime = r.end_time ? new Date(r.end_time).toTimeString().slice(0, 5) : "14:00";
+
+    setSelectedResForEdit(r);
+    setEditForm({
+      customerName: g?.name || "",
+      phone: g?.phone || "",
+      email: g?.email || "",
+      eventType: r.event_type || "Birthday",
+      guests: String(r.number_of_guests || 50),
+      date: startDate,
+      startTime: sTime,
+      endTime: eTime,
+      baseAmount: String(r.base_amount || 0),
+      status: r.status || "CONFIRMED",
+    });
+    setEditModalOpen(true);
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedResForEdit) return;
+
+    setLoading(true);
+    const res = await updatePartyHallBooking(selectedResForEdit.id, {
+      customerName: editForm.customerName,
+      phone: editForm.phone,
+      email: editForm.email,
+      eventType: editForm.eventType,
+      guests: parseInt(editForm.guests) || 1,
+      date: editForm.date,
+      startTime: editForm.startTime,
+      endTime: editForm.endTime,
+      baseAmount: parseFloat(editForm.baseAmount) || 0,
+      status: editForm.status,
+    });
+    setLoading(false);
+
+    if (res.success) {
+      toast.success("Party Hall booking updated successfully!");
+      setEditModalOpen(false);
+      setSelectedResForEdit(null);
+    } else {
+      toast.error(res.error || "Failed to update booking");
+    }
+  };
+
   return (
-    <div className="mx-auto max-w-5xl space-y-6 pb-12">
+    <div className="mx-auto max-w-6xl space-y-6 pb-12">
       <div className="flex items-center justify-between">
-        <PageHeader title="Party Hall Bookings" subtitle="Manage events, banquets, and hall availability." />
-        
+        <PageHeader
+          eyebrow="Events & Banquets"
+          title="Party Hall Bookings"
+          subtitle="Manage event schedules, overtime charges, and instant collections."
+        />
+
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button className="bg-primary text-white"><PlusCircle className="mr-2 h-4 w-4" /> New Booking</Button>
+            <Button className="rounded-xl bg-brass text-gold-foreground shadow-brass hover:opacity-90">
+              <PlusCircle className="mr-2 h-4 w-4" /> New Booking
+            </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>New Party Hall Booking</DialogTitle>
+              <DialogDescription>Schedule and reserve the banquet hall with advance payment.</DialogDescription>
             </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4 pt-4">
+            <form onSubmit={handleNewBooking} className="space-y-4 pt-2">
               {errorMsg && (
-                <div className="rounded-md bg-red-50 p-3 text-sm text-red-600 flex items-center">
+                <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive flex items-center">
                   <AlertCircle className="h-4 w-4 mr-2" /> {errorMsg}
                 </div>
               )}
-              
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Customer Name</Label>
-                  <Input required value={form.customerName} onChange={e => setForm({...form, customerName: e.target.value})} />
+                  <Input
+                    required
+                    value={form.customerName}
+                    onChange={(e) => setForm({ ...form, customerName: e.target.value })}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Phone Number</Label>
-                  <Input 
-                    required 
-                    value={form.phone} 
+                  <Input
+                    required
+                    value={form.phone}
                     onChange={(e) => {
                       const ph = e.target.value;
-                      const matched = ph.trim() ? guests.find((g) => g.phone && g.phone.trim().toLowerCase() === ph.trim().toLowerCase()) : null;
+                      const matched = ph.trim()
+                        ? guests.find((g) => g.phone && g.phone.trim().toLowerCase() === ph.trim().toLowerCase())
+                        : null;
                       if (matched) {
                         setForm((prev) => ({
                           ...prev,
@@ -131,7 +373,7 @@ function PartyHallPage() {
                       } else {
                         setForm((prev) => ({ ...prev, phone: ph }));
                       }
-                    }} 
+                    }}
                   />
                 </div>
               </div>
@@ -139,51 +381,89 @@ function PartyHallPage() {
               <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label>Event Date</Label>
-                  <Input type="date" required value={form.date} onChange={e => setForm({...form, date: e.target.value})} />
+                  <Input
+                    type="date"
+                    required
+                    value={form.date}
+                    onChange={(e) => setForm({ ...form, date: e.target.value })}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Start Time</Label>
-                  <Input type="time" required value={form.startTime} onChange={e => setForm({...form, startTime: e.target.value})} />
+                  <Input
+                    type="time"
+                    required
+                    value={form.startTime}
+                    onChange={(e) => setForm({ ...form, startTime: e.target.value })}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>End Time</Label>
-                  <Input type="time" required value={form.endTime} onChange={e => setForm({...form, endTime: e.target.value})} />
+                  <Input
+                    type="time"
+                    required
+                    value={form.endTime}
+                    onChange={(e) => setForm({ ...form, endTime: e.target.value })}
+                  />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Event Type</Label>
-                  <Select value={form.eventType} onValueChange={v => setForm({...form, eventType: v})}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                  <Select value={form.eventType} onValueChange={(v) => setForm({ ...form, eventType: v })}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="Birthday">Birthday</SelectItem>
                       <SelectItem value="Wedding">Wedding</SelectItem>
+                      <SelectItem value="Reception">Reception</SelectItem>
                       <SelectItem value="Corporate">Corporate Event</SelectItem>
-                      <SelectItem value="Meeting">Meeting</SelectItem>
-                      <SelectItem value="Other">Other</SelectItem>
+                      <SelectItem value="Meeting">Conference / Meeting</SelectItem>
+                      <SelectItem value="Other">Other Celebration</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
                   <Label>Expected Guests</Label>
-                  <Input type="number" required value={form.guests} onChange={e => setForm({...form, guests: e.target.value})} />
+                  <Input
+                    type="number"
+                    required
+                    value={form.guests}
+                    onChange={(e) => setForm({ ...form, guests: e.target.value })}
+                  />
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-4 pt-4 border-t border-slate-100">
+              <div className="grid grid-cols-3 gap-4 pt-4 border-t border-border">
                 <div className="space-y-2">
-                  <Label>Total Amount (₹)</Label>
-                  <Input type="number" required value={form.baseAmount} onChange={e => setForm({...form, baseAmount: e.target.value})} />
+                  <Label>Total Package Amount (₹)</Label>
+                  <Input
+                    type="number"
+                    required
+                    value={form.baseAmount}
+                    onChange={(e) => setForm({ ...form, baseAmount: e.target.value })}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Advance Received (₹)</Label>
-                  <Input type="number" required value={form.advance} onChange={e => setForm({...form, advance: e.target.value})} />
+                  <Input
+                    type="number"
+                    required
+                    value={form.advance}
+                    onChange={(e) => setForm({ ...form, advance: e.target.value })}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Payment Mode</Label>
-                  <Select value={form.paymentMethod} onValueChange={(v) => setForm({ ...form, paymentMethod: v })}>
-                    <SelectTrigger><SelectValue placeholder="Payment Mode" /></SelectTrigger>
+                  <Select
+                    value={form.paymentMethod}
+                    onValueChange={(v: any) => setForm({ ...form, paymentMethod: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Payment Mode" />
+                    </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="CASH">Cash</SelectItem>
                       <SelectItem value="UPI">UPI / QR (GPay, PhonePe, Paytm)</SelectItem>
@@ -195,54 +475,540 @@ function PartyHallPage() {
                 </div>
               </div>
 
-              <div className="pt-4 flex justify-end">
-                <Button type="submit" disabled={loading}>{loading ? "Booking..." : "Confirm Booking"}</Button>
+              <div className="pt-4 flex justify-end gap-2 border-t border-border">
+                <Button variant="ghost" type="button" onClick={() => setOpen(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={loading}
+                  className="bg-brass text-gold-foreground hover:opacity-90"
+                >
+                  {loading ? "Booking..." : "Confirm Booking"}
+                </Button>
               </div>
             </form>
           </DialogContent>
         </Dialog>
       </div>
 
-      <Panel className="p-0 overflow-hidden">
+      <Panel className="p-0 overflow-hidden" bodyClassName="p-0">
         <Table>
-          <TableHeader className="bg-slate-50/50">
+          <TableHeader>
             <TableRow>
-              <TableHead>Event</TableHead>
-              <TableHead>Customer</TableHead>
-              <TableHead>Date & Time</TableHead>
+              <TableHead>Event & Customer</TableHead>
+              <TableHead>Date & Schedule</TableHead>
               <TableHead>Guests</TableHead>
+              <TableHead>Financial Summary</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {hallBookings.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center text-slate-500 py-12">No hall bookings found.</TableCell>
+                <TableCell colSpan={6} className="text-center text-muted-foreground py-12">
+                  No party hall bookings found. Click "New Booking" to schedule an event.
+                </TableCell>
               </TableRow>
             ) : (
-              hallBookings.map((b: any) => (
-                <TableRow key={b.id}>
-                  <TableCell>
-                    <div className="font-medium">{b.event_type || "Event"}</div>
-                    <div className="text-xs text-slate-500">₹{b.base_amount}</div>
-                  </TableCell>
-                  <TableCell>{getGuestName(b.guest_id)}</TableCell>
-                  <TableCell>
-                    <div className="flex items-center text-sm"><Calendar className="mr-1.5 h-3 w-3 text-slate-400" /> {b.booking_date}</div>
-                    <div className="flex items-center text-xs text-slate-500 mt-0.5"><Clock className="mr-1.5 h-3 w-3" /> {format(new Date(b.start_time), "p")} - {format(new Date(b.end_time), "p")}</div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center text-sm"><Users className="mr-1.5 h-3 w-3 text-slate-400" /> {b.number_of_guests}</div>
-                  </TableCell>
-                  <TableCell>
-                    <Pill variant={b.status === 'CONFIRMED' ? 'blue' : b.status === 'COMPLETED' ? 'green' : 'slate'}>{b.status}</Pill>
-                  </TableCell>
-                </TableRow>
-              ))
+              hallBookings.map((b: any) => {
+                const gName = getGuestName(b.guest_id);
+                const gPhone = getGuestPhone(b.guest_id);
+                const { total, paid, balance, isPaid, payment } = getReservationFinancials(b);
+
+                return (
+                  <TableRow key={b.id} className="hover:bg-accent/40">
+                    <TableCell>
+                      <div className="font-semibold">{b.event_type || "Event"}</div>
+                      <div className="text-xs text-muted-foreground">{gName} {gPhone ? `· ${gPhone}` : ""}</div>
+                    </TableCell>
+
+                    <TableCell>
+                      <div className="flex items-center text-xs font-medium">
+                        <Calendar className="mr-1.5 h-3.5 w-3.5 text-gold" /> {b.booking_date}
+                      </div>
+                      <div className="flex items-center text-xs text-muted-foreground mt-0.5">
+                        <Clock className="mr-1.5 h-3 w-3" />
+                        {b.start_time ? format(new Date(b.start_time), "p") : "—"} -{" "}
+                        {b.end_time ? format(new Date(b.end_time), "p") : "—"}
+                      </div>
+                    </TableCell>
+
+                    <TableCell>
+                      <div className="flex items-center text-xs font-medium">
+                        <Users className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />
+                        {b.number_of_guests} Guests
+                      </div>
+                    </TableCell>
+
+                    <TableCell>
+                      <div className="text-xs font-medium">
+                        Total: <span className="font-semibold">{inr(total)}</span>
+                      </div>
+                      <div className="text-[11px] text-success">Paid: {inr(paid)} {payment?.payment_method ? `(${payment.payment_method})` : ""}</div>
+                      <div className={balance > 0 ? "text-[11px] font-bold text-warning" : "text-[11px] text-muted-foreground"}>
+                        {balance > 0 ? `Due: ${inr(balance)}` : "Settled (₹0.00)"}
+                      </div>
+                    </TableCell>
+
+                    <TableCell>
+                      {b.status === "COMPLETED" ? (
+                        <Pill tone="success">Completed</Pill>
+                      ) : b.status === "OCCUPIED" ? (
+                        <Pill tone="info">In-Progress</Pill>
+                      ) : isPaid ? (
+                        <Pill tone="success">Paid / Confirmed</Pill>
+                      ) : (
+                        <Pill tone="warning">Due Pending</Pill>
+                      )}
+                    </TableCell>
+
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 rounded-lg text-xs bg-secondary/40 hover:bg-gold/10 hover:text-gold hover:border-gold/50"
+                          onClick={() => handleOpenExtraCharge(b)}
+                        >
+                          <Plus className="mr-1 h-3 w-3 text-gold" /> Add Charges / Time
+                        </Button>
+
+                        {balance > 0 && (
+                          <Button
+                            size="sm"
+                            className="h-8 rounded-lg text-xs bg-brass text-gold-foreground hover:opacity-90"
+                            onClick={() => handleOpenCollectBalance(b)}
+                          >
+                            <CreditCard className="mr-1 h-3 w-3" /> Collect {inr(balance)}
+                          </Button>
+                        )}
+
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-48">
+                            <DropdownMenuItem onClick={() => handleOpenEdit(b)}>
+                              <Edit className="mr-2 h-4 w-4" /> Edit Booking Details
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleOpenExtraCharge(b)}>
+                              <Sparkles className="mr-2 h-4 w-4 text-gold" /> Add Overtime / Service
+                            </DropdownMenuItem>
+                            {balance > 0 && (
+                              <DropdownMenuItem onClick={() => handleOpenCollectBalance(b)}>
+                                <Receipt className="mr-2 h-4 w-4 text-success" /> Collect Outstanding Balance
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuSeparator />
+                            {b.status !== "COMPLETED" && (
+                              <DropdownMenuItem
+                                onClick={async () => {
+                                  if (balance > 0) {
+                                    if (
+                                      !confirm(
+                                        `This booking has an outstanding balance of ${inr(
+                                          balance
+                                        )}. Proceed to mark as Completed?`
+                                      )
+                                    )
+                                      return;
+                                  }
+                                  await checkOut(b.id);
+                                  toast.success(`Event completed and Party Hall cleared!`);
+                                }}
+                              >
+                                <CheckCircle2 className="mr-2 h-4 w-4 text-success" /> Complete & Release Hall
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>
       </Panel>
+
+      {/* Extra Charges / Overtime Modal */}
+      <Dialog open={extraChargeModalOpen} onOpenChange={setExtraChargeModalOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Add Extra Charges / Extend Time</DialogTitle>
+            <DialogDescription>
+              Add overtime, catering add-ons, or additional charges to this party hall booking.
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedResForCharge && (
+            <form onSubmit={handleSaveExtraCharge} className="space-y-4 pt-2">
+              <div className="rounded-xl border border-border bg-secondary/30 p-3 text-xs space-y-1">
+                <div className="font-semibold text-sm">
+                  {selectedResForCharge.event_type} · {getGuestName(selectedResForCharge.guest_id)}
+                </div>
+                <div className="text-muted-foreground">
+                  Current Base Rate: {inr(selectedResForCharge.base_amount || 0)} · Date: {selectedResForCharge.booking_date}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Reason / Charge Category</Label>
+                  <Select
+                    value={extraChargeForm.reason}
+                    onValueChange={(v) => setExtraChargeForm({ ...extraChargeForm, reason: v })}
+                  >
+                    <SelectTrigger className="h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Extra Hours / Overtime">Extra Hours / Overtime</SelectItem>
+                      <SelectItem value="Additional Catering / Guests">Additional Catering / Guests</SelectItem>
+                      <SelectItem value="DJ & Sound System Extension">DJ & Sound System Extension</SelectItem>
+                      <SelectItem value="Special Decoration Addon">Special Decoration Addon</SelectItem>
+                      <SelectItem value="Cleaning & Damage Fee">Cleaning & Damage Fee</SelectItem>
+                      <SelectItem value="Other Addon Service">Other Addon Service</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Extra Amount (₹) *</Label>
+                  <Input
+                    type="number"
+                    required
+                    className="h-9"
+                    value={extraChargeForm.amount}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setExtraChargeForm({
+                        ...extraChargeForm,
+                        amount: v,
+                        collectAmount: extraChargeForm.collectNow ? v : extraChargeForm.collectAmount,
+                      });
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Time Extension Option */}
+              <div className="rounded-xl border border-border p-3 space-y-3">
+                <label className="flex items-center gap-2 text-xs font-medium cursor-pointer">
+                  <Checkbox
+                    checked={extraChargeForm.extendEndTime}
+                    onCheckedChange={(c) =>
+                      setExtraChargeForm({ ...extraChargeForm, extendEndTime: !!c })
+                    }
+                  />
+                  Extend Event End Time on Schedule
+                </label>
+
+                {extraChargeForm.extendEndTime && (
+                  <div className="pt-1 grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">New End Time</Label>
+                      <Input
+                        type="time"
+                        className="h-9"
+                        value={extraChargeForm.newEndTime}
+                        onChange={(e) =>
+                          setExtraChargeForm({ ...extraChargeForm, newEndTime: e.target.value })
+                        }
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Payment Collection Option */}
+              <div className="rounded-xl border border-border bg-secondary/20 p-3 space-y-3">
+                <label className="flex items-center gap-2 text-xs font-medium cursor-pointer">
+                  <Checkbox
+                    checked={extraChargeForm.collectNow}
+                    onCheckedChange={(c) =>
+                      setExtraChargeForm({
+                        ...extraChargeForm,
+                        collectNow: !!c,
+                        collectAmount: extraChargeForm.amount,
+                      })
+                    }
+                  />
+                  Collect payment for this extra charge immediately
+                </label>
+
+                {extraChargeForm.collectNow && (
+                  <div className="pt-2 border-t border-border grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Collected Amount (₹)</Label>
+                      <Input
+                        type="number"
+                        className="h-9"
+                        value={extraChargeForm.collectAmount}
+                        onChange={(e) =>
+                          setExtraChargeForm({ ...extraChargeForm, collectAmount: e.target.value })
+                        }
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Payment Mode</Label>
+                      <Select
+                        value={extraChargeForm.paymentMethod}
+                        onValueChange={(v: any) =>
+                          setExtraChargeForm({ ...extraChargeForm, paymentMethod: v })
+                        }
+                      >
+                        <SelectTrigger className="h-9">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="CASH">Cash</SelectItem>
+                          <SelectItem value="UPI">UPI / QR (GPay, PhonePe, Paytm)</SelectItem>
+                          <SelectItem value="CARD">Credit / Debit Card (POS)</SelectItem>
+                          <SelectItem value="BANK_TRANSFER">Bank Transfer / NEFT</SelectItem>
+                          <SelectItem value="OTHER">Other / Direct</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-border">
+                <Button variant="ghost" type="button" onClick={() => setExtraChargeModalOpen(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={loading}
+                  className="bg-brass text-gold-foreground hover:opacity-90"
+                >
+                  {loading ? "Saving..." : "Apply Extra Charges"}
+                </Button>
+              </div>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Collect Balance Modal */}
+      <Dialog open={collectModalOpen} onOpenChange={setCollectModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Collect Outstanding Balance</DialogTitle>
+            <DialogDescription>Settle folio for party hall reservation.</DialogDescription>
+          </DialogHeader>
+
+          {selectedResForCollect && (() => {
+            const fin = getReservationFinancials(selectedResForCollect);
+
+            return (
+              <form onSubmit={handleSaveCollectBalance} className="space-y-4 pt-2">
+                <div className="rounded-xl border border-border bg-secondary/30 p-3 text-xs space-y-1">
+                  <div className="font-semibold text-sm">
+                    {selectedResForCollect.event_type} · {getGuestName(selectedResForCollect.guest_id)}
+                  </div>
+                  <div className="flex justify-between pt-1">
+                    <span className="text-muted-foreground">Total Bill:</span>
+                    <span className="font-medium">{inr(fin.total)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Already Paid:</span>
+                    <span className="font-medium text-success">{inr(fin.paid)}</span>
+                  </div>
+                  <div className="flex justify-between border-t border-border pt-1 font-semibold">
+                    <span>Remaining Due:</span>
+                    <span className="text-warning text-sm">{inr(fin.balance)}</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Amount to Collect (₹) *</Label>
+                    <Input
+                      type="number"
+                      required
+                      className="h-9"
+                      value={collectForm.amount}
+                      onChange={(e) => setCollectForm({ ...collectForm, amount: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Payment Mode *</Label>
+                    <Select
+                      value={collectForm.paymentMethod}
+                      onValueChange={(v: any) => setCollectForm({ ...collectForm, paymentMethod: v })}
+                    >
+                      <SelectTrigger className="h-9">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="CASH">Cash</SelectItem>
+                        <SelectItem value="UPI">UPI / QR (GPay, PhonePe, Paytm)</SelectItem>
+                        <SelectItem value="CARD">Credit / Debit Card (POS)</SelectItem>
+                        <SelectItem value="BANK_TRANSFER">Bank Transfer / NEFT</SelectItem>
+                        <SelectItem value="OTHER">Other / Direct</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2 border-t border-border">
+                  <Button variant="ghost" type="button" onClick={() => setCollectModalOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={loading}
+                    className="bg-brass text-gold-foreground hover:opacity-90"
+                  >
+                    {loading ? "Processing..." : "Settle Payment"}
+                  </Button>
+                </div>
+              </form>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Booking Details Modal */}
+      <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Party Hall Booking</DialogTitle>
+            <DialogDescription>Modify event timing, guest count, and customer information.</DialogDescription>
+          </DialogHeader>
+
+          {selectedResForEdit && (
+            <form onSubmit={handleSaveEdit} className="space-y-4 pt-2">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Customer Name</Label>
+                  <Input
+                    required
+                    value={editForm.customerName}
+                    onChange={(e) => setEditForm({ ...editForm, customerName: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Phone Number</Label>
+                  <Input
+                    value={editForm.phone}
+                    onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label>Event Date</Label>
+                  <Input
+                    type="date"
+                    required
+                    value={editForm.date}
+                    onChange={(e) => setEditForm({ ...editForm, date: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Start Time</Label>
+                  <Input
+                    type="time"
+                    required
+                    value={editForm.startTime}
+                    onChange={(e) => setEditForm({ ...editForm, startTime: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>End Time</Label>
+                  <Input
+                    type="time"
+                    required
+                    value={editForm.endTime}
+                    onChange={(e) => setEditForm({ ...editForm, endTime: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label>Event Type</Label>
+                  <Select
+                    value={editForm.eventType}
+                    onValueChange={(v) => setEditForm({ ...editForm, eventType: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Birthday">Birthday</SelectItem>
+                      <SelectItem value="Wedding">Wedding</SelectItem>
+                      <SelectItem value="Reception">Reception</SelectItem>
+                      <SelectItem value="Corporate">Corporate Event</SelectItem>
+                      <SelectItem value="Meeting">Meeting</SelectItem>
+                      <SelectItem value="Other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Expected Guests</Label>
+                  <Input
+                    type="number"
+                    required
+                    value={editForm.guests}
+                    onChange={(e) => setEditForm({ ...editForm, guests: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Booking Status</Label>
+                  <Select
+                    value={editForm.status}
+                    onValueChange={(v) => setEditForm({ ...editForm, status: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="CONFIRMED">Confirmed</SelectItem>
+                      <SelectItem value="OCCUPIED">In-Progress</SelectItem>
+                      <SelectItem value="COMPLETED">Completed</SelectItem>
+                      <SelectItem value="CANCELLED">Cancelled</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-2 pt-2 border-t border-border">
+                <Label>Total Package Base Rate (₹)</Label>
+                <Input
+                  type="number"
+                  required
+                  value={editForm.baseAmount}
+                  onChange={(e) => setEditForm({ ...editForm, baseAmount: e.target.value })}
+                />
+              </div>
+
+              <div className="pt-4 flex justify-end gap-2 border-t border-border">
+                <Button variant="ghost" type="button" onClick={() => setEditModalOpen(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={loading}
+                  className="bg-brass text-gold-foreground hover:opacity-90"
+                >
+                  {loading ? "Saving..." : "Save Changes"}
+                </Button>
+              </div>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

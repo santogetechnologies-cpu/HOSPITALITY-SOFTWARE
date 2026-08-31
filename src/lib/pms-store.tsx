@@ -129,6 +129,8 @@ type Ctx = State & {
   pushNotification: (n: Omit<Notification, "id" | "read" | "time">) => void;
   runNightAudit: () => void;
   addPartyHallBooking: (b: { customerName: string; phone: string; email: string; eventType: string; guests: number; date: string; startTime: string; endTime: string; baseAmount: number; advance: number; paymentMethod?: string; }) => Promise<{ success: boolean; error?: string }>;
+  updatePartyHallBooking: (reservationId: string, updates: { customerName?: string; phone?: string; email?: string; eventType?: string; guests?: number; date?: string; startTime?: string; endTime?: string; baseAmount?: number; status?: string; }) => Promise<{ success: boolean; error?: string }>;
+  addReservationExtraCharge: (reservationId: string, additionalAmount: number, reason: string, options?: { newEndTime?: string; collectedAmount?: number; paymentMethod?: "CASH" | "UPI" | "CARD" | "BANK_TRANSFER" | "OTHER" }) => Promise<{ success: boolean; error?: string }>;
   
   // Finance Mutators
   settlePayment: (paymentId: string, amount: number, method?: "CASH" | "UPI" | "CARD" | "BANK_TRANSFER" | "OTHER") => Promise<{ success: boolean; error?: string }>;
@@ -755,6 +757,99 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         } catch (err: any) {
           console.error("Booking error:", err);
           return { success: false, error: err.message || "Failed to create booking" };
+        }
+      },
+
+      updatePartyHallBooking: async (reservationId, updates) => {
+        try {
+          const res = state.reservations.find(r => r.id === reservationId);
+          if (!res) return { success: false, error: "Booking not found" };
+
+          // Update guest if provided
+          if (res.guest_id && (updates.customerName || updates.phone || updates.email)) {
+            const gUpdates: any = {};
+            if (updates.customerName?.trim()) gUpdates.name = updates.customerName.trim();
+            if (updates.phone?.trim()) gUpdates.phone = updates.phone.trim();
+            if (updates.email?.trim()) gUpdates.email = updates.email.trim();
+            await supabase.from('guests').update(gUpdates).eq('id', res.guest_id);
+          }
+
+          const rUpdates: any = {};
+          if (updates.eventType) rUpdates.event_type = updates.eventType;
+          if (updates.guests) rUpdates.number_of_guests = updates.guests;
+          if (updates.date) rUpdates.booking_date = updates.date;
+          if (updates.date && updates.startTime) rUpdates.start_time = new Date(`${updates.date}T${updates.startTime}`).toISOString();
+          if (updates.date && updates.endTime) rUpdates.end_time = new Date(`${updates.date}T${updates.endTime}`).toISOString();
+          if (updates.status) rUpdates.status = updates.status;
+          if (typeof updates.baseAmount === 'number' && !isNaN(updates.baseAmount)) {
+            rUpdates.base_amount = updates.baseAmount;
+            const payment = state.payments.find(p => p.reservation_id === reservationId);
+            if (payment) {
+              const paid = Number(payment.paid_amount) || 0;
+              const status = paid >= updates.baseAmount && updates.baseAmount > 0 ? 'COMPLETED' : paid > 0 ? 'PARTIAL' : 'PENDING';
+              await supabase.from('payments').update({ total_amount: updates.baseAmount, status }).eq('id', payment.id);
+            }
+          }
+
+          if (Object.keys(rUpdates).length > 0) {
+            const { error } = await supabase.from('reservations').update(rUpdates).eq('id', reservationId);
+            if (error) throw error;
+          }
+
+          await fetchData();
+          return { success: true };
+        } catch (err: any) {
+          console.error("Update party hall error:", err);
+          return { success: false, error: err.message || "Failed to update booking" };
+        }
+      },
+
+      addReservationExtraCharge: async (reservationId, additionalAmount, reason, options) => {
+        try {
+          const res = state.reservations.find(r => r.id === reservationId);
+          if (!res) return { success: false, error: "Reservation not found" };
+
+          const currentBase = Number(res.base_amount) || 0;
+          const newBase = currentBase + Number(additionalAmount);
+
+          const resUpdates: any = { base_amount: newBase };
+          if (options?.newEndTime) {
+            resUpdates.end_time = options.newEndTime;
+          }
+          const { error: rErr } = await supabase.from('reservations').update(resUpdates).eq('id', reservationId);
+          if (rErr) throw rErr;
+
+          let payment = state.payments.find(p => p.reservation_id === reservationId || (p.reservation_id && reservationId && p.reservation_id.toLowerCase() === reservationId.toLowerCase()));
+          const collected = Number(options?.collectedAmount) || 0;
+          const method = options?.paymentMethod || 'CASH';
+
+          if (payment) {
+            const currentTotal = Number(payment.total_amount) || currentBase;
+            const newTotal = currentTotal + Number(additionalAmount);
+            const currentPaid = Number(payment.paid_amount) || 0;
+            const newPaid = currentPaid + collected;
+            const status = newPaid >= newTotal && newTotal > 0 ? "COMPLETED" : newPaid > 0 ? "PARTIAL" : "PENDING";
+            const payUpdates: any = { total_amount: newTotal, paid_amount: newPaid, status };
+            if (collected > 0) payUpdates.payment_method = method;
+            const { error: pErr } = await supabase.from('payments').update(payUpdates).eq('id', payment.id);
+            if (pErr) throw pErr;
+          } else {
+            const status = collected >= newBase && newBase > 0 ? "COMPLETED" : collected > 0 ? "PARTIAL" : "PENDING";
+            const { error: pErr } = await supabase.from('payments').insert({
+              reservation_id: reservationId,
+              total_amount: newBase,
+              paid_amount: collected,
+              status,
+              payment_method: method
+            });
+            if (pErr) throw pErr;
+          }
+
+          await fetchData();
+          return { success: true };
+        } catch (err: any) {
+          console.error("Add extra charge error:", err);
+          return { success: false, error: err.message || "Failed to add extra charge" };
         }
       },
 
