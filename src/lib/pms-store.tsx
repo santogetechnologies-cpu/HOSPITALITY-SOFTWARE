@@ -128,8 +128,7 @@ type Ctx = State & {
   toggleRead: (id: string) => void;
   pushNotification: (n: Omit<Notification, "id" | "read" | "time">) => void;
   runNightAudit: () => void;
-  seedDatabase: () => Promise<void>; // Added for convenience
-  addPartyHallBooking: (b: { customerName: string; phone: string; email: string; eventType: string; guests: number; date: string; startTime: string; endTime: string; baseAmount: number; advance: number; }) => Promise<{ success: boolean; error?: string }>;
+  addPartyHallBooking: (b: { customerName: string; phone: string; email: string; eventType: string; guests: number; date: string; startTime: string; endTime: string; baseAmount: number; advance: number; paymentMethod?: string; }) => Promise<{ success: boolean; error?: string }>;
   
   // Finance Mutators
   settlePayment: (paymentId: string, amount: number, method?: "CASH" | "UPI" | "CARD" | "BANK_TRANSFER" | "OTHER") => Promise<{ success: boolean; error?: string }>;
@@ -731,12 +730,22 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
           if (rErr) throw rErr;
 
           // 5. Create Payment Record
+          let method: 'CASH' | 'UPI' | 'CARD' | 'BANK_TRANSFER' | 'OTHER' = 'CASH';
+          if (b.paymentMethod) {
+            const m = b.paymentMethod.toUpperCase().trim();
+            if (m.includes('CARD') || m.includes('CREDIT') || m.includes('DEBIT')) method = 'CARD';
+            else if (m.includes('UPI') || m.includes('GPAY') || m.includes('PHONEPE') || m.includes('PAYTM')) method = 'UPI';
+            else if (m.includes('BANK') || m.includes('TRANSFER') || m.includes('NEFT')) method = 'BANK_TRANSFER';
+            else if (m.includes('CASH')) method = 'CASH';
+            else method = 'OTHER';
+          }
+
           const { error: pErr } = await supabase.from('payments').insert({
             reservation_id: resId,
             total_amount: b.baseAmount,
             paid_amount: b.advance,
-            status: b.advance >= b.baseAmount ? 'COMPLETED' : b.advance > 0 ? 'PARTIAL' : 'PENDING',
-            payment_method: 'CASH'
+            status: b.advance >= b.baseAmount && b.baseAmount > 0 ? 'COMPLETED' : b.advance > 0 ? 'PARTIAL' : 'PENDING',
+            payment_method: method
           });
           if (pErr) throw pErr;
 

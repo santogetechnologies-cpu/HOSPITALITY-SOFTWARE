@@ -34,6 +34,7 @@ function PartyHallPage() {
     endTime: "14:00",
     baseAmount: "15000",
     advance: "5000",
+    paymentMethod: "CASH",
   });
 
   const hallBookings = reservations
@@ -61,6 +62,7 @@ function PartyHallPage() {
       endTime: form.endTime,
       baseAmount: parseFloat(form.baseAmount) || 0,
       advance: parseFloat(form.advance) || 0,
+      paymentMethod: form.paymentMethod,
     });
 
     setLoading(false);
@@ -68,7 +70,19 @@ function PartyHallPage() {
     if (res.success) {
       toast.success("Party Hall booked successfully!");
       setOpen(false);
-      setForm({ ...form, customerName: "", phone: "", email: "" });
+      setForm({
+        customerName: "",
+        phone: "",
+        email: "",
+        eventType: "Birthday",
+        guests: "50",
+        date: new Date().toISOString().split("T")[0],
+        startTime: "10:00",
+        endTime: "14:00",
+        baseAmount: "15000",
+        advance: "5000",
+        paymentMethod: "CASH",
+      });
     } else {
       setErrorMsg(res.error || "Failed to book");
     }
@@ -157,7 +171,7 @@ function PartyHallPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-100">
+              <div className="grid grid-cols-3 gap-4 pt-4 border-t border-slate-100">
                 <div className="space-y-2">
                   <Label>Total Amount (₹)</Label>
                   <Input type="number" required value={form.baseAmount} onChange={e => setForm({...form, baseAmount: e.target.value})} />
@@ -165,6 +179,19 @@ function PartyHallPage() {
                 <div className="space-y-2">
                   <Label>Advance Received (₹)</Label>
                   <Input type="number" required value={form.advance} onChange={e => setForm({...form, advance: e.target.value})} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Payment Mode</Label>
+                  <Select value={form.paymentMethod} onValueChange={(v) => setForm({ ...form, paymentMethod: v })}>
+                    <SelectTrigger><SelectValue placeholder="Payment Mode" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="CASH">Cash</SelectItem>
+                      <SelectItem value="UPI">UPI / QR (GPay, PhonePe, Paytm)</SelectItem>
+                      <SelectItem value="CARD">Credit / Debit Card (POS)</SelectItem>
+                      <SelectItem value="BANK_TRANSFER">Bank Transfer / NEFT</SelectItem>
+                      <SelectItem value="OTHER">Other / Bill to Company</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
