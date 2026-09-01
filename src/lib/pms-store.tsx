@@ -1571,7 +1571,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             let expenseId: string | undefined = undefined;
             const totalCost = quantity * unit_cost;
 
-            if (item.sync_to_expenses !== false && totalCost > 0) {
+            if (item.sync_to_expenses === true && totalCost > 0) {
               const expId = crypto.randomUUID();
               const { error: expErr } = await supabase.from('expenses').insert({
                 id: expId,
@@ -1656,8 +1656,8 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
           const totalCost = qty * price;
           let expenseId: string | undefined = undefined;
 
-          // 1. Sync to Expenses if checked
-          if (syncToExpenses && totalCost > 0) {
+          // 1. Sync to Expenses ONLY if explicitly checked true
+          if (syncToExpenses === true && totalCost > 0) {
             const expId = crypto.randomUUID();
             const desc = `Purchased ${qty} ${item.unit || 'units'} ${item.name}${notes ? ` (${notes})` : ' (Inventory Restock)'}`;
             const { error: expErr } = await supabase.from('expenses').insert({

@@ -104,7 +104,7 @@ function InventoryPage() {
   const [newItemMinThreshold, setNewItemMinThreshold] = React.useState("5");
   const [newItemCost, setNewItemCost] = React.useState("");
   const [newItemLocation, setNewItemLocation] = React.useState("Main Store Room");
-  const [newItemSyncExpense, setNewItemSyncExpense] = React.useState(true);
+  const [newItemSyncExpense, setNewItemSyncExpense] = React.useState(false);
   const [newItemNotes, setNewItemNotes] = React.useState("");
 
   // Purchase Form State
@@ -491,7 +491,7 @@ function InventoryPage() {
                 setNewItemQty("");
                 setNewItemCost("");
                 setNewItemNotes("");
-                setNewItemSyncExpense(true);
+                setNewItemSyncExpense(false);
                 setAddItemOpen(true);
               }}
             >
