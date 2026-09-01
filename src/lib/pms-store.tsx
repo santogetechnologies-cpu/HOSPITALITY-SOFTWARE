@@ -1,5 +1,5 @@
 import * as React from "react";
-import { supabase } from "./supabase";
+import { supabase, ensureFreshSession, withAuthRetry, isJwtExpiredError } from "./supabase";
 import {
   type Room,
   type RoomStatus,
@@ -191,11 +191,12 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
   // Fetch initial data
   const fetchData = React.useCallback(async () => {
     try {
+      await ensureFreshSession();
       const [
-        { data: rooms },
-        { data: reservations },
-        { data: guests },
-        { data: payments },
+        { data: rooms, error: errRooms },
+        { data: reservations, error: errRes },
+        { data: guests, error: errGuests },
+        { data: payments, error: errPayments },
         { data: discounts },
         { data: expenses },
         { data: profiles },
@@ -214,6 +215,11 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         supabase.from('hk_tasks').select('*'),
         supabase.from('tickets').select('*')
       ]);
+
+      if (isJwtExpiredError(errRooms) || isJwtExpiredError(errRes) || isJwtExpiredError(errGuests) || isJwtExpiredError(errPayments)) {
+        console.warn("fetchData encountered JWT expired. Refreshing auth session headers...");
+        await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+      }
 
       const loadedDiscounts = (discounts as any) || [];
       const loadedPayments = (payments as any) || [];
@@ -387,7 +393,12 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
 
   React.useEffect(() => {
     supabase.auth.getSession().then(({ data: { session }, error }) => {
-      if (error) console.error("GetSession Error:", error);
+      if (error) {
+        console.error("GetSession Error:", error);
+        if (isJwtExpiredError(error)) {
+          supabase.auth.signOut({ scope: "local" }).catch(() => {});
+        }
+      }
       if (session?.user) {
         let role = session.user.user_metadata?.role || "SUPER_ADMIN";
         if (session.user.email?.toLowerCase() === "drbhoteladmin@drb.com") {
@@ -489,6 +500,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
 
         // 2. Check Staff Profiles in Supabase 'profiles' table
         try {
+          await supabase.auth.signOut({ scope: "local" }).catch(() => {});
           const { data: dbProfiles } = await supabase
             .from('profiles')
             .select('*');
@@ -618,6 +630,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
       
       addRoomReservation: async (b) => {
         try {
+          await ensureFreshSession();
           if (!b.guestName || !b.guestName.trim()) {
             return { success: false, error: "Guest name is required." };
           }
@@ -679,7 +692,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
 
             if (Object.keys(updates).length > 0) {
               try {
-                await supabase.from('guests').update(updates).eq('id', guestId);
+                await withAuthRetry(() => supabase.from('guests').update(updates).eq('id', guestId));
               } catch (e) {
                 console.warn("Guest update warning:", e);
               }
@@ -698,11 +711,12 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
               country: b.country?.trim() || 'India',
               notes: b.notes?.trim() || null
             };
-            const { error: gErr } = await supabase.from('guests').insert(guestData);
+            const { error: gErr } = await withAuthRetry(() => supabase.from('guests').insert(guestData));
             if (gErr) {
               if (gErr.message?.includes('gst_number')) {
                 delete guestData.gst_number;
-                await supabase.from('guests').insert(guestData);
+                const { error: retryGErr } = await withAuthRetry(() => supabase.from('guests').insert(guestData));
+                if (retryGErr) throw retryGErr;
               } else {
                 throw gErr;
               }
@@ -726,11 +740,11 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             notes: b.notes?.trim() || null,
             gst_number: gstNumClean
           };
-          const { error: rErr } = await supabase.from('reservations').insert(resData);
+          const { error: rErr } = await withAuthRetry(() => supabase.from('reservations').insert(resData));
           if (rErr) {
             if (rErr.message?.includes('gst_number')) {
               delete resData.gst_number;
-              const { error: retryErr } = await supabase.from('reservations').insert(resData);
+              const { error: retryErr } = await withAuthRetry(() => supabase.from('reservations').insert(resData));
               if (retryErr) throw retryErr;
             } else {
               throw rErr;
@@ -739,7 +753,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
 
           // 4. Update Room Status to BOOKED
           if (b.roomId) {
-            await supabase.from('rooms').update({ status: 'BOOKED' }).eq('id', b.roomId);
+            await withAuthRetry(() => supabase.from('rooms').update({ status: 'BOOKED' }).eq('id', b.roomId));
           }
 
           // 5. Create Payment Folio
@@ -756,20 +770,24 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             else method = 'OTHER';
           }
 
-          const { error: pErr } = await supabase.from('payments').insert({
+          const { error: pErr } = await withAuthRetry(() => supabase.from('payments').insert({
             id: crypto.randomUUID(),
             reservation_id: resId,
             total_amount: totalAmt,
             paid_amount: paidAmt,
             status: payStatus,
             payment_method: method
-          });
+          }));
           if (pErr) throw pErr;
 
           await fetchData();
           return { success: true };
         } catch (err: any) {
           console.error("Booking error:", err);
+          if (isJwtExpiredError(err)) {
+            await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+            return { success: false, error: "Your session token expired and was reset. Please click Book Room once more to confirm." };
+          }
           return { success: false, error: err.message || "Failed to create booking" };
         }
       },
@@ -925,26 +943,26 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             if (b.customerName?.trim()) updates.name = b.customerName.trim();
             if (b.email?.trim()) updates.email = b.email.trim();
             if (Object.keys(updates).length > 0) {
-              await supabase.from('guests').update(updates).eq('id', guestId);
+              await withAuthRetry(() => supabase.from('guests').update(updates).eq('id', guestId));
             }
           } else {
             guestId = crypto.randomUUID();
-            const { error: gErr } = await supabase.from('guests').insert({
+            const { error: gErr } = await withAuthRetry(() => supabase.from('guests').insert({
               id: guestId,
               name: b.customerName.trim(),
               phone: phoneTrimmed || null,
               email: b.email?.trim() || null
-            });
+            }));
             if (gErr) throw gErr;
           }
 
           // 3. Get Party Hall ID (assuming only one exists)
-          const { data: hall } = await supabase.from('party_hall').select('id').limit(1).single();
+          const { data: hall } = await withAuthRetry(() => supabase.from('party_hall').select('id').limit(1).single());
           const hallId = hall?.id;
 
           // 4. Create Reservation
           const resId = crypto.randomUUID();
-          const { error: rErr } = await supabase.from('reservations').insert({
+          const { error: rErr } = await withAuthRetry(() => supabase.from('reservations').insert({
             id: resId,
             guest_id: guestId,
             resource_type: 'PARTY_HALL',
@@ -956,7 +974,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             end_time: endTs,
             base_amount: b.baseAmount,
             status: 'CONFIRMED'
-          });
+          }));
           if (rErr) throw rErr;
 
           // 5. Create Payment Record
@@ -970,20 +988,24 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             else method = 'OTHER';
           }
 
-          const { error: pErr } = await supabase.from('payments').insert({
+          const { error: pErr } = await withAuthRetry(() => supabase.from('payments').insert({
             reservation_id: resId,
             total_amount: b.baseAmount,
             paid_amount: b.advance,
             status: b.advance >= b.baseAmount && b.baseAmount > 0 ? 'COMPLETED' : b.advance > 0 ? 'PARTIAL' : 'PENDING',
             payment_method: method
-          });
+          }));
           if (pErr) throw pErr;
 
           // Refresh data
-          fetchData();
+          await fetchData();
           return { success: true };
         } catch (err: any) {
-          console.error("Booking error:", err);
+          console.error("Party hall booking error:", err);
+          if (isJwtExpiredError(err)) {
+            await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+            return { success: false, error: "Your session token expired and was reset. Please try booking again." };
+          }
           return { success: false, error: err.message || "Failed to create booking" };
         }
       },
@@ -1020,7 +1042,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
           }
 
           if (Object.keys(rUpdates).length > 0) {
-            const { error } = await supabase.from('reservations').update(rUpdates).eq('id', reservationId);
+            const { error } = await withAuthRetry(() => supabase.from('reservations').update(rUpdates).eq('id', reservationId));
             if (error) throw error;
           }
 
@@ -1028,6 +1050,10 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
           return { success: true };
         } catch (err: any) {
           console.error("Update party hall error:", err);
+          if (isJwtExpiredError(err)) {
+            await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+            return { success: false, error: "Session token expired and was reset. Please try again." };
+          }
           return { success: false, error: err.message || "Failed to update booking" };
         }
       },
@@ -1044,7 +1070,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
           if (options?.newEndTime) {
             resUpdates.end_time = options.newEndTime;
           }
-          const { error: rErr } = await supabase.from('reservations').update(resUpdates).eq('id', reservationId);
+          const { error: rErr } = await withAuthRetry(() => supabase.from('reservations').update(resUpdates).eq('id', reservationId));
           if (rErr) throw rErr;
 
           let payment = state.payments.find(p => p.reservation_id === reservationId || (p.reservation_id && reservationId && p.reservation_id.toLowerCase() === reservationId.toLowerCase()));
@@ -1059,17 +1085,17 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             const status = newPaid >= newTotal && newTotal > 0 ? "COMPLETED" : newPaid > 0 ? "PARTIAL" : "PENDING";
             const payUpdates: any = { total_amount: newTotal, paid_amount: newPaid, status };
             if (collected > 0) payUpdates.payment_method = method;
-            const { error: pErr } = await supabase.from('payments').update(payUpdates).eq('id', payment.id);
+            const { error: pErr } = await withAuthRetry(() => supabase.from('payments').update(payUpdates).eq('id', payment.id));
             if (pErr) throw pErr;
           } else {
             const status = collected >= newBase && newBase > 0 ? "COMPLETED" : collected > 0 ? "PARTIAL" : "PENDING";
-            const { error: pErr } = await supabase.from('payments').insert({
+            const { error: pErr } = await withAuthRetry(() => supabase.from('payments').insert({
               reservation_id: reservationId,
               total_amount: newBase,
               paid_amount: collected,
               status,
               payment_method: method
-            });
+            }));
             if (pErr) throw pErr;
           }
 
@@ -1077,6 +1103,10 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
           return { success: true };
         } catch (err: any) {
           console.error("Add extra charge error:", err);
+          if (isJwtExpiredError(err)) {
+            await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+            return { success: false, error: "Session token expired and was reset. Please try again." };
+          }
           return { success: false, error: err.message || "Failed to add extra charge" };
         }
       },
@@ -1094,11 +1124,11 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
           if (params.isEarlyCheckout) {
             resUpdates.status = 'COMPLETED';
             if (res.room_id) {
-              await supabase.from('rooms').update({ status: 'DIRTY' }).eq('id', res.room_id);
+              await withAuthRetry(() => supabase.from('rooms').update({ status: 'DIRTY' }).eq('id', res.room_id));
             }
           }
 
-          const { error: rErr } = await supabase.from('reservations').update(resUpdates).eq('id', reservationId);
+          const { error: rErr } = await withAuthRetry(() => supabase.from('reservations').update(resUpdates).eq('id', reservationId));
           if (rErr) throw rErr;
 
           let payment = state.payments.find(p => p.reservation_id === reservationId || (p.reservation_id && reservationId && p.reservation_id.toLowerCase() === reservationId.toLowerCase()));
@@ -1112,17 +1142,17 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             const status = newPaid >= newTotal && newTotal > 0 ? "COMPLETED" : newPaid > 0 ? "PARTIAL" : "PENDING";
             const payUpdates: any = { total_amount: newTotal, paid_amount: newPaid, status };
             if (extraCollected > 0) payUpdates.payment_method = method;
-            const { error: pErr } = await supabase.from('payments').update(payUpdates).eq('id', payment.id);
+            const { error: pErr } = await withAuthRetry(() => supabase.from('payments').update(payUpdates).eq('id', payment.id));
             if (pErr) throw pErr;
           } else {
             const status = extraCollected >= params.newTotalAmount && params.newTotalAmount > 0 ? "COMPLETED" : extraCollected > 0 ? "PARTIAL" : "PENDING";
-            const { error: pErr } = await supabase.from('payments').insert({
+            const { error: pErr } = await withAuthRetry(() => supabase.from('payments').insert({
               reservation_id: reservationId,
               total_amount: params.newTotalAmount,
               paid_amount: extraCollected,
               status,
               payment_method: method
-            });
+            }));
             if (pErr) throw pErr;
           }
 
@@ -1130,6 +1160,10 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
           return { success: true };
         } catch (err: any) {
           console.error("Adjust stay error:", err);
+          if (isJwtExpiredError(err)) {
+            await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+            return { success: false, error: "Session token expired and was reset. Please try again." };
+          }
           return { success: false, error: err.message || "Failed to adjust stay" };
         }
       },
@@ -1145,14 +1179,14 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
               const totalAmt = Number(res.base_amount) || 0;
               const paidAmt = Number(amount) || 0;
               const status = paidAmt >= totalAmt && totalAmt > 0 ? "COMPLETED" : "PARTIAL";
-              const { error } = await supabase.from('payments').insert({
+              const { error } = await withAuthRetry(() => supabase.from('payments').insert({
                 id: payId,
                 reservation_id: res.id,
                 total_amount: totalAmt,
                 paid_amount: paidAmt,
                 status,
                 payment_method: method || 'CASH'
-              });
+              }));
               if (error) throw error;
               await fetchData();
               return { success: true };
@@ -1162,16 +1196,20 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
           const newPaid = (Number(payment.paid_amount) || 0) + Number(amount);
           const totalAmt = Number(payment.total_amount) || 0;
           const status = newPaid >= totalAmt && totalAmt > 0 ? "COMPLETED" : (newPaid > 0 ? "PARTIAL" : "PENDING");
-          const { error } = await supabase.from('payments').update({ 
+          const { error } = await withAuthRetry(() => supabase.from('payments').update({ 
             paid_amount: newPaid, 
             status,
             payment_method: method || payment.payment_method || 'CASH'
-          }).eq('id', payment.id);
+          }).eq('id', payment.id));
           if (error) throw error;
           await fetchData();
           return { success: true };
         } catch (err: any) {
           console.error("Settle payment error:", err);
+          if (isJwtExpiredError(err)) {
+            await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+            return { success: false, error: "Session token expired and was reset. Please try again." };
+          }
           return { success: false, error: err.message || "Failed to settle payment" };
         }
       },
