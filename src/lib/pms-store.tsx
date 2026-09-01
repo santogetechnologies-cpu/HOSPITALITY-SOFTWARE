@@ -1521,14 +1521,16 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             const totalCost = quantity * unit_cost;
 
             if (item.sync_to_expenses !== false && totalCost > 0) {
-              expenseId = crypto.randomUUID();
-              await supabase.from('expenses').insert({
-                id: expenseId,
+              const { data: expData, error: expErr } = await supabase.from('expenses').insert({
                 amount: totalCost,
                 category: 'Inventory / Supplies',
                 description: `Initial Stock: ${quantity} ${item.unit || 'units'} ${item.name.trim()}`,
                 recorded_by: state.session?.username || 'System'
-              });
+              }).select('id').single();
+
+              if (!expErr && expData?.id) {
+                expenseId = expData.id;
+              }
             }
 
             await supabase.from('inventory_transactions').insert({
@@ -1540,7 +1542,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
               total_cost: totalCost,
               reason: 'Initial stock setup',
               sync_to_expenses: Boolean(expenseId),
-              expense_id: expenseId,
+              expense_id: expenseId || null,
               performed_by: state.session?.name || state.session?.username || 'Staff',
               notes: item.notes || 'Initial inventory onboarding'
             });
@@ -1601,16 +1603,19 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
 
           // 1. Sync to Expenses if checked
           if (syncToExpenses && totalCost > 0) {
-            expenseId = crypto.randomUUID();
             const desc = `Purchased ${qty} ${item.unit || 'units'} ${item.name}${notes ? ` (${notes})` : ' (Inventory Restock)'}`;
-            const { error: expErr } = await supabase.from('expenses').insert({
-              id: expenseId,
+            const { data: expData, error: expErr } = await supabase.from('expenses').insert({
               amount: totalCost,
               category: expenseCategory || 'Inventory / Supplies',
               description: desc,
               recorded_by: state.session?.username || 'Staff'
-            });
-            if (expErr) console.warn("Expense sync warning:", expErr);
+            }).select('id').single();
+
+            if (!expErr && expData?.id) {
+              expenseId = expData.id;
+            } else if (expErr) {
+              console.warn("Expense sync warning:", expErr);
+            }
           }
 
           // 2. Insert transaction
@@ -1624,7 +1629,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             total_cost: totalCost,
             reason: 'Restock / Repurchase',
             sync_to_expenses: Boolean(expenseId),
-            expense_id: expenseId,
+            expense_id: expenseId || null,
             performed_by: state.session?.name || state.session?.username || 'Staff',
             notes: notes || 'Repurchase order'
           });
