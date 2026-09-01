@@ -126,8 +126,9 @@ function ExpensesPage() {
               </div>
             </DialogContent>
           </Dialog>
-        }
-      />
+        </div>
+      }
+    />
 
       <Panel bodyClassName="p-0">
         <Table>
