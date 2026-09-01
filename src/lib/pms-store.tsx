@@ -425,8 +425,8 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
 
       // Auto-reconcile synced inventory purchases with expenses table
       for (const trans of loadedTransactions) {
-        if (trans.type === 'PURCHASE' && trans.sync_to_expenses && Number(trans.total_cost) > 0) {
-          const matchingExp = loadedExpenses.find((e: any) => e.id === trans.expense_id);
+        if (trans.type === 'PURCHASE' && Number(trans.total_cost) > 0) {
+          const matchingExp = loadedExpenses.find((e: any) => e.id === trans.expense_id || (trans.expense_id && e.id && e.id.toLowerCase() === trans.expense_id.toLowerCase()));
           if (!matchingExp) {
             const expId = trans.expense_id || crypto.randomUUID();
             const item = loadedInvItems.find((i: any) => i.id === trans.item_id);
@@ -438,11 +438,13 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
               category: 'Inventory / Supplies',
               description: desc,
               recorded_by: trans.performed_by || 'Staff'
+            }).then(({ error: syncErr }) => {
+              if (syncErr) console.error("Auto-sync expense insert error:", syncErr);
             });
 
-            if (!trans.expense_id) {
-              void supabase.from('inventory_transactions').update({ expense_id: expId }).eq('id', trans.id);
-            }
+            void supabase.from('inventory_transactions').update({ expense_id: expId, sync_to_expenses: true }).eq('id', trans.id);
+            trans.sync_to_expenses = true;
+            trans.expense_id = expId;
 
             loadedExpenses.unshift({
               id: expId,
