@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { usePms } from "@/lib/pms-store";
 import { inr } from "@/lib/pms-data";
 import { useSettings } from "@/lib/use-settings";
+import { getReservationFinancials as calculateReservationFinancials } from "@/lib/financials";
 import { toast } from "sonner";
 import {
   Banknote,
@@ -141,41 +142,111 @@ function PaymentsDashboard() {
     const list: any[] = [];
     const processedResIds = new Set<string>();
 
-    payments.forEach((p) => {
-      if (p.reservation_id) processedResIds.add(p.reservation_id.toLowerCase());
-      const res = getReservation(p.reservation_id);
-      
+    reservations.forEach((res) => {
+      if (res.status === "CANCELLED") return;
+      processedResIds.add(res.id.toLowerCase());
+
       if (!searchQuery.trim() && timeframe !== "ALL") {
-        const resDateStr = res?.booking_date || (res?.start_time ? res.start_time.split("T")[0] : todayStr);
+        const resDateStr = res.booking_date || (res.start_time ? res.start_time.split("T")[0] : todayStr);
         const resDate = new Date(`${resDateStr}T00:00:00`);
         if (resDate < startDate || resDate > endDate) return;
       }
 
-      const resDateStr = res?.booking_date || (res?.start_time ? res.start_time.split("T")[0] : todayStr);
-
-      const isPartyHall = res?.resource_type === "PARTY_HALL";
+      const resDateStr = res.booking_date || (res.start_time ? res.start_time.split("T")[0] : todayStr);
+      const isPartyHall = res.resource_type === "PARTY_HALL";
       if (resourceFilter === "rooms" && isPartyHall) return;
       if (resourceFilter === "party_hall" && !isPartyHall) return;
 
-      const guest = res ? getGuest(res.guest_id) : null;
-      const room = res ? getRoom(res.room_id) : null;
-      const approvedDiscount = getApprovedDiscount(p.reservation_id);
+      const fin = calculateReservationFinancials(res, payments, discounts, rooms);
+      const p = fin.payment;
 
-      const rawBase = Number(res?.base_amount) || Number(p.total_amount) || 0;
-      const gstDivisor = isPartyHall ? 1.18 : 1.05;
-      const totalBill = Number(p.total_amount) || rawBase;
-      const taxableBase = Math.max(0, Math.round(totalBill / gstDivisor));
-      const totalGst = Math.max(0, totalBill - taxableBase);
+      if (statusFilter === "settled" && !fin.isPaid) return;
+      if (statusFilter === "partial" && !fin.isPartial) return;
+      if (statusFilter === "pending" && (fin.isPaid || fin.isPartial)) return;
+
+      // Normalize channel
+      const rawMethod = (p?.payment_method || "CASH").toUpperCase();
+      let channel: "UPI" | "CARD" | "CASH" | "BANK_TRANSFER" | "OTHER" = "CASH";
+      if (rawMethod.includes("UPI") || rawMethod.includes("GPAY") || rawMethod.includes("PHONEPE") || rawMethod.includes("PAYTM") || rawMethod.includes("QR")) {
+        channel = "UPI";
+      } else if (rawMethod.includes("CARD") || rawMethod.includes("POS") || rawMethod.includes("DEBIT") || rawMethod.includes("CREDIT")) {
+        channel = "CARD";
+      } else if (rawMethod.includes("BANK") || rawMethod.includes("TRANSFER") || rawMethod.includes("NEFT") || rawMethod.includes("RTGS") || rawMethod.includes("IMPS")) {
+        channel = "BANK_TRANSFER";
+      } else if (rawMethod.includes("CASH")) {
+        channel = "CASH";
+      } else {
+        channel = "OTHER";
+      }
+
+      if (channelFilter !== "all" && channel !== channelFilter) return;
+
+      const guest = getGuest(res.guest_id);
+      const room = getRoom(res.room_id);
+
+      const searchLower = searchQuery.toLowerCase().trim();
+      const invoiceNum = `INV-${String(res.id).slice(0, 8).toUpperCase()}`;
+      const rawResId = String(res.id || "").toLowerCase();
+      const rawPayId = String(p?.id || "").toLowerCase();
+
+      if (
+        searchLower &&
+        !invoiceNum.toLowerCase().includes(searchLower) &&
+        !rawResId.includes(searchLower) &&
+        !rawPayId.includes(searchLower) &&
+        !guest?.name?.toLowerCase().includes(searchLower) &&
+        !guest?.phone?.includes(searchLower) &&
+        !room?.room_number?.toLowerCase().includes(searchLower) &&
+        !res?.event_type?.toLowerCase().includes(searchLower) &&
+        !((res as any)?.customer_name && (res as any).customer_name.toLowerCase().includes(searchLower))
+      ) {
+        return;
+      }
+
+      list.push({
+        id: p?.id || res.id,
+        paymentId: p?.id,
+        reservationId: res.id,
+        invoiceNum,
+        date: resDateStr,
+        guestName: guest?.name || (res as any)?.customer_name || "Guest",
+        guestPhone: guest?.phone || (res as any)?.customer_phone || "—",
+        guestGstin: (res as any)?.gst_number || guest?.gst_number || "",
+        resourceType: isPartyHall ? "PARTY_HALL" : "ROOM",
+        resourceLabel: isPartyHall ? `Party Hall (${res?.event_type || "Banquet"})` : room ? `Room ${room.room_number} (${room.room_name || "Standard"})` : "Room Stay",
+        taxableBase: fin.taxableValue,
+        cgst: fin.cgst,
+        sgst: fin.sgst,
+        totalGst: fin.totalGst,
+        grandTotal: fin.grandTotal,
+        paid: fin.paid,
+        balance: fin.balance,
+        channel,
+        channelRaw: p?.payment_method || "CASH",
+        isPaid: fin.isPaid,
+        isPartial: fin.isPartial,
+        status: fin.isPaid ? "SETTLED" : fin.isPartial ? "PARTIAL / ADVANCE" : "PENDING",
+      });
+    });
+
+    // Also include standalone payment records if any exist without an active reservation
+    payments.forEach((p) => {
+      if (p.reservation_id && processedResIds.has(p.reservation_id.toLowerCase())) return;
+
+      const totalBill = Number(p.total_amount) || 0;
+      if (totalBill <= 0) return;
+
+      const gstDivisor = 1.05;
+      const taxableBase = Math.round(totalBill / gstDivisor);
+      const totalGst = totalBill - taxableBase;
       const cgst = Number((totalGst / 2).toFixed(2));
       const sgst = Number((totalGst - cgst).toFixed(2));
-      const grandTotal = taxableBase + totalGst;
-
+      const grandTotal = totalBill;
       const paid = Number(p.paid_amount) || 0;
       const balance = Math.max(0, grandTotal - paid);
       const isPaid = balance === 0 && grandTotal > 0;
       const isPartial = !isPaid && (p.status === "PARTIAL" || paid > 0);
 
-      // Normalize channel
       const rawMethod = (p.payment_method || "CASH").toUpperCase();
       let channel: "UPI" | "CARD" | "CASH" | "BANK_TRANSFER" | "OTHER" = "CASH";
       if (rawMethod.includes("UPI") || rawMethod.includes("GPAY") || rawMethod.includes("PHONEPE") || rawMethod.includes("PAYTM") || rawMethod.includes("QR")) {
@@ -195,36 +266,17 @@ function PaymentsDashboard() {
       if (statusFilter === "partial" && !isPartial) return;
       if (statusFilter === "pending" && (isPaid || isPartial)) return;
 
-      const searchLower = searchQuery.toLowerCase().trim();
-      const invoiceNum = `INV-${String(p.reservation_id || p.id).slice(0, 8).toUpperCase()}`;
-      const rawResId = String(p.reservation_id || "").toLowerCase();
-      const rawPayId = String(p.id || "").toLowerCase();
-
-      if (
-        searchLower &&
-        !invoiceNum.toLowerCase().includes(searchLower) &&
-        !rawResId.includes(searchLower) &&
-        !rawPayId.includes(searchLower) &&
-        !guest?.name?.toLowerCase().includes(searchLower) &&
-        !guest?.phone?.includes(searchLower) &&
-        !room?.room_number?.toLowerCase().includes(searchLower) &&
-        !res?.event_type?.toLowerCase().includes(searchLower) &&
-        !((res as any)?.customer_name && (res as any).customer_name.toLowerCase().includes(searchLower))
-      ) {
-        return;
-      }
-
       list.push({
         id: p.id,
         paymentId: p.id,
-        reservationId: p.reservation_id,
-        invoiceNum,
-        date: resDateStr,
-        guestName: guest?.name || "Guest",
-        guestPhone: guest?.phone || "—",
-        guestGstin: (res as any)?.gst_number || guest?.gst_number || "",
-        resourceType: isPartyHall ? "PARTY_HALL" : "ROOM",
-        resourceLabel: isPartyHall ? `Party Hall (${res?.event_type || "Banquet"})` : room ? `Room ${room.room_number} (${room.room_name || "Standard"})` : "Room Stay",
+        reservationId: p.reservation_id || p.id,
+        invoiceNum: `INV-${String(p.id).slice(0, 8).toUpperCase()}`,
+        date: todayStr,
+        guestName: "Direct Payment",
+        guestPhone: "—",
+        guestGstin: "",
+        resourceType: "ROOM",
+        resourceLabel: "Direct Payment Receipt",
         taxableBase,
         cgst,
         sgst,
@@ -241,7 +293,7 @@ function PaymentsDashboard() {
     });
 
     return list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [payments, reservations, guests, rooms, discounts, startDate, endDate, resourceFilter, channelFilter, statusFilter, searchQuery, todayStr]);
+  }, [reservations, payments, discounts, rooms, guests, startDate, endDate, resourceFilter, channelFilter, statusFilter, searchQuery, todayStr, timeframe]);
 
   // Aggregate Financial & Inflow Metrics
   const metrics = React.useMemo(() => {

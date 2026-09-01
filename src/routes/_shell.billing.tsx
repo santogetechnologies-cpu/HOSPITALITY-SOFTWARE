@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { usePms } from "@/lib/pms-store";
 import { useSettings } from "@/lib/use-settings";
 import { inr } from "@/lib/pms-data";
+import { getReservationFinancials as calculateReservationFinancials } from "@/lib/financials";
 import { toast } from "sonner";
 import {
   Printer,
@@ -149,76 +150,8 @@ function BillingPage() {
   const getPayment = (resId: string) =>
     payments.find((p) => p.reservation_id === resId || p.reservation_id?.toLowerCase() === resId.toLowerCase());
 
-  const getApprovedDiscount = (resId: string) => {
-    return discounts
-      .filter(
-        (d) =>
-          (d.reservation_id === resId || d.reservation_id?.toLowerCase() === resId.toLowerCase()) &&
-          d.status === "APPROVED"
-      )
-      .reduce((sum, d) => sum + (Number(d.requested_amount) || 0), 0);
-  };
-
   const getReservationFinancials = (r: (typeof reservations)[0]) => {
-    const p = getPayment(r.id);
-    const approvedDiscount = getApprovedDiscount(r.id);
-    const addlCharges = Number(r.additional_charges) || 0;
-    
-    const payTotal = Number(p?.total_amount) || 0;
-    const resBase = Number(r.base_amount) || 0;
-    const isPartyHall = r.resource_type === "PARTY_HALL";
-    const gstRate = isPartyHall ? 0.18 : 0.05;
-    const gstDivisor = 1 + gstRate;
-
-    let grandTotal = 0;
-    let taxableValue = 0;
-
-    if (payTotal > 0) {
-      grandTotal = Math.max(0, payTotal + addlCharges - approvedDiscount);
-      taxableValue = Math.round(grandTotal / gstDivisor);
-    } else if (resBase > 0) {
-      const selRoom = getRoom(r.room_id);
-      const isRoomTotalInclusive = selRoom && (resBase === selRoom.total_bill || resBase > Number(selRoom.price));
-      
-      if (isRoomTotalInclusive || isPartyHall) {
-        grandTotal = Math.max(0, resBase + addlCharges - approvedDiscount);
-        taxableValue = Math.round(grandTotal / gstDivisor);
-      } else {
-        taxableValue = Math.max(0, resBase + addlCharges - approvedDiscount);
-        grandTotal = Math.round(taxableValue * (1 + gstRate));
-      }
-    }
-
-    // GST computation (18% for Party Hall = 9% CGST + 9% SGST; 5% for Rooms = 2.5% CGST + 2.5% SGST)
-    const totalGst = Math.max(0, grandTotal - taxableValue);
-    const cgst = Number((totalGst / 2).toFixed(2));
-    const sgst = Number((totalGst - cgst).toFixed(2));
-
-    const paid = Number(p?.paid_amount) || 0;
-    const balance = Math.max(0, grandTotal - paid);
-    const isPaid = balance === 0 && grandTotal > 0;
-    const isPartial = !isPaid && (p?.status === "PARTIAL" || paid > 0);
-
-    return {
-      baseAmt: taxableValue,
-      addlCharges,
-      rawTotal: grandTotal,
-      approvedDiscount,
-      taxableValue,
-      cgst,
-      sgst,
-      totalGst,
-      grandTotal,
-      paid,
-      balance,
-      isPaid,
-      isPartial,
-      payment: p,
-      isPartyHall,
-      gstRatePercent: isPartyHall ? 18 : 5,
-      cgstRatePercent: isPartyHall ? 9 : 2.5,
-      sgstRatePercent: isPartyHall ? 9 : 2.5,
-    };
+    return calculateReservationFinancials(r, payments, discounts, rooms);
   };
 
   // Filtered reservations
