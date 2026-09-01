@@ -1173,21 +1173,18 @@ export function FrontDesk() {
 
               <div className="grid gap-3 sm:grid-cols-4">
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Base Tariff (₹)</Label>
+                  <Label className="text-xs font-medium text-muted-foreground">Base Tariff (₹)</Label>
                   <Input
                     type="number"
+                    readOnly
+                    disabled
+                    className="bg-muted/60 text-muted-foreground cursor-not-allowed select-none font-medium"
                     value={b.baseAmount}
-                    onChange={(e) => {
-                      const base = parseFloat(e.target.value) || 0;
-                      const gst = Number(((base * 5) / 100).toFixed(2));
-                      const grand = base + gst;
-                      setB({ ...b, baseAmount: base, totalAmount: grand });
-                    }}
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">GST 5% (₹)</Label>
-                  <div className="h-9 px-3 py-2 rounded-md border border-input bg-muted/50 text-xs font-mono font-medium flex items-center">
+                  <Label className="text-xs font-medium text-muted-foreground">GST 5% (₹)</Label>
+                  <div className="h-9 px-3 py-2 rounded-md border border-input bg-muted/60 text-xs font-mono font-medium text-muted-foreground flex items-center select-none cursor-not-allowed">
                     +{inr(Number(((b.baseAmount * 5) / 100).toFixed(2)))}
                   </div>
                 </div>
@@ -1195,13 +1192,10 @@ export function FrontDesk() {
                   <Label className="text-xs font-bold text-foreground">Grand Total Bill (₹)</Label>
                   <Input
                     type="number"
-                    className="font-bold text-gold"
+                    readOnly
+                    disabled
+                    className="font-bold text-gold bg-muted/60 cursor-not-allowed select-none"
                     value={b.totalAmount}
-                    onChange={(e) => {
-                      const grand = parseFloat(e.target.value) || 0;
-                      const base = Math.round(grand / 1.05);
-                      setB({ ...b, totalAmount: grand, baseAmount: base });
-                    }}
                   />
                 </div>
                 <div className="space-y-1.5">
