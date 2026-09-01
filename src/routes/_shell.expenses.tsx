@@ -10,21 +10,34 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { usePms } from '@/lib/pms-store'
 import { inr } from '@/lib/pms-data'
 import { toast } from 'sonner'
-import { Receipt, Plus } from 'lucide-react'
+import { Receipt, Plus, Sparkles } from 'lucide-react'
 
 export const Route = createFileRoute('/_shell/expenses')({
   component: ExpensesPage,
 })
 
 function ExpensesPage() {
-  const { expenses, addExpense, deleteExpense, session } = usePms();
+  const { expenses, addExpense, deleteExpense, cleanDuplicateExpenses, session } = usePms();
   const isAdmin = session?.role === "SUPER_ADMIN" || session?.role === "GM" || !session;
   const [open, setOpen] = React.useState(false);
+  const [cleaning, setCleaning] = React.useState(false);
   
   const [amount, setAmount] = React.useState("");
   const [category, setCategory] = React.useState("Operational");
   const [description, setDescription] = React.useState("");
   const [expenseLoading, setExpenseLoading] = React.useState(false);
+
+  const handleCleanDuplicates = async () => {
+    if (cleaning) return;
+    setCleaning(true);
+    try {
+      const res = await cleanDuplicateExpenses();
+      if (res?.success) toast.success("Duplicate expenses cleaned successfully!");
+      else toast.error(res?.error || "Failed to clean duplicates");
+    } finally {
+      setCleaning(false);
+    }
+  };
 
   const handleExpenseSubmit = async () => {
     if (expenseLoading) return;
@@ -61,12 +74,23 @@ function ExpensesPage() {
         title="Expenses & Petty Cash" 
         subtitle="Log operational costs and daily payouts"
         actions={
-          <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-              <Button className="rounded-xl bg-brass text-gold-foreground hover:opacity-90">
-                <Plus className="size-4 mr-2" /> Log Expense
-              </Button>
-            </DialogTrigger>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              disabled={cleaning}
+              className="rounded-xl border-border bg-card/80 text-xs font-medium text-muted-foreground hover:text-foreground shadow-xs"
+              onClick={handleCleanDuplicates}
+            >
+              <Sparkles className="size-3.5 mr-1.5 text-brass" />
+              {cleaning ? "Cleaning..." : "Clean Duplicates"}
+            </Button>
+
+            <Dialog open={open} onOpenChange={setOpen}>
+              <DialogTrigger asChild>
+                <Button className="rounded-xl bg-brass text-gold-foreground hover:opacity-90">
+                  <Plus className="size-4 mr-2" /> Log Expense
+                </Button>
+              </DialogTrigger>
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Log an Expense</DialogTitle>

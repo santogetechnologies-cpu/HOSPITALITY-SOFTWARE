@@ -213,6 +213,7 @@ type Ctx = State & {
   deleteReservation: (id: string) => Promise<{ success: boolean; error?: string }>;
   deletePayment: (id: string) => Promise<{ success: boolean; error?: string }>;
   deleteExpense: (id: string) => Promise<{ success: boolean; error?: string }>;
+  cleanDuplicateExpenses: () => Promise<{ success: boolean; error?: string }>;
 
   // Room Mutators
   addRoom: (number: string, type: string, floor: string, price: number) => Promise<{ success: boolean; error?: string }>;
@@ -419,6 +420,31 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
       // Sort naturally by room number
       reconciledRooms.sort((a, b) => parseInt(a.room_number, 10) - parseInt(b.room_number, 10));
 
+      // Automatic deduplication of expenses table
+      const rawExpenses: any[] = (expenses as any) || [];
+      const seenExpKeys = new Set<string>();
+      const dedupedExpenses: any[] = [];
+      const duplicateIdsToDelete: string[] = [];
+
+      for (const e of rawExpenses) {
+        // Group by category, description, and amount for identical rapid entries
+        const key = e.category === 'Inventory / Supplies'
+          ? `${e.category}_${e.description?.trim()}_${e.amount}`
+          : (e.id || `${e.category}_${e.description?.trim()}_${e.amount}`);
+
+        if (!seenExpKeys.has(key)) {
+          seenExpKeys.add(key);
+          dedupedExpenses.push(e);
+        } else if (e.id) {
+          duplicateIdsToDelete.push(e.id);
+        }
+      }
+
+      // Background cleanup of duplicate records from Supabase
+      if (duplicateIdsToDelete.length > 0) {
+        void supabase.from('expenses').delete().in('id', duplicateIdsToDelete);
+      }
+
       setState(s => ({
         ...s,
         rooms: reconciledRooms,
@@ -426,7 +452,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         guests: loadedGuests,
         payments: loadedPayments,
         discounts: loadedDiscounts,
-        expenses: (expenses as any) || [],
+        expenses: dedupedExpenses,
         inventoryItems: (inventoryItems as any) || [],
         inventoryTransactions: (inventoryTransactions as any) || [],
         profiles: loadedProfiles,
@@ -1491,6 +1517,31 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         } catch (err: any) {
           console.error("deleteExpense error:", err);
           return { success: false, error: err.message || "Failed to delete expense" };
+        }
+      },
+
+      cleanDuplicateExpenses: async () => {
+        try {
+          const { data } = await supabase.from('expenses').select('*').order('created_at', { ascending: true });
+          if (data && data.length > 0) {
+            const seen = new Set<string>();
+            const toDelete: string[] = [];
+            for (const exp of data) {
+              const key = `${exp.category}_${exp.description?.trim()}_${exp.amount}`;
+              if (seen.has(key)) {
+                toDelete.push(exp.id);
+              } else {
+                seen.add(key);
+              }
+            }
+            if (toDelete.length > 0) {
+              await supabase.from('expenses').delete().in('id', toDelete);
+            }
+          }
+          await fetchData();
+          return { success: true };
+        } catch (err: any) {
+          return { success: false, error: err.message || "Failed to clean duplicate expenses" };
         }
       },
 
