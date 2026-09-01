@@ -419,6 +419,43 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
       // Sort naturally by room number
       reconciledRooms.sort((a, b) => parseInt(a.room_number, 10) - parseInt(b.room_number, 10));
 
+      const loadedExpenses: any[] = (expenses as any) || [];
+      const loadedTransactions: any[] = (inventoryTransactions as any) || [];
+      const loadedInvItems: any[] = (inventoryItems as any) || [];
+
+      // Auto-reconcile synced inventory purchases with expenses table
+      for (const trans of loadedTransactions) {
+        if (trans.type === 'PURCHASE' && trans.sync_to_expenses && Number(trans.total_cost) > 0) {
+          const matchingExp = loadedExpenses.find((e: any) => e.id === trans.expense_id);
+          if (!matchingExp) {
+            const expId = trans.expense_id || crypto.randomUUID();
+            const item = loadedInvItems.find((i: any) => i.id === trans.item_id);
+            const desc = `Purchased ${trans.quantity} ${item?.unit || 'units'} ${item?.name || 'Supply Item'}${trans.notes ? ` (${trans.notes})` : ' (Inventory Restock)'}`;
+            
+            void supabase.from('expenses').insert({
+              id: expId,
+              amount: trans.total_cost,
+              category: 'Inventory / Supplies',
+              description: desc,
+              recorded_by: trans.performed_by || 'Staff'
+            });
+
+            if (!trans.expense_id) {
+              void supabase.from('inventory_transactions').update({ expense_id: expId }).eq('id', trans.id);
+            }
+
+            loadedExpenses.unshift({
+              id: expId,
+              amount: trans.total_cost,
+              category: 'Inventory / Supplies',
+              description: desc,
+              recorded_by: trans.performed_by || 'Staff',
+              created_at: trans.created_at || new Date().toISOString()
+            });
+          }
+        }
+      }
+
       setState(s => ({
         ...s,
         rooms: reconciledRooms,
@@ -426,9 +463,9 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         guests: loadedGuests,
         payments: loadedPayments,
         discounts: loadedDiscounts,
-        expenses: (expenses as any) || [],
-        inventoryItems: (inventoryItems as any) || [],
-        inventoryTransactions: (inventoryTransactions as any) || [],
+        expenses: loadedExpenses,
+        inventoryItems: loadedInvItems,
+        inventoryTransactions: loadedTransactions,
         profiles: loadedProfiles,
         notifications: (notifications as any) || [],
         hkTasks: (hkTasks as any) || [],

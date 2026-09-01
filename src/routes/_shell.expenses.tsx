@@ -124,9 +124,18 @@ function ExpensesPage() {
                   {e.created_at ? new Date(e.created_at).toLocaleString() : "Just now"}
                 </TableCell>
                 <TableCell>
-                  <Pill tone="info">{e.category}</Pill>
+                  <Pill tone={e.category === "Inventory / Supplies" ? "success" : "info"}>{e.category}</Pill>
                 </TableCell>
-                <TableCell>{e.description}</TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-1.5">
+                    <span>{e.description}</span>
+                    {(e.category === "Inventory / Supplies" || e.description?.includes("Inventory") || e.description?.includes("Initial Stock")) && (
+                      <span className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded-full whitespace-nowrap">
+                        From Inventory
+                      </span>
+                    )}
+                  </div>
+                </TableCell>
                 <TableCell className="text-xs text-muted-foreground">{e.recorded_by}</TableCell>
                 <TableCell className="font-semibold text-destructive">
                   - {inr(e.amount)}
