@@ -1521,15 +1521,19 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             const totalCost = quantity * unit_cost;
 
             if (item.sync_to_expenses !== false && totalCost > 0) {
-              const { data: expData, error: expErr } = await supabase.from('expenses').insert({
+              const expId = crypto.randomUUID();
+              const { error: expErr } = await supabase.from('expenses').insert({
+                id: expId,
                 amount: totalCost,
                 category: 'Inventory / Supplies',
                 description: `Initial Stock: ${quantity} ${item.unit || 'units'} ${item.name.trim()}`,
-                recorded_by: state.session?.username || 'System'
-              }).select('id').single();
+                recorded_by: state.session?.name || state.session?.username || 'Staff'
+              });
 
-              if (!expErr && expData?.id) {
-                expenseId = expData.id;
+              if (!expErr) {
+                expenseId = expId;
+              } else {
+                console.error("Expense sync error on addInventoryItem:", expErr);
               }
             }
 
@@ -1603,18 +1607,20 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
 
           // 1. Sync to Expenses if checked
           if (syncToExpenses && totalCost > 0) {
+            const expId = crypto.randomUUID();
             const desc = `Purchased ${qty} ${item.unit || 'units'} ${item.name}${notes ? ` (${notes})` : ' (Inventory Restock)'}`;
-            const { data: expData, error: expErr } = await supabase.from('expenses').insert({
+            const { error: expErr } = await supabase.from('expenses').insert({
+              id: expId,
               amount: totalCost,
               category: expenseCategory || 'Inventory / Supplies',
               description: desc,
-              recorded_by: state.session?.username || 'Staff'
-            }).select('id').single();
+              recorded_by: state.session?.name || state.session?.username || 'Staff'
+            });
 
-            if (!expErr && expData?.id) {
-              expenseId = expData.id;
-            } else if (expErr) {
-              console.warn("Expense sync warning:", expErr);
+            if (!expErr) {
+              expenseId = expId;
+            } else {
+              console.error("Expense sync error on recordInventoryPurchase:", expErr);
             }
           }
 
