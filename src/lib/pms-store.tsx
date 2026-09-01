@@ -425,7 +425,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
       const rawExpenses: any[] = (expenses as any) || [];
       const seenExpKeys = new Set<string>();
       const dedupedExpenses: any[] = [];
-      const duplicateIdsToDelete: string[] = [];
+      const duplicateExpenseIdsToDelete: string[] = [];
 
       for (const e of rawExpenses) {
         // Group by category, description, and amount for identical rapid entries
@@ -437,13 +437,13 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
           seenExpKeys.add(key);
           dedupedExpenses.push(e);
         } else if (e.id) {
-          duplicateIdsToDelete.push(e.id);
+          duplicateExpenseIdsToDelete.push(e.id);
         }
       }
 
       // Background cleanup of duplicate records from Supabase
-      if (duplicateIdsToDelete.length > 0) {
-        void supabase.from('expenses').delete().in('id', duplicateIdsToDelete);
+      if (duplicateExpenseIdsToDelete.length > 0) {
+        void supabase.from('expenses').delete().in('id', duplicateExpenseIdsToDelete);
       }
 
       setState(s => ({
