@@ -30,6 +30,7 @@ import { Route as ShellSettingsRouteImport } from './routes/_shell.settings'
 import { Route as ShellStaffRouteImport } from './routes/_shell.staff'
 import { Route as ShellProfitsRouteImport } from './routes/_shell.profits'
 import { Route as ShellExpensesRouteImport } from './routes/_shell.expenses'
+import { Route as ShellInventoryRouteImport } from './routes/_shell.inventory'
 import { Route as ShellDiscountsRouteImport } from './routes/_shell.discounts'
 import { Route as ShellPendingPaymentsRouteImport } from './routes/_shell.pending-payments'
 import { Route as ShellPaymentHistoryRouteImport } from './routes/_shell.payment-history'
@@ -145,6 +146,11 @@ const ShellExpensesRoute = ShellExpensesRouteImport.update({
   path: '/expenses',
   getParentRoute: () => ShellRoute,
 } as any)
+const ShellInventoryRoute = ShellInventoryRouteImport.update({
+  id: '/inventory',
+  path: '/inventory',
+  getParentRoute: () => ShellRoute,
+} as any)
 const ShellDiscountsRoute = ShellDiscountsRouteImport.update({
   id: '/discounts',
   path: '/discounts',
@@ -210,6 +216,7 @@ export interface FileRoutesByFullPath {
   '/rooms': typeof ShellRoomsRoute
   '/settings': typeof ShellSettingsRoute
   '/staff': typeof ShellStaffRoute
+  '/inventory': typeof ShellInventoryRoute
   '/reservations/new': typeof ShellReservationsNewRoute
   '/reservations/': typeof ShellReservationsIndexRoute
   '/system-workflow': typeof ShellSystemWorkflowRoute
@@ -233,6 +240,7 @@ export interface FileRoutesByTo {
   '/rooms': typeof ShellRoomsRoute
   '/settings': typeof ShellSettingsRoute
   '/staff': typeof ShellStaffRoute
+  '/inventory': typeof ShellInventoryRoute
   '/reservations/new': typeof ShellReservationsNewRoute
   '/reservations': typeof ShellReservationsIndexRoute
   '/system-workflow': typeof ShellSystemWorkflowRoute
@@ -258,6 +266,7 @@ export interface FileRoutesById {
   '/_shell/rooms': typeof ShellRoomsRoute
   '/_shell/settings': typeof ShellSettingsRoute
   '/_shell/staff': typeof ShellStaffRoute
+  '/_shell/inventory': typeof ShellInventoryRoute
   '/_shell/reservations/new': typeof ShellReservationsNewRoute
   '/_shell/reservations/': typeof ShellReservationsIndexRoute
   '/_shell/system-workflow': typeof ShellSystemWorkflowRoute
@@ -283,6 +292,7 @@ export interface FileRouteTypes {
     | '/rooms'
     | '/settings'
     | '/staff'
+    | '/inventory'
     | '/reservations/new'
     | '/reservations/'
     | '/system-workflow'
@@ -306,6 +316,7 @@ export interface FileRouteTypes {
     | '/rooms'
     | '/settings'
     | '/staff'
+    | '/inventory'
     | '/reservations/new'
     | '/reservations'
     | '/system-workflow'
@@ -330,6 +341,7 @@ export interface FileRouteTypes {
     | '/_shell/rooms'
     | '/_shell/settings'
     | '/_shell/staff'
+    | '/_shell/inventory'
     | '/_shell/reservations/new'
     | '/_shell/reservations/'
   fileRoutesById: FileRoutesById
@@ -474,6 +486,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShellStaffRouteImport
       parentRoute: typeof ShellRoute
     }
+    '/_shell/inventory': {
+      id: '/_shell/inventory'
+      path: '/inventory'
+      fullPath: '/inventory'
+      preLoaderRoute: typeof ShellInventoryRouteImport
+      parentRoute: typeof ShellRoute
+    }
     '/_shell/reservations/': {
       id: '/_shell/reservations/'
       path: '/reservations'
@@ -516,6 +535,7 @@ interface ShellRouteChildren {
   ShellRoomsRoute: typeof ShellRoomsRoute
   ShellSettingsRoute: typeof ShellSettingsRoute
   ShellStaffRoute: typeof ShellStaffRoute
+  ShellInventoryRoute: typeof ShellInventoryRoute
   ShellReservationsNewRoute: typeof ShellReservationsNewRoute
   ShellReservationsIndexRoute: typeof ShellReservationsIndexRoute
   ShellSystemWorkflowRoute: typeof ShellSystemWorkflowRoute
@@ -541,6 +561,7 @@ const ShellRouteChildren: ShellRouteChildren = {
   ShellStaffRoute: ShellStaffRoute,
   ShellProfitsRoute: ShellProfitsRoute,
   ShellExpensesRoute: ShellExpensesRoute,
+  ShellInventoryRoute: ShellInventoryRoute,
   ShellDiscountsRoute: ShellDiscountsRoute,
   ShellPendingPaymentsRoute: ShellPendingPaymentsRoute,
   ShellPaymentHistoryRoute: ShellPaymentHistoryRoute,

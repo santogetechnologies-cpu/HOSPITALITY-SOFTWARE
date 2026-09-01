@@ -82,7 +82,7 @@ function ExpensesPage() {
                   <Select value={category} onValueChange={setCategory}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {["Operational", "Maintenance", "F&B Supplies", "Refund", "Other"].map((c) => (
+                      {["Operational", "Inventory / Supplies", "Maintenance", "F&B Supplies", "Refund", "Other"].map((c) => (
                         <SelectItem key={c} value={c}>{c}</SelectItem>
                       ))}
                     </SelectContent>

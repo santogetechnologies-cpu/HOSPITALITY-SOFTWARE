@@ -29,6 +29,7 @@ import {
   Network,
   Menu,
   X,
+  Boxes,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePms, type Role } from "@/lib/pms-store";
@@ -85,6 +86,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
       { to: "/payment-history", label: "Payment History", icon: Receipt, roles: ["SUPER_ADMIN", "GM"] },
       { to: "/discounts", label: "Raised Discounts", icon: TrendingUp },
       { to: "/expenses", label: "Expenses", icon: Receipt, roles: ["SUPER_ADMIN", "GM"] },
+      { to: "/inventory", label: "Inventory", icon: Boxes, roles: ["SUPER_ADMIN", "GM"] },
     ],
   },
   {
@@ -109,6 +111,7 @@ const QUICK_ACTIONS: { label: string; to: string; icon: React.ComponentType<{ cl
   { label: "Front Desk Check-In", to: "/front-desk", icon: ConciergeBell },
   { label: "Add Guest", to: "/guests", icon: Users },
   { label: "Log Expense", to: "/expenses", icon: Receipt },
+  { label: "Inventory & Supplies", to: "/inventory", icon: Boxes },
   { label: "Pending Folios", to: "/pending-payments", icon: Receipt },
   { label: "Request Discount", to: "/discounts", icon: TrendingUp },
   { label: "Book Party Hall", to: "/party-hall", icon: PartyPopper },

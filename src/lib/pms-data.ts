@@ -167,8 +167,53 @@ export type Expense = {
   created_at?: string;
 };
 
+export type InventoryItemStatus = "IN_STOCK" | "LOW_STOCK" | "OUT_OF_STOCK";
 
+export type InventoryCategory =
+  | "Linens & Bedding"
+  | "Beverages & Water"
+  | "Guest Amenities"
+  | "Housekeeping Supplies"
+  | "F&B Supplies"
+  | "Maintenance & Fixtures"
+  | "General";
 
+export type InventoryTransactionType =
+  | "PURCHASE"
+  | "DISCARD"
+  | "CONSUMED"
+  | "RETURN"
+  | "ADJUSTMENT";
+
+export type InventoryItem = {
+  id: string;
+  name: string;
+  category: string;
+  unit: string;
+  quantity: number;
+  min_threshold: number;
+  unit_cost: number;
+  location?: string;
+  status: InventoryItemStatus;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type InventoryTransaction = {
+  id: string;
+  item_id: string;
+  item_name?: string;
+  type: InventoryTransactionType;
+  quantity: number;
+  unit_price: number;
+  total_cost: number;
+  reason?: string;
+  sync_to_expenses: boolean;
+  expense_id?: string;
+  performed_by?: string;
+  notes?: string;
+  created_at?: string;
+};
 export type Profile = {
   id: string;
   name: string;

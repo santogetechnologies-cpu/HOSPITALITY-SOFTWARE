@@ -9,6 +9,9 @@ import {
   type Payment,
   type Discount,
   type Expense,
+  type InventoryItem,
+  type InventoryTransaction,
+  type InventoryTransactionType,
   type Profile,
   type HkTask,
   type Ticket,
@@ -37,6 +40,8 @@ type State = {
   payments: Payment[];
   discounts: Discount[];
   expenses: Expense[];
+  inventoryItems: InventoryItem[];
+  inventoryTransactions: InventoryTransaction[];
   profiles: Profile[];
   notifications: Notification[];
   tickets: Ticket[];
@@ -68,6 +73,8 @@ const initialState: State = {
   payments: [],
   discounts: [],
   expenses: [],
+  inventoryItems: [],
+  inventoryTransactions: [],
   profiles: [],
   notifications: [],
   tickets: [],
@@ -165,6 +172,41 @@ type Ctx = State & {
   resolveDiscount: (discountId: string, status: "APPROVED" | "REJECTED") => Promise<{ success: boolean; error?: string }>;
   addExpense: (amount: number, category: string, description: string) => Promise<{ success: boolean; error?: string }>;
   
+  // Inventory Mutators
+  addInventoryItem: (item: {
+    name: string;
+    category: string;
+    unit: string;
+    quantity: number;
+    min_threshold: number;
+    unit_cost: number;
+    location?: string;
+    sync_to_expenses?: boolean;
+    notes?: string;
+  }) => Promise<{ success: boolean; error?: string; id?: string }>;
+  updateInventoryItem: (id: string, updates: Partial<InventoryItem>) => Promise<{ success: boolean; error?: string }>;
+  deleteInventoryItem: (id: string) => Promise<{ success: boolean; error?: string }>;
+  recordInventoryPurchase: (
+    itemId: string,
+    quantity: number,
+    unitPrice: number,
+    notes?: string,
+    syncToExpenses?: boolean,
+    expenseCategory?: string
+  ) => Promise<{ success: boolean; error?: string }>;
+  recordInventoryDiscard: (
+    itemId: string,
+    quantity: number,
+    reason: string,
+    notes?: string
+  ) => Promise<{ success: boolean; error?: string }>;
+  recordInventoryUsage: (
+    itemId: string,
+    quantity: number,
+    destination?: string,
+    notes?: string
+  ) => Promise<{ success: boolean; error?: string }>;
+
   // Deletion Mutators
   deleteGuest: (id: string) => Promise<{ success: boolean; error?: string }>;
   deleteRoom: (id: string) => Promise<{ success: boolean; error?: string }>;
@@ -199,6 +241,8 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         { data: payments, error: errPayments },
         { data: discounts },
         { data: expenses },
+        { data: inventoryItems },
+        { data: inventoryTransactions },
         { data: profiles },
         { data: notifications },
         { data: hkTasks },
@@ -210,6 +254,8 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         supabase.from('payments').select('*'),
         supabase.from('discounts').select('*'),
         supabase.from('expenses').select('*'),
+        supabase.from('inventory_items').select('*'),
+        supabase.from('inventory_transactions').select('*').order('created_at', { ascending: false }),
         supabase.from('profiles').select('*'),
         supabase.from('notifications').select('*'),
         supabase.from('hk_tasks').select('*'),
@@ -381,6 +427,8 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         payments: loadedPayments,
         discounts: loadedDiscounts,
         expenses: (expenses as any) || [],
+        inventoryItems: (inventoryItems as any) || [],
+        inventoryTransactions: (inventoryTransactions as any) || [],
         profiles: loadedProfiles,
         notifications: (notifications as any) || [],
         hkTasks: (hkTasks as any) || [],
@@ -1443,6 +1491,239 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         } catch (err: any) {
           console.error("deleteExpense error:", err);
           return { success: false, error: err.message || "Failed to delete expense" };
+        }
+      },
+
+      addInventoryItem: async (item) => {
+        try {
+          const itemId = crypto.randomUUID();
+          const quantity = Number(item.quantity) || 0;
+          const min_threshold = Number(item.min_threshold) || 5;
+          const unit_cost = Number(item.unit_cost) || 0;
+          const status = quantity <= 0 ? 'OUT_OF_STOCK' : quantity <= min_threshold ? 'LOW_STOCK' : 'IN_STOCK';
+
+          const { error: itemError } = await supabase.from('inventory_items').insert({
+            id: itemId,
+            name: item.name.trim(),
+            category: item.category || 'General',
+            unit: item.unit || 'units',
+            quantity,
+            min_threshold,
+            unit_cost,
+            location: item.location || 'Main Store Room',
+            status,
+          });
+          if (itemError) throw itemError;
+
+          // If initial quantity > 0, log purchase transaction and optional synced expense
+          if (quantity > 0) {
+            let expenseId: string | undefined = undefined;
+            const totalCost = quantity * unit_cost;
+
+            if (item.sync_to_expenses !== false && totalCost > 0) {
+              expenseId = crypto.randomUUID();
+              await supabase.from('expenses').insert({
+                id: expenseId,
+                amount: totalCost,
+                category: 'Inventory / Supplies',
+                description: `Initial Stock: ${quantity} ${item.unit || 'units'} ${item.name.trim()}`,
+                recorded_by: state.session?.username || 'System'
+              });
+            }
+
+            await supabase.from('inventory_transactions').insert({
+              id: crypto.randomUUID(),
+              item_id: itemId,
+              type: 'PURCHASE',
+              quantity,
+              unit_price: unit_cost,
+              total_cost: totalCost,
+              reason: 'Initial stock setup',
+              sync_to_expenses: Boolean(expenseId),
+              expense_id: expenseId,
+              performed_by: state.session?.name || state.session?.username || 'Staff',
+              notes: item.notes || 'Initial inventory onboarding'
+            });
+          }
+
+          await fetchData();
+          return { success: true, id: itemId };
+        } catch (err: any) {
+          console.error("addInventoryItem error:", err);
+          return { success: false, error: err.message || "Failed to add inventory item" };
+        }
+      },
+
+      updateInventoryItem: async (id, updates) => {
+        try {
+          const item = state.inventoryItems.find(i => i.id === id);
+          const currentQty = updates.quantity !== undefined ? Number(updates.quantity) : (item?.quantity ?? 0);
+          const minThresh = updates.min_threshold !== undefined ? Number(updates.min_threshold) : (item?.min_threshold ?? 5);
+          const status = currentQty <= 0 ? 'OUT_OF_STOCK' : currentQty <= minThresh ? 'LOW_STOCK' : 'IN_STOCK';
+
+          const { error } = await supabase.from('inventory_items').update({
+            ...updates,
+            status,
+            updated_at: new Date().toISOString()
+          }).eq('id', id);
+          if (error) throw error;
+          await fetchData();
+          return { success: true };
+        } catch (err: any) {
+          console.error("updateInventoryItem error:", err);
+          return { success: false, error: err.message || "Failed to update inventory item" };
+        }
+      },
+
+      deleteInventoryItem: async (id) => {
+        try {
+          // Delete item (transactions will cascade or delete)
+          await supabase.from('inventory_transactions').delete().eq('item_id', id);
+          const { error } = await supabase.from('inventory_items').delete().eq('id', id);
+          if (error) throw error;
+          await fetchData();
+          return { success: true };
+        } catch (err: any) {
+          console.error("deleteInventoryItem error:", err);
+          return { success: false, error: err.message || "Failed to delete inventory item" };
+        }
+      },
+
+      recordInventoryPurchase: async (itemId, quantity, unitPrice, notes, syncToExpenses = true, expenseCategory = "Inventory / Supplies") => {
+        try {
+          const item = state.inventoryItems.find(i => i.id === itemId);
+          if (!item) return { success: false, error: "Inventory item not found" };
+
+          const qty = Number(quantity);
+          const price = Number(unitPrice);
+          const totalCost = qty * price;
+          let expenseId: string | undefined = undefined;
+
+          // 1. Sync to Expenses if checked
+          if (syncToExpenses && totalCost > 0) {
+            expenseId = crypto.randomUUID();
+            const desc = `Purchased ${qty} ${item.unit || 'units'} ${item.name}${notes ? ` (${notes})` : ' (Inventory Restock)'}`;
+            const { error: expErr } = await supabase.from('expenses').insert({
+              id: expenseId,
+              amount: totalCost,
+              category: expenseCategory || 'Inventory / Supplies',
+              description: desc,
+              recorded_by: state.session?.username || 'Staff'
+            });
+            if (expErr) console.warn("Expense sync warning:", expErr);
+          }
+
+          // 2. Insert transaction
+          const transId = crypto.randomUUID();
+          const { error: transErr } = await supabase.from('inventory_transactions').insert({
+            id: transId,
+            item_id: itemId,
+            type: 'PURCHASE',
+            quantity: qty,
+            unit_price: price,
+            total_cost: totalCost,
+            reason: 'Restock / Repurchase',
+            sync_to_expenses: Boolean(expenseId),
+            expense_id: expenseId,
+            performed_by: state.session?.name || state.session?.username || 'Staff',
+            notes: notes || 'Repurchase order'
+          });
+          if (transErr) throw transErr;
+
+          // 3. Update Item stock quantity, unit_cost & status
+          const newQty = (Number(item.quantity) || 0) + qty;
+          const status = newQty <= 0 ? 'OUT_OF_STOCK' : newQty <= item.min_threshold ? 'LOW_STOCK' : 'IN_STOCK';
+          await supabase.from('inventory_items').update({
+            quantity: newQty,
+            unit_cost: price > 0 ? price : item.unit_cost,
+            status,
+            updated_at: new Date().toISOString()
+          }).eq('id', itemId);
+
+          await fetchData();
+          return { success: true };
+        } catch (err: any) {
+          console.error("recordInventoryPurchase error:", err);
+          return { success: false, error: err.message || "Failed to record inventory purchase" };
+        }
+      },
+
+      recordInventoryDiscard: async (itemId, quantity, reason, notes) => {
+        try {
+          const item = state.inventoryItems.find(i => i.id === itemId);
+          if (!item) return { success: false, error: "Inventory item not found" };
+
+          const qty = Number(quantity);
+          if (qty <= 0) return { success: false, error: "Discard quantity must be greater than 0" };
+
+          const transId = crypto.randomUUID();
+          const { error: transErr } = await supabase.from('inventory_transactions').insert({
+            id: transId,
+            item_id: itemId,
+            type: 'DISCARD',
+            quantity: qty,
+            unit_price: item.unit_cost,
+            total_cost: qty * item.unit_cost,
+            reason: reason || 'Discarded / Damaged / Emptied',
+            sync_to_expenses: false,
+            performed_by: state.session?.name || state.session?.username || 'Staff',
+            notes: notes || 'Scrapped / Emptied from stock'
+          });
+          if (transErr) throw transErr;
+
+          // Update Item stock
+          const newQty = Math.max(0, (Number(item.quantity) || 0) - qty);
+          const status = newQty <= 0 ? 'OUT_OF_STOCK' : newQty <= item.min_threshold ? 'LOW_STOCK' : 'IN_STOCK';
+          await supabase.from('inventory_items').update({
+            quantity: newQty,
+            status,
+            updated_at: new Date().toISOString()
+          }).eq('id', itemId);
+
+          await fetchData();
+          return { success: true };
+        } catch (err: any) {
+          console.error("recordInventoryDiscard error:", err);
+          return { success: false, error: err.message || "Failed to record discard" };
+        }
+      },
+
+      recordInventoryUsage: async (itemId, quantity, destination, notes) => {
+        try {
+          const item = state.inventoryItems.find(i => i.id === itemId);
+          if (!item) return { success: false, error: "Inventory item not found" };
+
+          const qty = Number(quantity);
+          if (qty <= 0) return { success: false, error: "Usage quantity must be greater than 0" };
+
+          const transId = crypto.randomUUID();
+          const { error: transErr } = await supabase.from('inventory_transactions').insert({
+            id: transId,
+            item_id: itemId,
+            type: 'CONSUMED',
+            quantity: qty,
+            unit_price: item.unit_cost,
+            total_cost: qty * item.unit_cost,
+            reason: destination ? `Issued to ${destination}` : 'Room / Floor Consumption',
+            sync_to_expenses: false,
+            performed_by: state.session?.name || state.session?.username || 'Staff',
+            notes: notes || 'Consumed / Issued'
+          });
+          if (transErr) throw transErr;
+
+          const newQty = Math.max(0, (Number(item.quantity) || 0) - qty);
+          const status = newQty <= 0 ? 'OUT_OF_STOCK' : newQty <= item.min_threshold ? 'LOW_STOCK' : 'IN_STOCK';
+          await supabase.from('inventory_items').update({
+            quantity: newQty,
+            status,
+            updated_at: new Date().toISOString()
+          }).eq('id', itemId);
+
+          await fetchData();
+          return { success: true };
+        } catch (err: any) {
+          console.error("recordInventoryUsage error:", err);
+          return { success: false, error: err.message || "Failed to record item usage" };
         }
       },
 

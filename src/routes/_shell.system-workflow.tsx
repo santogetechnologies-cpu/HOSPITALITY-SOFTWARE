@@ -58,6 +58,7 @@ function SystemWorkflow() {
               <li>• Payments</li>
               <li>• Discounts</li>
               <li>• Expenses</li>
+              <li>• Inventory & Hotel Supplies</li>
               <li>• Party Hall Bookings</li>
               <li>• Staff Logins</li>
               <li>• Configuration</li>
@@ -286,6 +287,7 @@ function SystemWorkflow() {
                     { feature: "Approve Discount", sa: true, gm: false, fd: false },
                     { feature: "Raised Discounts (View)", sa: true, gm: true, fd: true },
                     { feature: "Expenses", sa: true, gm: true, fd: false },
+                    { feature: "Inventory & Hotel Supplies", sa: true, gm: true, fd: false },
                     { feature: "Reports", sa: true, gm: true, fd: "Limited" },
                     { feature: "Staff & Access", sa: true, gm: false, fd: false },
                     { feature: "Configuration", sa: true, gm: "Limited", fd: false },
