@@ -45,6 +45,7 @@ function GuestsPage() {
     country: "India",
     address: "",
     id_number: "",
+    gst_number: "",
     type: "Individual",
     vip: false,
     notes: ""
@@ -86,6 +87,7 @@ function GuestsPage() {
         country: form.country.trim() || "India",
         address: form.address.trim() || undefined,
         id_number: form.id_number.trim() || undefined,
+        gst_number: form.gst_number.trim().toUpperCase() || undefined,
         type: form.type,
         vip: form.vip,
         notes: form.notes.trim() || undefined,
@@ -104,6 +106,7 @@ function GuestsPage() {
           country: "India",
           address: "",
           id_number: "",
+          gst_number: "",
           type: "Individual",
           vip: false,
           notes: ""
@@ -155,12 +158,21 @@ function GuestsPage() {
       <Panel bodyClassName="p-0">
         <div className="scroll-slim overflow-x-auto">
           <Table>
-            <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Contact</TableHead><TableHead>Country</TableHead><TableHead>ID Number</TableHead><TableHead>Total Stays</TableHead><TableHead>Total Spend</TableHead><TableHead>Type</TableHead><TableHead>VIP</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Contact</TableHead><TableHead>GSTIN</TableHead><TableHead>Country</TableHead><TableHead>ID Number</TableHead><TableHead>Total Stays</TableHead><TableHead>Total Spend</TableHead><TableHead>Type</TableHead><TableHead>VIP</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
             <TableBody>
               {rows.map((g) => (
                 <TableRow key={g.id}>
                   <TableCell className="font-semibold">{g.name}</TableCell>
                   <TableCell className="text-xs">{g.phone || "—"}<br /><span className="text-muted-foreground">{g.email || ""}</span></TableCell>
+                  <TableCell>
+                    {g.gst_number ? (
+                      <span className="font-mono text-xs font-bold text-amber-700 bg-amber-50 border border-amber-300 px-1.5 py-0.5 rounded">
+                        {g.gst_number}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
                   <TableCell>{g.country || "India"}</TableCell>
                   <TableCell className="font-mono text-xs">{g.id_number || "—"}</TableCell>
                   <TableCell className="tabular-nums">{guestStats[g.id]?.stays || (g as any).stays || 0}</TableCell>
@@ -206,9 +218,14 @@ function GuestsPage() {
               </SheetHeader>
               <div className="px-4 pb-10 space-y-4 pt-4">
                 <div className="rounded-xl border border-border p-3">
-                  <div className="text-xs font-semibold uppercase text-gold">Contact Information</div>
+                  <div className="text-xs font-semibold uppercase text-gold">Contact & Tax Information</div>
                   <div className="mt-2 text-sm">{guest.email || "No email on record"}</div>
                   <div className="text-sm text-muted-foreground">{guest.phone || "No phone"}</div>
+                  {guest.gst_number && (
+                    <div className="mt-2 font-mono text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded inline-block">
+                      Customer GSTIN: {guest.gst_number}
+                    </div>
+                  )}
                   {guest.address && <div className="mt-1 text-xs text-muted-foreground">{guest.address}</div>}
                   {guest.id_number && <div className="mt-2 font-mono text-xs">ID / Proof: {guest.id_number}</div>}
                 </div>
@@ -242,10 +259,14 @@ function GuestsPage() {
                 <Input type="email" placeholder="guest@example.com" value={form.email} onChange={e => setForm({...form, email: e.target.value})} />
               </div>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-3">
               <div className="space-y-1.5">
                 <Label>ID Proof Number</Label>
                 <Input placeholder="e.g. 482910384910" value={form.id_number} onChange={e => setForm({...form, id_number: e.target.value})} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Customer GSTIN</Label>
+                <Input placeholder="e.g. 33AAAAA0000A1Z5" className="uppercase font-mono text-xs" value={form.gst_number} onChange={e => setForm({...form, gst_number: e.target.value.toUpperCase()})} />
               </div>
               <div className="space-y-1.5">
                 <Label>Country</Label>

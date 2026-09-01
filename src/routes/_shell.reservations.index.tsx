@@ -333,7 +333,14 @@ function ReservationsPage() {
                   <TableRow key={r.id}>
                     <TableCell className="font-mono text-xs font-semibold text-gold">{confNum}</TableCell>
                     <TableCell>
-                      <div className="font-medium">{guest?.name || "Guest"}</div>
+                      <div className="flex items-center gap-1.5 font-medium">
+                        <span>{guest?.name || "Guest"}</span>
+                        {(r.gst_number || guest?.gst_number) && (
+                          <span className="font-mono text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-300 px-1 py-0.5 rounded">
+                            GST: {r.gst_number || guest?.gst_number}
+                          </span>
+                        )}
+                      </div>
                       <div className="text-[11px] text-muted-foreground">{guest?.phone || "No phone"}</div>
                     </TableCell>
                     <TableCell>
@@ -346,7 +353,12 @@ function ReservationsPage() {
                       )}
                     </TableCell>
                     <TableCell className="text-xs">
-                      {startDateStr} {endDateStr ? `→ ${endDateStr}` : ''}
+                      <div>{startDateStr} {endDateStr ? `→ ${endDateStr}` : ''}</div>
+                      {r.start_time && (
+                        <div className="text-[10px] text-muted-foreground">
+                          {new Date(r.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} (24h)
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell className="font-semibold">{inr(r.base_amount || 0)}</TableCell>
                     <TableCell>

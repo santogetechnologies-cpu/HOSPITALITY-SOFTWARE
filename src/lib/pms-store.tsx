@@ -115,12 +115,15 @@ type Ctx = State & {
     email?: string;
     idType?: string;
     idNumber?: string;
+    gstNumber?: string;
     address?: string;
     country?: string;
     numberOfGuests?: number;
     roomId: string;
     startDate: string;
     endDate: string;
+    checkInTime?: string;
+    checkOutTime?: string;
     nights: number;
     baseAmount: number;
     totalAmount: number;
@@ -625,11 +628,14 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             return { success: false, error: "Check-in and check-out dates are required." };
           }
 
-          const startTs = new Date(`${b.startDate}T14:00:00`).getTime();
-          const endTs = new Date(`${b.endDate}T11:00:00`).getTime();
+          // 24-Hour Stay Check-In Model
+          const inTime = b.checkInTime || "14:00";
+          const outTime = b.checkOutTime || inTime;
+          const startTs = new Date(`${b.startDate}T${inTime}:00`).getTime();
+          const endTs = new Date(`${b.endDate}T${outTime}:00`).getTime();
 
           if (endTs <= startTs) {
-            return { success: false, error: "Check-out date must be after check-in date." };
+            return { success: false, error: "Check-out time/date must be after check-in time/date." };
           }
 
           // 1. Conflict & Overlap Check: Verify no existing active reservation conflicts with [startTs, endTs]
@@ -645,12 +651,13 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             const room = state.rooms.find((rm) => rm.id === b.roomId);
             return {
               success: false,
-              error: `Room ${room?.room_number || "selected"} is already booked for these dates (${b.startDate} to ${b.endDate}). Please select different dates or another room.`
+              error: `Room ${room?.room_number || "selected"} is already booked for these dates (${b.startDate} ${inTime} to ${b.endDate} ${outTime}). Please select different dates or another room.`
             };
           }
 
-          // 2. Lookup or Insert Guest with ID and contact metadata
+          // 2. Lookup or Insert Guest with ID, GST Number and contact metadata
           const phoneTrimmed = b.phone?.trim();
+          const gstNumClean = b.gstNumber?.trim().toUpperCase() || null;
           let guestId: string;
 
           const existingGuest = phoneTrimmed
@@ -665,46 +672,70 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             if (b.email?.trim()) updates.email = b.email.trim();
             if (b.idType) updates.id_type = b.idType;
             if (b.idNumber?.trim()) updates.id_number = b.idNumber.trim();
+            if (gstNumClean) updates.gst_number = gstNumClean;
             if (b.address?.trim()) updates.address = b.address.trim();
             if (b.country?.trim()) updates.country = b.country.trim();
             if (b.notes?.trim()) updates.notes = b.notes.trim();
 
             if (Object.keys(updates).length > 0) {
-              await supabase.from('guests').update(updates).eq('id', guestId);
+              try {
+                await supabase.from('guests').update(updates).eq('id', guestId);
+              } catch (e) {
+                console.warn("Guest update warning:", e);
+              }
             }
           } else {
             guestId = crypto.randomUUID();
-            const { error: gErr } = await supabase.from('guests').insert({
+            const guestData: any = {
               id: guestId,
               name: b.guestName.trim(),
               phone: phoneTrimmed || null,
               email: b.email?.trim() || null,
               id_type: b.idType || null,
               id_number: b.idNumber?.trim() || null,
+              gst_number: gstNumClean,
               address: b.address?.trim() || null,
               country: b.country?.trim() || 'India',
               notes: b.notes?.trim() || null
-            });
-            if (gErr) throw gErr;
+            };
+            const { error: gErr } = await supabase.from('guests').insert(guestData);
+            if (gErr) {
+              if (gErr.message?.includes('gst_number')) {
+                delete guestData.gst_number;
+                await supabase.from('guests').insert(guestData);
+              } else {
+                throw gErr;
+              }
+            }
           }
 
-          // 3. Insert Reservation with ISO start_time, end_time, and guest count
+          // 3. Insert Reservation with ISO start_time, end_time (24hr cycle), and guest count + GST number
           const resId = crypto.randomUUID();
           const totalAmt = Number(b.totalAmount) || Number(b.baseAmount) || 0;
-          const { error: rErr } = await supabase.from('reservations').insert({
+          const resData: any = {
             id: resId,
             guest_id: guestId,
             room_id: b.roomId,
             resource_type: 'ROOM',
             number_of_guests: Number(b.numberOfGuests) || 1,
             booking_date: b.startDate,
-            start_time: new Date(`${b.startDate}T14:00:00`).toISOString(),
-            end_time: new Date(`${b.endDate}T11:00:00`).toISOString(),
+            start_time: new Date(`${b.startDate}T${inTime}:00`).toISOString(),
+            end_time: new Date(`${b.endDate}T${outTime}:00`).toISOString(),
             status: 'CONFIRMED',
             base_amount: Number(b.baseAmount) || Math.round(totalAmt / 1.05),
-            notes: b.notes?.trim() || null
-          });
-          if (rErr) throw rErr;
+            notes: b.notes?.trim() || null,
+            gst_number: gstNumClean
+          };
+          const { error: rErr } = await supabase.from('reservations').insert(resData);
+          if (rErr) {
+            if (rErr.message?.includes('gst_number')) {
+              delete resData.gst_number;
+              const { error: retryErr } = await supabase.from('reservations').insert(resData);
+              if (retryErr) throw retryErr;
+            } else {
+              throw rErr;
+            }
+          }
 
           // 4. Update Room Status to BOOKED
           if (b.roomId) {
@@ -800,19 +831,26 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
           }
 
           const id = crypto.randomUUID();
-          const { error } = await supabase.from('guests').insert({ 
+          const guestObj: any = { 
             id, 
             name: g.name.trim(), 
             email: g.email?.trim() || null,
             phone: phoneTrimmed || null,
             address: g.address?.trim() || null,
             id_number: g.id_number?.trim() || null,
+            gst_number: g.gst_number?.trim().toUpperCase() || null,
             country: g.country?.trim() || 'India',
             notes: g.notes?.trim() || null
-          });
+          };
+          const { error } = await supabase.from('guests').insert(guestObj);
           if (error) {
-            console.error("addGuest error:", error);
-            return { id: '', success: false, error: error.message };
+            if (error.message?.includes('gst_number')) {
+              delete guestObj.gst_number;
+              await supabase.from('guests').insert(guestObj);
+            } else {
+              console.error("addGuest error:", error);
+              return { id: '', success: false, error: error.message };
+            }
           }
           await fetchData();
           return { id, success: true };

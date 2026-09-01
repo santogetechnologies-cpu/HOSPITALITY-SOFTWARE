@@ -112,11 +112,11 @@ export function FrontDesk() {
     return { total, paid, balance, isPaid, payment: p, approvedDiscount, hasPendingDiscount, originalAmount, discountReasons };
   };
 
-  // Helper: check if a room is overlapping with any active reservation on given dates
-  const isRoomBookedForDates = (roomId: string, startStr: string, endStr: string) => {
+  // Helper: check if a room is overlapping with any active reservation on given dates and times
+  const isRoomBookedForDates = (roomId: string, startStr: string, endStr: string, inTime: string = "14:00", outTime: string = "14:00") => {
     if (!startStr || !endStr) return false;
-    const reqStart = new Date(`${startStr}T14:00:00`).getTime();
-    const reqEnd = new Date(`${endStr}T11:00:00`).getTime();
+    const reqStart = new Date(`${startStr}T${inTime || "14:00"}:00`).getTime();
+    const reqEnd = new Date(`${endStr}T${outTime || inTime || "14:00"}:00`).getTime();
     return reservations.some((r) => {
       if (r.room_id !== roomId || r.status === "CANCELLED" || r.status === "COMPLETED") return false;
       const rStart = new Date(r.start_time || `${r.booking_date}T14:00:00`).getTime();
@@ -131,6 +131,7 @@ export function FrontDesk() {
   const tomorrowObj = new Date();
   tomorrowObj.setDate(tomorrowObj.getDate() + 1);
   const tomorrowStr = tomorrowObj.toISOString().split("T")[0];
+  const defaultCheckInTime = "14:00";
 
   const [bookingOpen, setBookingOpen] = React.useState(false);
   const [b, setB] = React.useState({
@@ -139,12 +140,15 @@ export function FrontDesk() {
     email: "",
     idType: "Aadhaar Card",
     idNumber: "",
+    gstNumber: "",
     address: "",
     country: "India",
     numberOfGuests: 1,
     roomId: "",
     startDate: todayStr,
     endDate: tomorrowStr,
+    checkInTime: defaultCheckInTime,
+    checkOutTime: defaultCheckInTime,
     nights: 1,
     baseAmount: 0,
     totalAmount: 0,
@@ -159,6 +163,22 @@ export function FrontDesk() {
     const gst = Number(((base * 5) / 100).toFixed(2));
     const grand = base + gst;
     return { baseAmount: base, gstAmount: gst, totalAmount: grand };
+  };
+
+  const handleCheckInTimeChange = (newTime: string) => {
+    // In 24-hour check-in model, check-out time defaults to the same hour/minute
+    setB((prev) => ({
+      ...prev,
+      checkInTime: newTime,
+      checkOutTime: newTime,
+    }));
+  };
+
+  const handleCheckOutTimeChange = (newTime: string) => {
+    setB((prev) => ({
+      ...prev,
+      checkOutTime: newTime,
+    }));
   };
 
   const handleStartDateChange = (newStart: string) => {
@@ -240,18 +260,19 @@ export function FrontDesk() {
     if (isNaN(paidNum) || paidNum < 0) {
       return toast.error("Please enter a valid Amount Paid / Advance (enter 0 if unpaid)");
     }
-    if (isRoomBookedForDates(b.roomId, b.startDate, b.endDate)) {
-      return toast.error("This room is already reserved for the selected dates. Please select another room.");
+    if (isRoomBookedForDates(b.roomId, b.startDate, b.endDate, b.checkInTime, b.checkOutTime)) {
+      return toast.error("This room is already reserved for the selected dates and time. Please select another room.");
     }
 
     setBookingLoading(true);
     try {
       const res = await addRoomReservation({
         ...b,
+        gstNumber: b.gstNumber.trim().toUpperCase() || undefined,
         paidAmount: paidNum,
       });
       if (res?.success) {
-        toast.success("Room booked successfully!");
+        toast.success("Room booked successfully with 24-hr check-in model!");
         setBookingOpen(false);
         setB({
           guestName: "",
@@ -259,12 +280,15 @@ export function FrontDesk() {
           email: "",
           idType: "Aadhaar Card",
           idNumber: "",
+          gstNumber: "",
           address: "",
           country: "India",
           numberOfGuests: 1,
           roomId: "",
           startDate: todayStr,
           endDate: tomorrowStr,
+          checkInTime: defaultCheckInTime,
+          checkOutTime: defaultCheckInTime,
           nights: 1,
           baseAmount: 0,
           totalAmount: 0,
@@ -900,17 +924,33 @@ export function FrontDesk() {
           <div className="space-y-5 pt-2">
             {/* Section 1: Stay & Date Selection */}
             <div className="rounded-xl border border-border p-4 space-y-3 bg-secondary/20">
-              <div className="flex items-center gap-2 text-xs font-semibold uppercase text-gold">
-                <Calendar className="size-4" /> 1. Stay Period & Room Assignment
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase text-gold">
+                  <Calendar className="size-4" /> 1. Stay Period & Room Assignment
+                </div>
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-gold/15 text-gold border border-gold/30">
+                  <Clock className="size-3.5" /> 24-Hour Stay Model Active (1 Night = 24 Hours)
+                </div>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-4">
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium">Check-In Date *</Label>
                   <Input
                     type="date"
                     value={b.startDate}
                     onChange={(e) => handleStartDateChange(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium flex items-center justify-between">
+                    <span>Check-In Time *</span>
+                    <span className="text-[10px] text-muted-foreground font-normal">24hr basis</span>
+                  </Label>
+                  <Input
+                    type="time"
+                    value={b.checkInTime}
+                    onChange={(e) => handleCheckInTimeChange(e.target.value)}
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -922,6 +962,20 @@ export function FrontDesk() {
                   />
                 </div>
                 <div className="space-y-1.5">
+                  <Label className="text-xs font-medium flex items-center justify-between">
+                    <span>Check-Out Time</span>
+                    <span className="text-[10px] text-gold font-normal">Auto 24h cycle</span>
+                  </Label>
+                  <Input
+                    type="time"
+                    value={b.checkOutTime}
+                    onChange={(e) => handleCheckOutTimeChange(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-3 pt-1">
+                <div className="space-y-1.5">
                   <Label className="text-xs font-medium">Nights Duration</Label>
                   <Input
                     type="number"
@@ -930,9 +984,6 @@ export function FrontDesk() {
                     onChange={(e) => handleNightsChange(parseInt(e.target.value) || 1)}
                   />
                 </div>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2 pt-1">
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium">Select Room Key *</Label>
                   <Select
@@ -955,7 +1006,7 @@ export function FrontDesk() {
                     </SelectTrigger>
                     <SelectContent>
                       {rooms.map((r) => {
-                        const isBooked = isRoomBookedForDates(r.id, b.startDate, b.endDate);
+                        const isBooked = isRoomBookedForDates(r.id, b.startDate, b.endDate, b.checkInTime, b.checkOutTime);
                         return (
                           <SelectItem
                             key={r.id}
@@ -985,6 +1036,15 @@ export function FrontDesk() {
                       <SelectItem value="4">4+ Guests (Family / Group)</SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 p-2.5 rounded-lg bg-background/80 border border-border/70 text-xs text-muted-foreground">
+                <Timer className="size-4 text-gold shrink-0" />
+                <div>
+                  <span className="font-semibold text-foreground">24-Hour Cycle Summary:</span> Check-in on{" "}
+                  <span className="font-semibold text-gold">{b.startDate} at {b.checkInTime || "14:00"}</span> → Valid for {b.nights} night(s) ({b.nights * 24} hours) until{" "}
+                  <span className="font-semibold text-gold">{b.endDate} at {b.checkOutTime || b.checkInTime || "14:00"}</span>.
                 </div>
               </div>
             </div>
@@ -1020,6 +1080,7 @@ export function FrontDesk() {
                           email: prev.email || matched.email || "",
                           idType: matched.id_type || prev.idType,
                           idNumber: prev.idNumber || matched.id_number || "",
+                          gstNumber: prev.gstNumber || matched.gst_number || "",
                           address: prev.address || matched.address || "",
                           country: (matched as any).country || prev.country,
                         }));
@@ -1040,7 +1101,7 @@ export function FrontDesk() {
                 </div>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-3 pt-1">
+              <div className="grid gap-3 sm:grid-cols-4 pt-1">
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium">ID Proof Type</Label>
                   <Select
@@ -1068,6 +1129,18 @@ export function FrontDesk() {
                   />
                 </div>
                 <div className="space-y-1.5">
+                  <Label className="text-xs font-medium flex items-center justify-between">
+                    <span>Customer GSTIN</span>
+                    <span className="text-[10px] text-muted-foreground font-normal">Optional B2B</span>
+                  </Label>
+                  <Input
+                    placeholder="e.g. 33AAAAA0000A1Z5"
+                    value={b.gstNumber}
+                    className="uppercase font-mono text-xs"
+                    onChange={(e) => setB({ ...b, gstNumber: e.target.value.toUpperCase() })}
+                  />
+                </div>
+                <div className="space-y-1.5">
                   <Label className="text-xs font-medium">Nationality / Country</Label>
                   <Input
                     placeholder="India"
@@ -1078,7 +1151,7 @@ export function FrontDesk() {
               </div>
 
               <div className="space-y-1.5 pt-1">
-                <Label className="text-xs font-medium">Residential Address / City</Label>
+                <Label className="text-xs font-medium">Residential Address / Company Billing Address</Label>
                 <Input
                   placeholder="e.g. #42 MG Road, Bangalore, Karnataka - 560001"
                   value={b.address}

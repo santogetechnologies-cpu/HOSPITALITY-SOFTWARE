@@ -103,10 +103,16 @@ export type Guest = {
   phone?: string;
   email?: string;
   address?: string;
+  country?: string;
   id_type?: string;
   id_number?: string;
+  gst_number?: string;
   emergency_contact?: string;
   notes?: string;
+  stays?: number;
+  spend?: number;
+  type?: string;
+  vip?: boolean;
 };
 
 export type Reservation = {
@@ -124,6 +130,7 @@ export type Reservation = {
   additional_charges: number;
   status: "PENDING" | "CONFIRMED" | "OCCUPIED" | "ONGOING" | "COMPLETED" | "CANCELLED";
   notes?: string;
+  gst_number?: string;
 
   // Relations
   guest?: Guest;

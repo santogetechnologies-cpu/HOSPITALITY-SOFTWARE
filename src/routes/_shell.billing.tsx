@@ -247,6 +247,7 @@ function BillingPage() {
       const term = searchQuery.toLowerCase().trim();
       const folioNum = `INV-${r.id.slice(0, 8).toUpperCase()}`;
       const shortId = r.id.toLowerCase();
+      const guestGstin = (r as any).gst_number || guest?.gst_number || "";
 
       return (
         r.id.toLowerCase().includes(term) ||
@@ -254,6 +255,7 @@ function BillingPage() {
         folioNum.toLowerCase().includes(term) ||
         (guest?.name && guest.name.toLowerCase().includes(term)) ||
         (guest?.phone && guest.phone.includes(term)) ||
+        (guestGstin && guestGstin.toLowerCase().includes(term)) ||
         (room?.room_number && room.room_number.toLowerCase().includes(term)) ||
         (r.event_type && r.event_type.toLowerCase().includes(term)) ||
         ((r as any).customer_name && (r as any).customer_name.toLowerCase().includes(term))
@@ -635,7 +637,14 @@ function BillingPage() {
                     </TableCell>
 
                     <TableCell>
-                      <div className="font-semibold text-sm text-foreground">{guest?.name || "Guest"}</div>
+                      <div className="flex items-center gap-1.5 font-semibold text-sm text-foreground">
+                        <span>{guest?.name || "Guest"}</span>
+                        {((r as any).gst_number || guest?.gst_number) && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                            GST: {(r as any).gst_number || guest?.gst_number}
+                          </span>
+                        )}
+                      </div>
                       <div className="text-xs text-muted-foreground">{guest?.phone || "No phone"}</div>
                     </TableCell>
 
@@ -876,6 +885,13 @@ function BillingPage() {
                       <h2 className="text-xl font-black uppercase tracking-widest text-neutral-900 border-b-2 border-neutral-900 pb-2 inline-block px-8">
                         TAX INVOICE
                       </h2>
+                      {((selectedResForBill as any).gst_number || guest?.gst_number) && (
+                        <div className="pt-1.5">
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-800 bg-emerald-50 border border-emerald-300 px-2.5 py-0.5 rounded inline-block">
+                            B2B Tax Invoice · Recipient GSTIN: {(selectedResForBill as any).gst_number || guest?.gst_number}
+                          </span>
+                        </div>
+                      )}
                     </div>
 
                     {/* Section 1: INVOICE & GUEST DETAILS */}
@@ -903,6 +919,12 @@ function BillingPage() {
                             <td className="py-1.5 px-3 font-bold border-r border-neutral-900">Guest Name</td>
                             <td className="py-1.5 px-3 font-bold">{guest?.name || "Guest"}</td>
                           </tr>
+                          {((selectedResForBill as any).gst_number || guest?.gst_number) && (
+                            <tr className="bg-amber-50/50">
+                              <td className="py-1.5 px-3 font-bold border-r border-neutral-900 text-neutral-900">Customer GSTIN</td>
+                              <td className="py-1.5 px-3 font-mono font-bold text-neutral-900">{(selectedResForBill as any).gst_number || guest?.gst_number}</td>
+                            </tr>
+                          )}
                           <tr>
                             <td className="py-1.5 px-3 font-bold border-r border-neutral-900">{fin.isPartyHall ? "Resource" : "Room No."}</td>
                             <td className="py-1.5 px-3 font-bold">{fin.isPartyHall ? "Party Hall / Banquet" : (room?.room_number || "—")}</td>

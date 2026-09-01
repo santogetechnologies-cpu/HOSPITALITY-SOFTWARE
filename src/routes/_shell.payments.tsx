@@ -222,6 +222,7 @@ function PaymentsDashboard() {
         date: resDateStr,
         guestName: guest?.name || "Guest",
         guestPhone: guest?.phone || "—",
+        guestGstin: (res as any)?.gst_number || guest?.gst_number || "",
         resourceType: isPartyHall ? "PARTY_HALL" : "ROOM",
         resourceLabel: isPartyHall ? `Party Hall (${res?.event_type || "Banquet"})` : room ? `Room ${room.room_number} (${room.room_name || "Standard"})` : "Room Stay",
         taxableBase,
@@ -339,6 +340,7 @@ function PaymentsDashboard() {
       "Date",
       "Guest Name",
       "Phone",
+      "Guest GSTIN",
       "Resource Type",
       "Resource Details",
       "Taxable Value (INR)",
@@ -357,6 +359,7 @@ function PaymentsDashboard() {
       `"${tx.date}"`,
       `"${tx.guestName.replace(/"/g, '""')}"`,
       `"${tx.guestPhone}"`,
+      `"${tx.guestGstin || "—"}"`,
       `"${tx.resourceType}"`,
       `"${tx.resourceLabel.replace(/"/g, '""')}"`,
       tx.taxableBase.toFixed(2),
@@ -394,7 +397,7 @@ function PaymentsDashboard() {
     ];
 
     const rows = transactions.map((tx) => [
-      `"Unregistered"`,
+      `"${tx.guestGstin || "Unregistered"}"`,
       `"${tx.guestName.replace(/"/g, '""')}"`,
       `"${tx.invoiceNum}"`,
       `"${tx.date}"`,
@@ -402,7 +405,7 @@ function PaymentsDashboard() {
       `"33-Tamil Nadu"`,
       `"N"`,
       `"5%"`,
-      `"Regular"`,
+      tx.guestGstin ? `"B2B Regular"` : `"Regular"`,
       `""`,
       `"5.00"`,
       tx.taxableBase.toFixed(2),

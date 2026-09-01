@@ -39,6 +39,7 @@ create table if not exists public.guests (
     address text,
     id_type text,
     id_number text,
+    gst_number text,
     last_stay date default current_date,
     stays integer default 0,
     spend numeric(10, 2) default 0,
@@ -70,11 +71,12 @@ create table if not exists public.reservations (
     number_of_guests integer default 1,
     booking_date date not null default current_date,
     start_time text default '14:00:00',
-    end_time text default '11:00:00',
+    end_time text default '14:00:00',
     base_amount numeric(10, 2) not null default 0,
     additional_charges numeric(10, 2) default 0,
     status text not null default 'CONFIRMED',
     notes text,
+    gst_number text,
     created_at timestamptz default timezone('utc'::text, now()) not null
 );
 
