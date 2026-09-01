@@ -50,15 +50,4 @@ create policy "Allow all access to inventory_items" on public.inventory_items fo
 drop policy if exists "Allow all access to inventory_transactions" on public.inventory_transactions;
 create policy "Allow all access to inventory_transactions" on public.inventory_transactions for all using (true) with check (true);
 
--- Initial Hotel Inventory Seeds
-insert into public.inventory_items (id, name, category, unit, quantity, min_threshold, unit_cost, location, status)
-values
-    ('inv-001', '20L Drinking Water Can', 'Beverages & Water', 'cans', 18, 5, 80.00, 'Reception & Floor Pantry', 'IN_STOCK'),
-    ('inv-002', 'Deluxe Microfiber Pillows', 'Linens & Bedding', 'pieces', 40, 10, 350.00, 'Linen Store Room', 'IN_STOCK'),
-    ('inv-003', 'King Size White Bedsheets (300 TC)', 'Linens & Bedding', 'pieces', 65, 15, 650.00, 'Linen Store Room', 'IN_STOCK'),
-    ('inv-004', 'Premium Cotton Bath Towels', 'Linens & Bedding', 'pieces', 50, 12, 280.00, 'Housekeeping Closet Floor 1', 'IN_STOCK'),
-    ('inv-005', 'Hotel Guest Toiletries Kit', 'Guest Amenities', 'kits', 120, 30, 45.00, 'Main Store Room', 'IN_STOCK'),
-    ('inv-006', 'Floor Cleaning Disinfectant (5L)', 'Housekeeping Supplies', 'cans', 8, 3, 420.00, 'Housekeeping Store', 'IN_STOCK'),
-    ('inv-007', 'Complimentary Tea & Coffee Sachets Box (100s)', 'Beverages & Water', 'boxes', 12, 4, 380.00, 'Kitchen Store', 'IN_STOCK'),
-    ('inv-008', 'LED Room Bulb (9W Warm White)', 'Maintenance & Fixtures', 'pieces', 24, 6, 95.00, 'Maintenance Room', 'IN_STOCK')
-on conflict (id) do nothing;
+
