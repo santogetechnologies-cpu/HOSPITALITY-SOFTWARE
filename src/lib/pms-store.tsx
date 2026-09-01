@@ -1,3 +1,4 @@
+// DRB Hospitality Management System - PMS Store & Inventory Sync v2.1
 import * as React from "react";
 import { supabase, ensureFreshSession, withAuthRetry, isJwtExpiredError } from "./supabase";
 import {
