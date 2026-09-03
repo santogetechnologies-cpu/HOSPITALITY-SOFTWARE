@@ -100,6 +100,7 @@ export type Room = {
 export type Guest = {
   id: string;
   name: string;
+  company_name?: string;
   phone?: string;
   email?: string;
   address?: string;
@@ -131,6 +132,8 @@ export type Reservation = {
   status: "PENDING" | "CONFIRMED" | "OCCUPIED" | "ONGOING" | "COMPLETED" | "CANCELLED";
   notes?: string;
   gst_number?: string;
+  company_name?: string;
+  address?: string;
 
   // Relations
   guest?: Guest;

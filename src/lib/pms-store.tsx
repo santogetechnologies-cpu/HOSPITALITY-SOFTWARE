@@ -119,6 +119,7 @@ type Ctx = State & {
   checkOut: (reservationId: string) => void;
   addRoomReservation: (booking: {
     guestName: string;
+    companyName?: string;
     phone?: string;
     email?: string;
     idType?: string;
@@ -152,7 +153,7 @@ type Ctx = State & {
   toggleRead: (id: string) => void;
   pushNotification: (n: Omit<Notification, "id" | "read" | "time">) => void;
   runNightAudit: () => void;
-  addPartyHallBooking: (b: { customerName: string; phone: string; email: string; eventType: string; guests: number; date: string; startTime: string; endTime: string; baseAmount: number; advance: number; paymentMethod?: string; }) => Promise<{ success: boolean; error?: string }>;
+  addPartyHallBooking: (b: { customerName: string; companyName?: string; phone: string; email: string; address?: string; gstNumber?: string; eventType: string; guests: number; date: string; startTime: string; endTime: string; baseAmount: number; advance: number; paymentMethod?: string; }) => Promise<{ success: boolean; error?: string }>;
   updatePartyHallBooking: (reservationId: string, updates: { customerName?: string; phone?: string; email?: string; eventType?: string; guests?: number; date?: string; startTime?: string; endTime?: string; baseAmount?: number; status?: string; }) => Promise<{ success: boolean; error?: string }>;
   addReservationExtraCharge: (reservationId: string, additionalAmount: number, reason: string, options?: { newEndTime?: string; collectedAmount?: number; paymentMethod?: "CASH" | "UPI" | "CARD" | "BANK_TRANSFER" | "OTHER" }) => Promise<{ success: boolean; error?: string }>;
   adjustRoomStay: (reservationId: string, params: {
@@ -743,9 +744,11 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             };
           }
 
-          // 2. Lookup or Insert Guest with ID, GST Number and contact metadata
+          // 2. Lookup or Insert Guest with ID, GST Number, Company Name and contact metadata
           const phoneTrimmed = b.phone?.trim();
           const gstNumClean = b.gstNumber?.trim().toUpperCase() || null;
+          const companyNameClean = b.companyName?.trim() || null;
+          const addressClean = b.address?.trim() || null;
           let guestId: string;
 
           const existingGuest = phoneTrimmed
@@ -757,17 +760,22 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             // Update existing guest details if new info provided
             const updates: any = {};
             if (b.guestName.trim()) updates.name = b.guestName.trim();
+            if (companyNameClean) updates.company_name = companyNameClean;
             if (b.email?.trim()) updates.email = b.email.trim();
             if (b.idType) updates.id_type = b.idType;
             if (b.idNumber?.trim()) updates.id_number = b.idNumber.trim();
             if (gstNumClean) updates.gst_number = gstNumClean;
-            if (b.address?.trim()) updates.address = b.address.trim();
+            if (addressClean) updates.address = addressClean;
             if (b.country?.trim()) updates.country = b.country.trim();
             if (b.notes?.trim()) updates.notes = b.notes.trim();
 
             if (Object.keys(updates).length > 0) {
               try {
-                await withAuthRetry(() => supabase.from('guests').update(updates).eq('id', guestId));
+                const { error: updErr } = await withAuthRetry(() => supabase.from('guests').update(updates).eq('id', guestId));
+                if (updErr && updErr.message?.includes('company_name')) {
+                  delete updates.company_name;
+                  await withAuthRetry(() => supabase.from('guests').update(updates).eq('id', guestId));
+                }
               } catch (e) {
                 console.warn("Guest update warning:", e);
               }
@@ -777,19 +785,21 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             const guestData: any = {
               id: guestId,
               name: b.guestName.trim(),
+              company_name: companyNameClean,
               phone: phoneTrimmed || null,
               email: b.email?.trim() || null,
               id_type: b.idType || null,
               id_number: b.idNumber?.trim() || null,
               gst_number: gstNumClean,
-              address: b.address?.trim() || null,
+              address: addressClean,
               country: b.country?.trim() || 'India',
               notes: b.notes?.trim() || null
             };
             const { error: gErr } = await withAuthRetry(() => supabase.from('guests').insert(guestData));
             if (gErr) {
-              if (gErr.message?.includes('gst_number')) {
-                delete guestData.gst_number;
+              if (gErr.message?.includes('company_name') || gErr.message?.includes('gst_number')) {
+                if (gErr.message?.includes('company_name')) delete guestData.company_name;
+                if (gErr.message?.includes('gst_number')) delete guestData.gst_number;
                 const { error: retryGErr } = await withAuthRetry(() => supabase.from('guests').insert(guestData));
                 if (retryGErr) throw retryGErr;
               } else {
@@ -798,7 +808,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             }
           }
 
-          // 3. Insert Reservation with ISO start_time, end_time (24hr cycle), and guest count + GST number
+          // 3. Insert Reservation with ISO start_time, end_time (24hr cycle), and guest count + GST number + Company + Address
           const resId = crypto.randomUUID();
           const totalAmt = Number(b.totalAmount) || Number(b.baseAmount) || 0;
           const resData: any = {
@@ -813,12 +823,16 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             status: 'CONFIRMED',
             base_amount: Number(b.baseAmount) || Math.round(totalAmt / 1.05),
             notes: b.notes?.trim() || null,
-            gst_number: gstNumClean
+            gst_number: gstNumClean,
+            company_name: companyNameClean,
+            address: addressClean
           };
           const { error: rErr } = await withAuthRetry(() => supabase.from('reservations').insert(resData));
           if (rErr) {
-            if (rErr.message?.includes('gst_number')) {
-              delete resData.gst_number;
+            if (rErr.message?.includes('company_name') || rErr.message?.includes('address') || rErr.message?.includes('gst_number')) {
+              if (rErr.message?.includes('company_name')) delete resData.company_name;
+              if (rErr.message?.includes('address')) delete resData.address;
+              if (rErr.message?.includes('gst_number')) delete resData.gst_number;
               const { error: retryErr } = await withAuthRetry(() => supabase.from('reservations').insert(resData));
               if (retryErr) throw retryErr;
             } else {
@@ -927,19 +941,27 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
           const guestObj: any = { 
             id, 
             name: g.name.trim(), 
+            company_name: (g as any).company_name?.trim() || null,
             email: g.email?.trim() || null,
             phone: phoneTrimmed || null,
             address: g.address?.trim() || null,
             id_number: g.id_number?.trim() || null,
             gst_number: g.gst_number?.trim().toUpperCase() || null,
             country: g.country?.trim() || 'India',
+            type: g.type || 'Individual',
+            vip: g.vip || false,
             notes: g.notes?.trim() || null
           };
           const { error } = await supabase.from('guests').insert(guestObj);
           if (error) {
-            if (error.message?.includes('gst_number')) {
-              delete guestObj.gst_number;
-              await supabase.from('guests').insert(guestObj);
+            if (error.message?.includes('company_name') || error.message?.includes('gst_number')) {
+              if (error.message?.includes('company_name')) delete guestObj.company_name;
+              if (error.message?.includes('gst_number')) delete guestObj.gst_number;
+              const { error: retryErr } = await supabase.from('guests').insert(guestObj);
+              if (retryErr) {
+                console.error("addGuest retry error:", retryErr);
+                return { id: '', success: false, error: retryErr.message };
+              }
             } else {
               console.error("addGuest error:", error);
               return { id: '', success: false, error: error.message };
@@ -1005,9 +1027,13 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             return { success: false, error: "Party Hall Unavailable — Overlapping booking detected for this time slot." };
           }
 
-          // 2. Lookup or Insert Guest
+          // 2. Lookup or Insert Guest with Company, GST, Address
           const phoneTrimmed = b.phone?.trim();
+          const gstNumClean = b.gstNumber?.trim().toUpperCase() || null;
+          const companyNameClean = b.companyName?.trim() || null;
+          const addressClean = b.address?.trim() || null;
           let guestId: string;
+
           const existingGuest = phoneTrimmed
             ? state.guests.find((g) => g.phone && g.phone.trim().toLowerCase() === phoneTrimmed.toLowerCase())
             : null;
@@ -1016,19 +1042,45 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             guestId = existingGuest.id;
             const updates: any = {};
             if (b.customerName?.trim()) updates.name = b.customerName.trim();
+            if (companyNameClean) updates.company_name = companyNameClean;
             if (b.email?.trim()) updates.email = b.email.trim();
+            if (gstNumClean) updates.gst_number = gstNumClean;
+            if (addressClean) updates.address = addressClean;
+
             if (Object.keys(updates).length > 0) {
-              await withAuthRetry(() => supabase.from('guests').update(updates).eq('id', guestId));
+              try {
+                const { error: updErr } = await withAuthRetry(() => supabase.from('guests').update(updates).eq('id', guestId));
+                if (updErr && updErr.message?.includes('company_name')) {
+                  delete updates.company_name;
+                  await withAuthRetry(() => supabase.from('guests').update(updates).eq('id', guestId));
+                }
+              } catch (e) {
+                console.warn("Party hall guest update warning:", e);
+              }
             }
           } else {
             guestId = crypto.randomUUID();
-            const { error: gErr } = await withAuthRetry(() => supabase.from('guests').insert({
+            const gData: any = {
               id: guestId,
               name: b.customerName.trim(),
+              company_name: companyNameClean,
               phone: phoneTrimmed || null,
-              email: b.email?.trim() || null
-            }));
-            if (gErr) throw gErr;
+              email: b.email?.trim() || null,
+              gst_number: gstNumClean,
+              address: addressClean,
+              country: 'India'
+            };
+            const { error: gErr } = await withAuthRetry(() => supabase.from('guests').insert(gData));
+            if (gErr) {
+              if (gErr.message?.includes('company_name') || gErr.message?.includes('gst_number')) {
+                if (gErr.message?.includes('company_name')) delete gData.company_name;
+                if (gErr.message?.includes('gst_number')) delete gData.gst_number;
+                const { error: retryGErr } = await withAuthRetry(() => supabase.from('guests').insert(gData));
+                if (retryGErr) throw retryGErr;
+              } else {
+                throw gErr;
+              }
+            }
           }
 
           // 3. Get Party Hall ID (assuming only one exists)
@@ -1037,7 +1089,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
 
           // 4. Create Reservation
           const resId = crypto.randomUUID();
-          const { error: rErr } = await withAuthRetry(() => supabase.from('reservations').insert({
+          const resData: any = {
             id: resId,
             guest_id: guestId,
             resource_type: 'PARTY_HALL',
@@ -1048,9 +1100,23 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             start_time: startTs,
             end_time: endTs,
             base_amount: b.baseAmount,
-            status: 'CONFIRMED'
-          }));
-          if (rErr) throw rErr;
+            status: 'CONFIRMED',
+            gst_number: gstNumClean,
+            company_name: companyNameClean,
+            address: addressClean
+          };
+          const { error: rErr } = await withAuthRetry(() => supabase.from('reservations').insert(resData));
+          if (rErr) {
+            if (rErr.message?.includes('company_name') || rErr.message?.includes('address') || rErr.message?.includes('gst_number')) {
+              if (rErr.message?.includes('company_name')) delete resData.company_name;
+              if (rErr.message?.includes('address')) delete resData.address;
+              if (rErr.message?.includes('gst_number')) delete resData.gst_number;
+              const { error: retryErr } = await withAuthRetry(() => supabase.from('reservations').insert(resData));
+              if (retryErr) throw retryErr;
+            } else {
+              throw rErr;
+            }
+          }
 
           // 5. Create Payment Record
           let method: 'CASH' | 'UPI' | 'CARD' | 'BANK_TRANSFER' | 'OTHER' = 'CASH';

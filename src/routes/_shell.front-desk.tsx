@@ -136,6 +136,7 @@ export function FrontDesk() {
   const [bookingOpen, setBookingOpen] = React.useState(false);
   const [b, setB] = React.useState({
     guestName: "",
+    companyName: "",
     phone: "",
     email: "",
     idType: "Aadhaar Card",
@@ -268,7 +269,9 @@ export function FrontDesk() {
     try {
       const res = await addRoomReservation({
         ...b,
+        companyName: b.companyName.trim() || undefined,
         gstNumber: b.gstNumber.trim().toUpperCase() || undefined,
+        address: b.address.trim() || undefined,
         paidAmount: paidNum,
       });
       if (res?.success) {
@@ -276,6 +279,7 @@ export function FrontDesk() {
         setBookingOpen(false);
         setB({
           guestName: "",
+          companyName: "",
           phone: "",
           email: "",
           idType: "Aadhaar Card",
@@ -1055,13 +1059,24 @@ export function FrontDesk() {
                 <User className="size-4" /> 2. Guest Information & ID Verification
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-4">
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium">Guest Full Name *</Label>
                   <Input
                     placeholder="e.g. Rajesh Sharma"
                     value={b.guestName}
                     onChange={(e) => setB({ ...b, guestName: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium flex items-center justify-between">
+                    <span>Company Name</span>
+                    <span className="text-[10px] text-muted-foreground font-normal">Optional B2B</span>
+                  </Label>
+                  <Input
+                    placeholder="e.g. Infosys / TCS / DRB Corp"
+                    value={b.companyName}
+                    onChange={(e) => setB({ ...b, companyName: e.target.value })}
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -1077,6 +1092,7 @@ export function FrontDesk() {
                           ...prev,
                           phone: ph,
                           guestName: prev.guestName || matched.name,
+                          companyName: prev.companyName || (matched as any).company_name || "",
                           email: prev.email || matched.email || "",
                           idType: matched.id_type || prev.idType,
                           idNumber: prev.idNumber || matched.id_number || "",

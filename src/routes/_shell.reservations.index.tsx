@@ -9,7 +9,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { EmptyState, PageHeader, Panel, Pill } from "@/components/pms/bits";
 import { usePms } from "@/lib/pms-store";
 import { inr } from "@/lib/pms-data";
-import { Search, MoreHorizontal, CalendarPlus, Layers, Ban, CheckCircle2, Trash2, CalendarDays, Calendar } from "lucide-react";
+import { Search, MoreHorizontal, CalendarPlus, Layers, Ban, CheckCircle2, Trash2, CalendarDays, Calendar, Building2 } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -111,9 +111,13 @@ function ReservationsPage() {
       const term = q.toLowerCase().trim();
       const resId = String(r.id || "");
       const rNum = String(room?.room_number || (room as any)?.number || "");
+      const guestGstin = (r as any).gst_number || guest?.gst_number || "";
+      const companyName = (r as any).company_name || (guest as any)?.company_name || "";
       return (
         resId.toLowerCase().includes(term) ||
         (guest?.name && guest.name.toLowerCase().includes(term)) ||
+        (companyName && companyName.toLowerCase().includes(term)) ||
+        (guestGstin && guestGstin.toLowerCase().includes(term)) ||
         (guest?.phone && String(guest.phone).includes(term)) ||
         rNum.toLowerCase().includes(term)
       );
@@ -333,15 +337,21 @@ function ReservationsPage() {
                   <TableRow key={r.id}>
                     <TableCell className="font-mono text-xs font-semibold text-gold">{confNum}</TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-1.5 font-medium">
-                        <span>{guest?.name || "Guest"}</span>
+                      <div className="flex items-center gap-1.5 font-medium flex-wrap">
+                        <span>{guest?.name || (r as any).customer_name || "Guest"}</span>
                         {(r.gst_number || guest?.gst_number) && (
                           <span className="font-mono text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-300 px-1 py-0.5 rounded">
                             GST: {r.gst_number || guest?.gst_number}
                           </span>
                         )}
                       </div>
-                      <div className="text-[11px] text-muted-foreground">{guest?.phone || "No phone"}</div>
+                      {((r as any).company_name || (guest as any)?.company_name) && (
+                        <div className="text-[11px] font-medium text-gold flex items-center gap-1 mt-0.5">
+                          <Building2 className="size-3" />
+                          <span>{(r as any).company_name || (guest as any)?.company_name}</span>
+                        </div>
+                      )}
+                      <div className="text-[11px] text-muted-foreground">{guest?.phone || (r as any).phone || "No phone"}</div>
                     </TableCell>
                     <TableCell>
                       {r.resource_type === 'PARTY_HALL' ? (

@@ -188,6 +188,9 @@ function PaymentsDashboard() {
       const invoiceNum = `INV-${String(res.id).slice(0, 8).toUpperCase()}`;
       const rawResId = String(res.id || "").toLowerCase();
       const rawPayId = String(p?.id || "").toLowerCase();
+      const guestGstin = (res as any)?.gst_number || guest?.gst_number || "";
+      const companyName = (res as any)?.company_name || (guest as any)?.company_name || "";
+      const guestAddress = (res as any)?.address || (guest as any)?.address || "";
 
       if (
         searchLower &&
@@ -195,6 +198,9 @@ function PaymentsDashboard() {
         !rawResId.includes(searchLower) &&
         !rawPayId.includes(searchLower) &&
         !guest?.name?.toLowerCase().includes(searchLower) &&
+        !companyName.toLowerCase().includes(searchLower) &&
+        !guestGstin.toLowerCase().includes(searchLower) &&
+        !guestAddress.toLowerCase().includes(searchLower) &&
         !guest?.phone?.includes(searchLower) &&
         !room?.room_number?.toLowerCase().includes(searchLower) &&
         !res?.event_type?.toLowerCase().includes(searchLower) &&
@@ -210,8 +216,10 @@ function PaymentsDashboard() {
         invoiceNum,
         date: resDateStr,
         guestName: guest?.name || (res as any)?.customer_name || "Guest",
+        companyName,
+        guestAddress,
         guestPhone: guest?.phone || (res as any)?.customer_phone || "—",
-        guestGstin: (res as any)?.gst_number || guest?.gst_number || "",
+        guestGstin,
         resourceType: isPartyHall ? "PARTY_HALL" : "ROOM",
         resourceLabel: isPartyHall ? `Party Hall (${res?.event_type || "Banquet"})` : room ? `Room ${room.room_number} (${room.room_name || "Standard"})` : "Room Stay",
         taxableBase: fin.taxableValue,
@@ -1001,7 +1009,20 @@ function PaymentsDashboard() {
                   </TableCell>
 
                   <TableCell>
-                    <div className="font-semibold text-sm text-foreground">{tx.guestName}</div>
+                    <div className="flex items-center gap-1.5 font-semibold text-sm text-foreground flex-wrap">
+                      <span>{tx.guestName}</span>
+                      {tx.guestGstin && (
+                        <span className="font-mono text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-300 px-1 py-0.5 rounded">
+                          GST: {tx.guestGstin}
+                        </span>
+                      )}
+                    </div>
+                    {tx.companyName && (
+                      <div className="text-xs font-medium text-gold flex items-center gap-1 mt-0.5">
+                        <Building2 className="size-3" />
+                        <span>{tx.companyName}</span>
+                      </div>
+                    )}
                     <div className="text-xs text-muted-foreground">{tx.guestPhone}</div>
                   </TableCell>
 

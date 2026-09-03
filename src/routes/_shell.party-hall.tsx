@@ -76,8 +76,11 @@ export function PartyHallPage() {
   // New Booking Form State
   const [form, setForm] = React.useState({
     customerName: "",
+    companyName: "",
     phone: "",
     email: "",
+    gstNumber: "",
+    address: "",
     eventType: "Birthday",
     guests: "50",
     date: new Date().toISOString().split("T")[0],
@@ -224,8 +227,11 @@ export function PartyHallPage() {
 
     const res = await addPartyHallBooking({
       customerName: form.customerName,
+      companyName: form.companyName.trim() || undefined,
       phone: form.phone,
       email: form.email,
+      gstNumber: form.gstNumber.trim().toUpperCase() || undefined,
+      address: form.address.trim() || undefined,
       eventType: form.eventType,
       guests: parseInt(form.guests) || 1,
       date: form.date,
@@ -243,8 +249,11 @@ export function PartyHallPage() {
       setOpen(false);
       setForm({
         customerName: "",
+        companyName: "",
         phone: "",
         email: "",
+        gstNumber: "",
+        address: "",
         eventType: "Birthday",
         guests: "50",
         date: new Date().toISOString().split("T")[0],
@@ -459,14 +468,30 @@ export function PartyHallPage() {
                   <Label>Customer Name *</Label>
                   <Input
                     required
+                    placeholder="e.g. Ramesh Patel"
                     value={form.customerName}
                     onChange={(e) => setForm({ ...form, customerName: e.target.value })}
                   />
                 </div>
                 <div className="space-y-2">
+                  <Label className="flex items-center justify-between">
+                    <span>Company Name</span>
+                    <span className="text-[10px] text-muted-foreground font-normal">Optional B2B</span>
+                  </Label>
+                  <Input
+                    placeholder="e.g. Acme Events Pvt Ltd"
+                    value={form.companyName}
+                    onChange={(e) => setForm({ ...form, companyName: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-2">
                   <Label>Phone Number *</Label>
                   <Input
                     required
+                    placeholder="+91 98765 43210"
                     value={form.phone}
                     onChange={(e) => {
                       const ph = e.target.value;
@@ -478,7 +503,10 @@ export function PartyHallPage() {
                           ...prev,
                           phone: ph,
                           customerName: prev.customerName || matched.name,
+                          companyName: prev.companyName || (matched as any).company_name || "",
                           email: prev.email || matched.email || "",
+                          gstNumber: prev.gstNumber || matched.gst_number || "",
+                          address: prev.address || matched.address || "",
                         }));
                       } else {
                         setForm((prev) => ({ ...prev, phone: ph }));
@@ -486,6 +514,36 @@ export function PartyHallPage() {
                     }}
                   />
                 </div>
+                <div className="space-y-2">
+                  <Label>Email Address</Label>
+                  <Input
+                    type="email"
+                    placeholder="client@example.com"
+                    value={form.email}
+                    onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="flex items-center justify-between">
+                    <span>Customer GSTIN</span>
+                    <span className="text-[10px] text-muted-foreground font-normal">Optional B2B</span>
+                  </Label>
+                  <Input
+                    placeholder="33AAAAA0000A1Z5"
+                    className="uppercase font-mono text-xs"
+                    value={form.gstNumber}
+                    onChange={(e) => setForm({ ...form, gstNumber: e.target.value.toUpperCase() })}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Residential Address / Company Billing Address</Label>
+                <Input
+                  placeholder="e.g. #104 Anna Salai, Chennai, Tamil Nadu - 600002"
+                  value={form.address}
+                  onChange={(e) => setForm({ ...form, address: e.target.value })}
+                />
               </div>
 
               <div className="grid grid-cols-3 gap-4">

@@ -40,6 +40,7 @@ function GuestsPage() {
   const [addOpen, setAddOpen] = React.useState(false);
   const [form, setForm] = React.useState({
     name: "",
+    company_name: "",
     email: "",
     phone: "",
     country: "India",
@@ -82,6 +83,7 @@ function GuestsPage() {
     try {
       const res = await addGuest({
         name: form.name.trim(),
+        company_name: form.company_name.trim() || undefined,
         email: form.email.trim() || undefined,
         phone: phoneTrimmed || undefined,
         country: form.country.trim() || "India",
@@ -101,6 +103,7 @@ function GuestsPage() {
         setAddOpen(false);
         setForm({
           name: "",
+          company_name: "",
           email: "",
           phone: "",
           country: "India",
@@ -119,34 +122,52 @@ function GuestsPage() {
     }
   };
 
-  const guest = guests.find((g) => g.id === openId) ?? null;
-  const rows = guests.filter((g) => (type === "all" || g.type === type) && (!q.trim() || g.name.toLowerCase().includes(q.toLowerCase()) || (g.phone && g.phone.includes(q))));
+  const rows = React.useMemo(() => {
+    return guests.filter((g) => {
+      const matchesType = type === "all" || (g.type || "Individual").toLowerCase() === type.toLowerCase();
+      const matchesQ = !q || 
+        g.name.toLowerCase().includes(q.toLowerCase()) || 
+        ((g as any).company_name && (g as any).company_name.toLowerCase().includes(q.toLowerCase())) ||
+        (g.phone && g.phone.includes(q)) || 
+        (g.email && g.email.toLowerCase().includes(q.toLowerCase())) ||
+        (g.gst_number && g.gst_number.toLowerCase().includes(q.toLowerCase())) ||
+        (g.address && g.address.toLowerCase().includes(q.toLowerCase()));
+      return matchesType && matchesQ;
+    });
+  }, [guests, type, q]);
+
+  const guest = openId ? guests.find((g) => g.id === openId) : null;
 
   return (
-    <>
-      <PageHeader eyebrow="Relationships" title="Guest Management" subtitle="Profiles, preferences and lifetime value across the property"
+    <div className="space-y-6">
+      <PageHeader
+        title="Guest CRM & Profiles"
+        subtitle="Manage guest profiles, B2B company billing info, GST numbers, contact records, and preferences."
         actions={
-          <Button className="rounded-xl bg-brass text-gold-foreground hover:opacity-90" onClick={() => setAddOpen(true)}>Add Guest</Button>
+          <Button onClick={() => setAddOpen(true)} className="bg-brass text-gold-foreground">
+            <Users className="mr-1.5 size-4" /> Add Guest Profile
+          </Button>
         }
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="Total Guests" value={String(guests.length)} icon={Users} tone="gold" hint="Unique profiles" />
-        <KpiCard label="Returning Guests" value={String(guests.filter((g) => (guestStats[g.id]?.stays || (g as any).stays || 0) > 1).length)} icon={Repeat} tone="info" />
-        <KpiCard label="VIP Guests" value={String(guests.filter((g) => g.vip).length)} icon={Crown} tone="warning" hint="Priority handling" />
-        <KpiCard label="Corporate Guests" value={String(guests.filter((g) => g.type === "Corporate").length)} icon={Building2} tone="success" hint="City ledger" />
-      </div>
-
-      <Panel bodyClassName="p-4">
-        <div className="flex flex-wrap gap-3">
-          <div className="relative min-w-[220px] flex-1">
+      <Panel bodyClassName="p-4 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="relative min-w-[260px] flex-1">
             <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input className="pl-9" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search guests by name or phone" />
+            <Input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search by Guest Name, Company, Phone, GSTIN, Address..."
+              className="pl-9"
+            />
           </div>
+
           <Select value={type} onValueChange={setType}>
-            <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="All Guest Types" />
+            </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All guest types</SelectItem>
+              <SelectItem value="all">All Guest Types</SelectItem>
               <SelectItem value="Individual">Individual</SelectItem>
               <SelectItem value="Corporate">Corporate</SelectItem>
               <SelectItem value="Travel Agent">Travel Agent</SelectItem>
@@ -158,11 +179,19 @@ function GuestsPage() {
       <Panel bodyClassName="p-0">
         <div className="scroll-slim overflow-x-auto">
           <Table>
-            <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Contact</TableHead><TableHead>GSTIN</TableHead><TableHead>Country</TableHead><TableHead>ID Number</TableHead><TableHead>Total Stays</TableHead><TableHead>Total Spend</TableHead><TableHead>Type</TableHead><TableHead>VIP</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>Name & Company</TableHead><TableHead>Contact</TableHead><TableHead>GSTIN</TableHead><TableHead>Country</TableHead><TableHead>ID Number</TableHead><TableHead>Total Stays</TableHead><TableHead>Total Spend</TableHead><TableHead>Type</TableHead><TableHead>VIP</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
             <TableBody>
               {rows.map((g) => (
                 <TableRow key={g.id}>
-                  <TableCell className="font-semibold">{g.name}</TableCell>
+                  <TableCell>
+                    <div className="font-semibold text-sm text-foreground">{g.name}</div>
+                    {(g as any).company_name && (
+                      <div className="text-xs font-medium text-gold flex items-center gap-1">
+                        <Building2 className="size-3" />
+                        <span>{(g as any).company_name}</span>
+                      </div>
+                    )}
+                  </TableCell>
                   <TableCell className="text-xs">{g.phone || "—"}<br /><span className="text-muted-foreground">{g.email || ""}</span></TableCell>
                   <TableCell>
                     {g.gst_number ? (
@@ -214,20 +243,34 @@ function GuestsPage() {
             <>
               <SheetHeader className="text-left">
                 <SheetTitle className="flex items-center gap-2 text-2xl">{guest.name}{guest.vip ? <Pill tone="gold">VIP</Pill> : null}</SheetTitle>
-                <SheetDescription>{guest.type || "Individual"} · {guest.country || "India"} · {guest.stays || 0} stays · {inr(guest.spend || 0)} lifetime</SheetDescription>
+                <SheetDescription>
+                  {(guest as any).company_name ? `${(guest as any).company_name} · ` : ""}
+                  {guest.type || "Individual"} · {guest.country || "India"} · {guest.stays || 0} stays · {inr(guest.spend || 0)} lifetime
+                </SheetDescription>
               </SheetHeader>
               <div className="px-4 pb-10 space-y-4 pt-4">
-                <div className="rounded-xl border border-border p-3">
-                  <div className="text-xs font-semibold uppercase text-gold">Contact & Tax Information</div>
-                  <div className="mt-2 text-sm">{guest.email || "No email on record"}</div>
+                <div className="rounded-xl border border-border p-3 space-y-2">
+                  <div className="text-xs font-semibold uppercase text-gold">Contact & Billing / Tax Information</div>
+                  {(guest as any).company_name && (
+                    <div className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                      <Building2 className="size-3.5 text-gold" />
+                      <span>Company: {(guest as any).company_name}</span>
+                    </div>
+                  )}
+                  <div className="text-sm">{guest.email || "No email on record"}</div>
                   <div className="text-sm text-muted-foreground">{guest.phone || "No phone"}</div>
                   {guest.gst_number && (
-                    <div className="mt-2 font-mono text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded inline-block">
+                    <div className="font-mono text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded inline-block">
                       Customer GSTIN: {guest.gst_number}
                     </div>
                   )}
-                  {guest.address && <div className="mt-1 text-xs text-muted-foreground">{guest.address}</div>}
-                  {guest.id_number && <div className="mt-2 font-mono text-xs">ID / Proof: {guest.id_number}</div>}
+                  {guest.address && (
+                    <div className="text-xs text-foreground bg-muted/30 p-2 rounded-lg border border-border">
+                      <span className="font-semibold text-muted-foreground block text-[10px] uppercase">Residential / Company Billing Address:</span>
+                      {guest.address}
+                    </div>
+                  )}
+                  {guest.id_number && <div className="font-mono text-xs">ID / Proof: {guest.id_number}</div>}
                 </div>
                 {guest.notes && (
                   <div className="rounded-xl border border-border p-3">
@@ -245,9 +288,18 @@ function GuestsPage() {
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>Add New Guest Profile</DialogTitle></DialogHeader>
           <div className="grid gap-4 py-3">
-            <div className="space-y-1.5">
-              <Label>Full Name *</Label>
-              <Input placeholder="e.g. Rajesh Sharma" value={form.name} onChange={e => setForm({...form, name: e.target.value})} />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label>Full Name *</Label>
+                <Input placeholder="e.g. Rajesh Sharma" value={form.name} onChange={e => setForm({...form, name: e.target.value})} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="flex items-center justify-between">
+                  <span>Company Name</span>
+                  <span className="text-[10px] text-muted-foreground font-normal">Optional B2B</span>
+                </Label>
+                <Input placeholder="e.g. Infosys / TCS" value={form.company_name} onChange={e => setForm({...form, company_name: e.target.value})} />
+              </div>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
@@ -265,13 +317,20 @@ function GuestsPage() {
                 <Input placeholder="e.g. 482910384910" value={form.id_number} onChange={e => setForm({...form, id_number: e.target.value})} />
               </div>
               <div className="space-y-1.5">
-                <Label>Customer GSTIN</Label>
+                <Label className="flex items-center justify-between">
+                  <span>Customer GSTIN</span>
+                  <span className="text-[10px] text-muted-foreground font-normal">B2B</span>
+                </Label>
                 <Input placeholder="e.g. 33AAAAA0000A1Z5" className="uppercase font-mono text-xs" value={form.gst_number} onChange={e => setForm({...form, gst_number: e.target.value.toUpperCase()})} />
               </div>
               <div className="space-y-1.5">
                 <Label>Country</Label>
                 <Input value={form.country} onChange={e => setForm({...form, country: e.target.value})} />
               </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Residential Address / Company Billing Address</Label>
+              <Input placeholder="e.g. #42 MG Road, Bangalore, Karnataka - 560001" value={form.address} onChange={e => setForm({...form, address: e.target.value})} />
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
@@ -291,8 +350,8 @@ function GuestsPage() {
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label>Address / Notes</Label>
-              <Input placeholder="City, State, or special requests" value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} />
+              <Label>Notes & Special Requests</Label>
+              <Input placeholder="Special preferences or notes" value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} />
             </div>
           </div>
           <div className="flex justify-end gap-2 pt-2">
@@ -303,6 +362,6 @@ function GuestsPage() {
           </div>
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   );
 }

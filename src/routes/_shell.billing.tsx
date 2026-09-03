@@ -28,6 +28,7 @@ import {
   PartyPopper,
   DollarSign,
   Download,
+  Building2,
 } from "lucide-react";
 
 export const Route = createFileRoute("/_shell/billing")({
@@ -181,12 +182,16 @@ function BillingPage() {
       const folioNum = `INV-${r.id.slice(0, 8).toUpperCase()}`;
       const shortId = r.id.toLowerCase();
       const guestGstin = (r as any).gst_number || guest?.gst_number || "";
+      const companyName = (r as any).company_name || (guest as any)?.company_name || "";
+      const guestAddress = (r as any).address || (guest as any)?.address || "";
 
       return (
         r.id.toLowerCase().includes(term) ||
         shortId.includes(term) ||
         folioNum.toLowerCase().includes(term) ||
         (guest?.name && guest.name.toLowerCase().includes(term)) ||
+        (companyName && companyName.toLowerCase().includes(term)) ||
+        (guestAddress && guestAddress.toLowerCase().includes(term)) ||
         (guest?.phone && guest.phone.includes(term)) ||
         (guestGstin && guestGstin.toLowerCase().includes(term)) ||
         (room?.room_number && room.room_number.toLowerCase().includes(term)) ||
@@ -570,15 +575,21 @@ function BillingPage() {
                     </TableCell>
 
                     <TableCell>
-                      <div className="flex items-center gap-1.5 font-semibold text-sm text-foreground">
-                        <span>{guest?.name || "Guest"}</span>
+                      <div className="flex items-center gap-1.5 font-semibold text-sm text-foreground flex-wrap">
+                        <span>{guest?.name || (r as any).customer_name || "Guest"}</span>
                         {((r as any).gst_number || guest?.gst_number) && (
                           <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-100 text-amber-900 border border-amber-300">
                             GST: {(r as any).gst_number || guest?.gst_number}
                           </span>
                         )}
                       </div>
-                      <div className="text-xs text-muted-foreground">{guest?.phone || "No phone"}</div>
+                      {((r as any).company_name || (guest as any)?.company_name) && (
+                        <div className="text-xs font-medium text-gold flex items-center gap-1 mt-0.5">
+                          <Building2 className="size-3" />
+                          <span>{(r as any).company_name || (guest as any)?.company_name}</span>
+                        </div>
+                      )}
+                      <div className="text-xs text-muted-foreground">{guest?.phone || (r as any).phone || "No phone"}</div>
                     </TableCell>
 
                     <TableCell>
@@ -818,10 +829,10 @@ function BillingPage() {
                       <h2 className="text-xl font-black uppercase tracking-widest text-neutral-900 border-b-2 border-neutral-900 pb-2 inline-block px-8">
                         TAX INVOICE
                       </h2>
-                      {((selectedResForBill as any).gst_number || guest?.gst_number) && (
+                      {(((selectedResForBill as any).gst_number || guest?.gst_number) || ((selectedResForBill as any).company_name || (guest as any)?.company_name)) && (
                         <div className="pt-1.5">
                           <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-800 bg-emerald-50 border border-emerald-300 px-2.5 py-0.5 rounded inline-block">
-                            B2B Tax Invoice · Recipient GSTIN: {(selectedResForBill as any).gst_number || guest?.gst_number}
+                            B2B Tax Invoice · {((selectedResForBill as any).company_name || (guest as any)?.company_name) ? `${(selectedResForBill as any).company_name || (guest as any)?.company_name} · ` : ""}Recipient GSTIN: {(selectedResForBill as any).gst_number || guest?.gst_number || "Unregistered"}
                           </span>
                         </div>
                       )}
@@ -850,12 +861,30 @@ function BillingPage() {
                           </tr>
                           <tr>
                             <td className="py-1.5 px-3 font-bold border-r border-neutral-900">Guest Name</td>
-                            <td className="py-1.5 px-3 font-bold">{guest?.name || "Guest"}</td>
+                            <td className="py-1.5 px-3 font-bold">{guest?.name || (selectedResForBill as any).customer_name || "Guest"}</td>
                           </tr>
+                          {((selectedResForBill as any).company_name || (guest as any)?.company_name) && (
+                            <tr className="bg-amber-50/40">
+                              <td className="py-1.5 px-3 font-bold border-r border-neutral-900 text-neutral-900">Company Name</td>
+                              <td className="py-1.5 px-3 font-bold text-neutral-900">{(selectedResForBill as any).company_name || (guest as any)?.company_name}</td>
+                            </tr>
+                          )}
                           {((selectedResForBill as any).gst_number || guest?.gst_number) && (
-                            <tr className="bg-amber-50/50">
+                            <tr className="bg-amber-50/60">
                               <td className="py-1.5 px-3 font-bold border-r border-neutral-900 text-neutral-900">Customer GSTIN</td>
                               <td className="py-1.5 px-3 font-mono font-bold text-neutral-900">{(selectedResForBill as any).gst_number || guest?.gst_number}</td>
+                            </tr>
+                          )}
+                          {((selectedResForBill as any).address || guest?.address) && (
+                            <tr>
+                              <td className="py-1.5 px-3 font-bold border-r border-neutral-900">Residential / Company Billing Address</td>
+                              <td className="py-1.5 px-3 text-neutral-900 font-medium">{(selectedResForBill as any).address || guest?.address}</td>
+                            </tr>
+                          )}
+                          {(guest?.phone || (selectedResForBill as any).phone) && (
+                            <tr>
+                              <td className="py-1.5 px-3 font-bold border-r border-neutral-900">Contact Number</td>
+                              <td className="py-1.5 px-3">{guest?.phone || (selectedResForBill as any).phone}</td>
                             </tr>
                           )}
                           <tr>
