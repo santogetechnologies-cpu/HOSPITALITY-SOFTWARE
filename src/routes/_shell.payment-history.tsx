@@ -160,6 +160,7 @@ function PaymentHistoryPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
+            {filtered.map((p) => {
               const res = getReservation(p.reservation_id);
               const guest = res ? getGuest(res.guest_id) : null;
               const room = res ? getRoom(res.room_id) : null;
