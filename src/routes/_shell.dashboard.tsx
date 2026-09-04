@@ -36,6 +36,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { usePms } from "@/lib/pms-store";
 import { inr, STATUS_META, type Room } from "@/lib/pms-data";
+import { getReservationFinancials as calculateReservationFinancials } from "@/lib/financials";
 import { toast } from "sonner";
 import { RoomDrawer } from "@/components/pms/room-drawer";
 
@@ -107,36 +108,38 @@ function Dashboard() {
     });
   }, [payments, startDate, endDate, todayStr]);
 
-  const periodRevenue = React.useMemo(() => {
-    return filteredPayments.reduce((acc, p) => {
-      const resDiscounts = (discounts || []).filter(
-        (d) =>
-          (d.reservation_id === p.reservation_id ||
-            d.reservation_id?.toLowerCase() === p.reservation_id?.toLowerCase()) &&
-          d.status === "APPROVED"
-      );
-      const approvedDisc = resDiscounts.reduce((sum, d) => sum + (Number(d.requested_amount) || 0), 0);
-      const res = reservations.find(
-        (r) => r.id === p.reservation_id || r.id?.toLowerCase() === p.reservation_id?.toLowerCase()
-      );
-      const orig = Number(res?.base_amount) || Number(p.total_amount) || 0;
-      if (approvedDisc > 0 && approvedDisc >= orig && orig > 0) {
-        // 100% complimentary discount - no cash revenue collected
-        return acc;
-      }
-      return acc + (Number(p.paid_amount) || 0);
-    }, 0);
-  }, [filteredPayments, discounts, reservations]);
+  const periodFilteredReservations = React.useMemo(() => {
+    return reservations.filter((r) => {
+      const rDateStr = r.booking_date || (r.start_time ? r.start_time.split("T")[0] : todayStr);
+      const rDate = new Date(`${rDateStr}T00:00:00`);
+      return rDate >= startDate && rDate <= endDate;
+    });
+  }, [reservations, startDate, endDate, todayStr]);
 
-  const periodDiscounts = React.useMemo(() => {
-    return (discounts || [])
-      .filter((d) => {
-        if (d.status !== "APPROVED") return false;
-        const dDate = new Date(d.created_at || (d as any).date || todayStr);
-        return dDate >= startDate && dDate <= endDate;
-      })
-      .reduce((sum, d) => sum + (Number(d.requested_amount) || 0), 0);
-  }, [discounts, startDate, endDate, todayStr]);
+  const periodFinancials = React.useMemo(() => {
+    let totalInflow = 0;
+    let totalDiscounts = 0;
+    const processedResIds = new Set<string>();
+
+    periodFilteredReservations.forEach((r) => {
+      processedResIds.add(r.id.toLowerCase());
+      const fin = calculateReservationFinancials(r, payments, discounts, rooms);
+      totalInflow += fin.paid;
+      if (fin.approvedDiscount > 0) {
+        totalDiscounts += fin.approvedDiscount;
+      }
+    });
+
+    filteredPayments.forEach((p) => {
+      if (p.reservation_id && processedResIds.has(p.reservation_id.toLowerCase())) return;
+      totalInflow += (Number(p.paid_amount) || 0);
+    });
+
+    return { totalInflow, totalDiscounts };
+  }, [periodFilteredReservations, filteredPayments, payments, discounts, rooms]);
+
+  const periodRevenue = periodFinancials.totalInflow;
+  const periodDiscounts = periodFinancials.totalDiscounts;
 
   // Payment Breakdown by Method for GM and Front Desk
   const paymentBreakdown = React.useMemo(() => {
@@ -146,10 +149,12 @@ function Dashboard() {
     let bankTransfer = { total: 0, count: 0 };
     let other = { total: 0, count: 0 };
 
-    filteredPayments.forEach((p) => {
-      const amt = Number(p.paid_amount) || 0;
+    periodFilteredReservations.forEach((r) => {
+      const fin = calculateReservationFinancials(r, payments, discounts, rooms);
+      const amt = fin.paid;
       if (amt <= 0) return;
-      const method = String(p.payment_method || "CASH").toUpperCase();
+      const p = fin.payment;
+      const method = String(p?.payment_method || "CASH").toUpperCase();
 
       if (method.includes("UPI") || method.includes("GPAY") || method.includes("PHONEPE") || method.includes("QR") || method.includes("PAYTM")) {
         upi.total += amt;
@@ -179,7 +184,7 @@ function Dashboard() {
       other,
       grandTotal,
     };
-  }, [filteredPayments]);
+  }, [periodFilteredReservations, payments, discounts, rooms]);
 
   const pendingPayments = React.useMemo(() => {
     return payments.filter((p) => {

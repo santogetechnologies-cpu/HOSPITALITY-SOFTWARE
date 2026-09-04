@@ -38,7 +38,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { usePms } from "@/lib/pms-store";
 import { inr } from "@/lib/pms-data";
-import { getApprovedDiscount } from "@/lib/financials";
+import { getReservationFinancials as calculateReservationFinancials } from "@/lib/financials";
 
 export const Route = createFileRoute("/_shell/profits")({
   head: () => ({
@@ -58,7 +58,7 @@ export const Route = createFileRoute("/_shell/profits")({
 type Timeframe = "1D" | "1W" | "1M" | "CUSTOM";
 
 function ProfitsPage() {
-  const { payments, expenses, reservations, discounts, session } = usePms();
+  const { payments, expenses, reservations, discounts, rooms, session } = usePms();
   const navigate = useNavigate();
 
   const isSuperAdmin = session?.role === "SUPER_ADMIN" || !session;
@@ -114,26 +114,62 @@ function ProfitsPage() {
     });
   }, [payments, startDate, endDate, todayStr]);
 
-  const totalGrossRevenue = React.useMemo(() => {
-    return filteredPayments.reduce((acc, p) => {
-      const resDiscounts = (discounts || []).filter(
-        (d) =>
-          (d.reservation_id === p.reservation_id ||
-            d.reservation_id?.toLowerCase() === p.reservation_id?.toLowerCase()) &&
-          d.status === "APPROVED"
-      );
-      const approvedDisc = resDiscounts.reduce((sum, d) => sum + (Number(d.requested_amount) || 0), 0);
-      const res = reservations.find(
-        (r) => r.id === p.reservation_id || r.id?.toLowerCase() === p.reservation_id?.toLowerCase()
-      );
-      const orig = Number(res?.base_amount) || Number(p.total_amount) || 0;
-      if (approvedDisc > 0 && approvedDisc >= orig && orig > 0) {
-        // 100% complimentary discount - no cash revenue collected
-        return acc;
+  // Filtered Reservations for timeframe
+  const filteredReservations = React.useMemo(() => {
+    return reservations.filter((r) => {
+      const rDateStr = r.booking_date || (r.start_time ? r.start_time.split("T")[0] : todayStr);
+      const rDate = new Date(`${rDateStr}T00:00:00`);
+      return rDate >= startDate && rDate <= endDate;
+    });
+  }, [reservations, startDate, endDate, todayStr]);
+
+  // Filtered Financial Inflow & Breakdown matching canonical calculation
+  const financials = React.useMemo(() => {
+    let totalInflow = 0;
+    let totalDiscountAmt = 0;
+    let discountFolioCount = 0;
+    let roomInflow = 0;
+    let hallInflow = 0;
+    const processedResIds = new Set<string>();
+
+    filteredReservations.forEach((r) => {
+      processedResIds.add(r.id.toLowerCase());
+      const fin = calculateReservationFinancials(r, payments, discounts, rooms);
+      totalInflow += fin.paid;
+      if (fin.approvedDiscount > 0) {
+        totalDiscountAmt += fin.approvedDiscount;
+        discountFolioCount++;
       }
-      return acc + (Number(p.paid_amount) || 0);
-    }, 0);
-  }, [filteredPayments, discounts, reservations]);
+      if (fin.isPartyHall) {
+        hallInflow += fin.paid;
+      } else {
+        roomInflow += fin.paid;
+      }
+    });
+
+    // Also include standalone payment records within timeframe
+    filteredPayments.forEach((p) => {
+      if (p.reservation_id && processedResIds.has(p.reservation_id.toLowerCase())) return;
+      const paid = Number(p.paid_amount) || 0;
+      totalInflow += paid;
+      roomInflow += paid;
+    });
+
+    return {
+      totalInflow,
+      totalDiscountAmt,
+      discountFolioCount,
+      roomInflow,
+      hallInflow,
+    };
+  }, [filteredReservations, filteredPayments, payments, discounts, rooms]);
+
+  const totalGrossRevenue = financials.totalInflow;
+  const totalDiscounts = financials.totalDiscountAmt;
+  const discountCount = financials.discountFolioCount;
+  const roomRevenue = financials.roomInflow;
+  const hallRevenue = financials.hallInflow;
+  const otherRevenue = Math.max(0, totalGrossRevenue - roomRevenue - hallRevenue);
 
   // Filtered Expenses from Supabase
   const filteredExpenses = React.useMemo(() => {
@@ -166,53 +202,6 @@ function ProfitsPage() {
     return Object.entries(cats).map(([name, value]) => ({ name, value }));
   }, [filteredExpenses]);
 
-  // Filtered Discounts in timeframe
-  const totalDiscounts = React.useMemo(() => {
-    return discounts
-      .filter((d) => {
-        if (d.status !== "APPROVED") return false;
-        const dDate = new Date(d.created_at || (d as any).date || todayStr);
-        return dDate >= startDate && dDate <= endDate;
-      })
-      .reduce((sum, d) => sum + (Number(d.requested_amount) || 0), 0);
-  }, [discounts, startDate, endDate, todayStr]);
-
-  const discountCount = React.useMemo(() => {
-    return discounts.filter((d) => {
-      if (d.status !== "APPROVED") return false;
-      const dDate = new Date(d.created_at || (d as any).date || todayStr);
-      return dDate >= startDate && dDate <= endDate;
-    }).length;
-  }, [discounts, startDate, endDate, todayStr]);
-
-  // Filtered Reservations for Revenue Split
-  const filteredReservations = React.useMemo(() => {
-    return reservations.filter((r) => {
-      const rDate = new Date(r.start_time || `${r.booking_date}T00:00:00`);
-      return rDate >= startDate && rDate <= endDate;
-    });
-  }, [reservations, startDate, endDate]);
-
-  const roomRevenue = React.useMemo(() => {
-    return filteredReservations
-      .filter((r) => r.resource_type === "ROOM")
-      .reduce((acc, r) => {
-        const p = payments.find((pay) => pay.reservation_id === r.id);
-        return acc + (Number(p?.paid_amount) || 0);
-      }, 0) || (totalGrossRevenue > 0 ? Math.round(totalGrossRevenue * 0.8) : 0);
-  }, [filteredReservations, payments, totalGrossRevenue]);
-
-  const hallRevenue = React.useMemo(() => {
-    return filteredReservations
-      .filter((r) => r.resource_type === "PARTY_HALL")
-      .reduce((acc, r) => {
-        const p = payments.find((pay) => pay.reservation_id === r.id);
-        return acc + (Number(p?.paid_amount) || 0);
-      }, 0);
-  }, [filteredReservations, payments]);
-
-  const otherRevenue = Math.max(0, totalGrossRevenue - roomRevenue - hallRevenue);
-
   // Payment Breakdown by Inflow Channel
   const paymentMethodSummary = React.useMemo(() => {
     const summary: Record<string, { total: number; count: number }> = {
@@ -222,10 +211,12 @@ function ProfitsPage() {
       "Bank Transfers / Other": { total: 0, count: 0 },
     };
 
-    filteredPayments.forEach((p) => {
-      const amt = Number(p.paid_amount) || 0;
+    filteredReservations.forEach((r) => {
+      const fin = calculateReservationFinancials(r, payments, discounts, rooms);
+      const amt = fin.paid;
       if (amt <= 0) return;
-      const method = String(p.payment_method || "CASH").toUpperCase();
+      const p = fin.payment;
+      const method = String(p?.payment_method || "CASH").toUpperCase();
       if (method.includes("UPI") || method.includes("GPAY") || method.includes("PHONEPE") || method.includes("QR") || method.includes("PAYTM")) {
         summary["UPI / QR Codes"].total += amt;
         summary["UPI / QR Codes"].count += 1;
@@ -246,7 +237,7 @@ function ProfitsPage() {
       value: data.total,
       count: data.count,
     }));
-  }, [filteredPayments]);
+  }, [filteredReservations, payments, discounts, rooms]);
 
   // Daily Trend Data with EXACT Calendar Dates (No Mock Day 1..Day 7)
   const dailyFinancialTrend = React.useMemo(() => {
@@ -257,18 +248,21 @@ function ProfitsPage() {
     let count = 0;
     while (curr <= end && count <= 31) {
       const dStr = curr.toISOString().split("T")[0];
-      const dLabel = curr.toLocaleDateString("en-IN", { month: "short", day: "numeric" });
+      const dShort = curr.toLocaleDateString("en-IN", { month: "short", day: "numeric" });
 
-      const dayRev = payments
-        .filter((p) => (p.created_at || (p as any).date || todayStr).startsWith(dStr))
-        .reduce((sum, p) => sum + (Number(p.paid_amount) || 0), 0);
+      const dayRev = filteredReservations
+        .filter((r) => (r.booking_date || (r.start_time ? r.start_time.split("T")[0] : todayStr)).startsWith(dStr))
+        .reduce((sum, r) => {
+          const fin = calculateReservationFinancials(r, payments, discounts, rooms);
+          return sum + fin.paid;
+        }, 0);
 
       const dayExp = expenses
-        .filter((e) => (e.created_at || (e as any).date || todayStr).startsWith(dStr))
-        .reduce((sum, e) => sum + Number(e.amount || 0), 0);
+        .filter((e) => (e.date || (e as any).created_at || todayStr).startsWith(dStr))
+        .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
 
       points.push({
-        day: dLabel,
+        day: dShort,
         dateStr: dStr,
         revenue: dayRev,
         expense: dayExp,
@@ -278,9 +272,8 @@ function ProfitsPage() {
       curr.setDate(curr.getDate() + 1);
       count++;
     }
-
     return points;
-  }, [startDate, endDate, payments, expenses, todayStr]);
+  }, [startDate, endDate, filteredReservations, payments, discounts, rooms, expenses, todayStr]);
 
   const handlePrint = () => {
     window.print();

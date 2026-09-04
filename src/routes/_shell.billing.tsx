@@ -29,6 +29,7 @@ import {
   DollarSign,
   Download,
   Building2,
+  Percent,
 } from "lucide-react";
 
 export const Route = createFileRoute("/_shell/billing")({

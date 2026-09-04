@@ -50,7 +50,18 @@ function PaymentHistoryPage() {
     return p.status === 'PARTIAL' || paid > 0;
   };
 
-  const totalCollected = payments.reduce((acc, p) => acc + (Number(p.paid_amount) || 0), 0);
+  const totalCollected = payments.reduce((acc, p) => {
+    const res = getReservation(p.reservation_id);
+    const approvedDiscount = getApprovedDiscount(p.reservation_id);
+    const originalAmount = Number(res?.base_amount) || Number(p.total_amount) || 0;
+    let total = Number(p.total_amount) || originalAmount;
+    if (approvedDiscount > 0 && total >= originalAmount && originalAmount >= approvedDiscount) {
+      total = Math.max(0, originalAmount - approvedDiscount);
+    }
+    const isComplimentary = approvedDiscount > 0 && total === 0;
+    if (isComplimentary) return acc;
+    return acc + Math.min(Number(p.paid_amount) || 0, total > 0 ? total : Number(p.paid_amount) || 0);
+  }, 0);
   const completedPayments = payments.filter(isPaymentCompleted);
   const partialPayments = payments.filter(isPaymentPartial);
 
@@ -170,9 +181,10 @@ function PaymentHistoryPage() {
               if (approvedDiscount > 0 && total >= originalAmount && originalAmount >= approvedDiscount) {
                 total = Math.max(0, originalAmount - approvedDiscount);
               }
-              const paid = Number(p.paid_amount) || 0;
-              const balance = Math.max(0, total - paid);
               const isComplimentary = approvedDiscount > 0 && total === 0;
+              const rawPaid = Number(p.paid_amount) || 0;
+              const paid = isComplimentary ? 0 : Math.min(rawPaid, total > 0 ? total : rawPaid);
+              const balance = Math.max(0, total - paid);
               const isSettled = isComplimentary || (balance === 0 && total > 0) || p.status === 'COMPLETED';
               const folioId = String(p.id || 'FOLIO').slice(0, 10).toUpperCase();
 

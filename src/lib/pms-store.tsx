@@ -278,17 +278,27 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
       loadedPayments.forEach((pay: any) => {
         const res = loadedReservations.find((r: any) => r.id === pay.reservation_id || r.id?.toLowerCase() === pay.reservation_id?.toLowerCase());
         const approvedDisc = loadedDiscounts
-          .filter((d: any) => (d.reservation_id === pay.reservation_id || d.reservation_id?.toLowerCase() === pay.reservation_id?.toLowerCase()) && d.status === 'APPROVED')
+          .filter((d: any) => (d.reservation_id === pay.reservation_id || d.reservation_id?.toLowerCase() === pay.reservation_id?.toLowerCase() || (res && d.reservation_id === res.id)) && d.status === 'APPROVED')
           .reduce((sum: number, d: any) => sum + (Number(d.requested_amount) || 0), 0);
         
         const originalAmount = Number(res?.base_amount) || Number(pay.total_amount) || 0;
         let effectiveTotal = Number(pay.total_amount) || originalAmount;
-        if (approvedDisc > 0 && effectiveTotal >= originalAmount && originalAmount >= approvedDisc) {
+        if (approvedDisc > 0 && (effectiveTotal >= originalAmount || effectiveTotal === 0) && originalAmount >= approvedDisc) {
           effectiveTotal = Math.max(0, originalAmount - approvedDisc);
         }
 
+        const isComplimentary = effectiveTotal === 0 && approvedDisc > 0;
+        if (isComplimentary) {
+          if (Number(pay.paid_amount) > 0 || Number(pay.total_amount) > 0 || pay.status !== 'COMPLETED') {
+            pay.paid_amount = 0;
+            pay.total_amount = 0;
+            pay.status = 'COMPLETED';
+            void supabase.from('payments').update({ paid_amount: 0, total_amount: 0, status: 'COMPLETED' }).eq('id', pay.id);
+          }
+        }
+
         const paid = Number(pay.paid_amount) || 0;
-        const isSettled = (paid >= effectiveTotal && effectiveTotal > 0) || (effectiveTotal === 0 && approvedDisc > 0);
+        const isSettled = (paid >= effectiveTotal && effectiveTotal > 0) || isComplimentary;
         if (isSettled && pay.status !== 'COMPLETED') {
           pay.status = 'COMPLETED';
           void supabase.from('payments').update({ status: 'COMPLETED' }).eq('id', pay.id);
