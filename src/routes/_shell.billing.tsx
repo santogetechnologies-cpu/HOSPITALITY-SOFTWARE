@@ -203,6 +203,7 @@ function BillingPage() {
 
   const kpiData = React.useMemo(() => {
     let totalBilled = 0;
+    let totalDiscounts = 0;
     let totalCollected = 0;
     let totalOutstanding = 0;
     let settledCount = 0;
@@ -212,6 +213,7 @@ function BillingPage() {
     filteredReservations.forEach((r) => {
       const fin = getReservationFinancials(r);
       totalBilled += fin.grandTotal;
+      totalDiscounts += fin.approvedDiscount;
       totalCollected += fin.paid;
       totalOutstanding += fin.balance;
       if (fin.isPaid) settledCount++;
@@ -219,13 +221,20 @@ function BillingPage() {
       else pendingCount++;
     });
 
+    const totalEffectiveReceivable = totalBilled;
+    const settlementRate = totalEffectiveReceivable > 0 
+      ? Math.min(100, Math.round((totalCollected / totalEffectiveReceivable) * 100)) 
+      : 100;
+
     return {
       totalBilled,
+      totalDiscounts,
       totalCollected,
       totalOutstanding,
       settledCount,
       advanceCount,
       pendingCount,
+      settlementRate,
     };
   }, [filteredReservations]);
 
@@ -473,13 +482,20 @@ function BillingPage() {
       </Panel>
 
       {/* Main KPI Row */}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <KpiCard
           label={`Total Billed Amount (${dateRangeLabel})`}
           value={inr(kpiData.totalBilled)}
           icon={Receipt}
           tone="gold"
           hint={`${filteredReservations.length} total folios generated`}
+        />
+        <KpiCard
+          label="Discounts & Concessions"
+          value={inr(kpiData.totalDiscounts)}
+          icon={Percent}
+          tone="gold"
+          hint="Total concessions granted"
         />
         <KpiCard
           label="Total Collected (Inflow)"
@@ -497,10 +513,10 @@ function BillingPage() {
         />
         <KpiCard
           label="Settlement Rate"
-          value={kpiData.totalBilled > 0 ? `${Math.round((kpiData.totalCollected / kpiData.totalBilled) * 100)}%` : "100%"}
+          value={`${kpiData.settlementRate}%`}
           icon={DollarSign}
           tone="info"
-          hint="Collected vs Total Billed"
+          hint="Collected vs Net Billed"
         />
       </div>
 

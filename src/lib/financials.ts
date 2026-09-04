@@ -128,11 +128,14 @@ export function getReservationFinancials(
   const cgst = Number((totalGst / 2).toFixed(2));
   const sgst = Number((totalGst - cgst).toFixed(2));
 
-  const paid = Number(p?.paid_amount) || 0;
-  const balance = Math.max(0, grandTotal - paid);
-
   const isComplimentary = approvedDiscount > 0 && grandTotal === 0;
   const isDiscounted = approvedDiscount > 0;
+
+  // Realized paid cash/UPI inflow: on 100% complimentary stays, no cash was received
+  const rawPaid = Number(p?.paid_amount) || 0;
+  const paid = isComplimentary ? 0 : Math.min(rawPaid, grandTotal > 0 ? grandTotal : rawPaid);
+  const balance = Math.max(0, grandTotal - paid);
+
   const isPaid = (balance === 0 && (grandTotal > 0 || isComplimentary)) || (paid >= grandTotal && grandTotal > 0);
   const isPartial = !isPaid && (p?.status === "PARTIAL" || paid > 0);
 

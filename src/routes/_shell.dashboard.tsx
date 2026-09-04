@@ -108,8 +108,25 @@ function Dashboard() {
   }, [payments, startDate, endDate, todayStr]);
 
   const periodRevenue = React.useMemo(() => {
-    return filteredPayments.reduce((acc, p) => acc + (Number(p.paid_amount) || 0), 0);
-  }, [filteredPayments]);
+    return filteredPayments.reduce((acc, p) => {
+      const resDiscounts = (discounts || []).filter(
+        (d) =>
+          (d.reservation_id === p.reservation_id ||
+            d.reservation_id?.toLowerCase() === p.reservation_id?.toLowerCase()) &&
+          d.status === "APPROVED"
+      );
+      const approvedDisc = resDiscounts.reduce((sum, d) => sum + (Number(d.requested_amount) || 0), 0);
+      const res = reservations.find(
+        (r) => r.id === p.reservation_id || r.id?.toLowerCase() === p.reservation_id?.toLowerCase()
+      );
+      const orig = Number(res?.base_amount) || Number(p.total_amount) || 0;
+      if (approvedDisc > 0 && approvedDisc >= orig && orig > 0) {
+        // 100% complimentary discount - no cash revenue collected
+        return acc;
+      }
+      return acc + (Number(p.paid_amount) || 0);
+    }, 0);
+  }, [filteredPayments, discounts, reservations]);
 
   const periodDiscounts = React.useMemo(() => {
     return (discounts || [])
