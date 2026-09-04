@@ -38,6 +38,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { usePms } from "@/lib/pms-store";
 import { inr } from "@/lib/pms-data";
+import { getApprovedDiscount } from "@/lib/financials";
 
 export const Route = createFileRoute("/_shell/profits")({
   head: () => ({
@@ -148,6 +149,25 @@ function ProfitsPage() {
     return Object.entries(cats).map(([name, value]) => ({ name, value }));
   }, [filteredExpenses]);
 
+  // Filtered Discounts in timeframe
+  const totalDiscounts = React.useMemo(() => {
+    return discounts
+      .filter((d) => {
+        if (d.status !== "APPROVED") return false;
+        const dDate = new Date(d.created_at || (d as any).date || todayStr);
+        return dDate >= startDate && dDate <= endDate;
+      })
+      .reduce((sum, d) => sum + (Number(d.requested_amount) || 0), 0);
+  }, [discounts, startDate, endDate, todayStr]);
+
+  const discountCount = React.useMemo(() => {
+    return discounts.filter((d) => {
+      if (d.status !== "APPROVED") return false;
+      const dDate = new Date(d.created_at || (d as any).date || todayStr);
+      return dDate >= startDate && dDate <= endDate;
+    }).length;
+  }, [discounts, startDate, endDate, todayStr]);
+
   // Filtered Reservations for Revenue Split
   const filteredReservations = React.useMemo(() => {
     return reservations.filter((r) => {
@@ -170,7 +190,7 @@ function ProfitsPage() {
       .filter((r) => r.resource_type === "PARTY_HALL")
       .reduce((acc, r) => {
         const p = payments.find((pay) => pay.reservation_id === r.id);
-        return acc + (Number(p?.paid_amount) || Number(r.base_amount) || 0);
+        return acc + (Number(p?.paid_amount) || 0);
       }, 0);
   }, [filteredReservations, payments]);
 
@@ -354,13 +374,20 @@ function ProfitsPage() {
       </Panel>
 
       {/* KPI Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <KpiCard
-          label={`Gross Revenue (${dateRangeLabel})`}
+          label={`Realized Revenue (${dateRangeLabel})`}
           value={inr(totalGrossRevenue)}
-          hint={`${filteredPayments.length} total payments collected`}
+          hint={`${filteredPayments.length} payments collected`}
           icon={Wallet}
           tone="success"
+        />
+        <KpiCard
+          label="Discounts & Concessions"
+          value={inr(totalDiscounts)}
+          hint={`${discountCount} approved concessions`}
+          icon={PercentCircle}
+          tone="gold"
         />
         <KpiCard
           label={`Total Expenses (${dateRangeLabel})`}
@@ -370,14 +397,14 @@ function ProfitsPage() {
           tone="destructive"
         />
         <KpiCard
-          label={`Net Operating Profit`}
+          label="Net Operating Profit"
           value={inr(netProfit)}
           hint={netProfit >= 0 ? "Revenue exceeds all costs" : "Operating at a deficit"}
           icon={netProfit >= 0 ? TrendingUp : TrendingDown}
           tone={netProfit >= 0 ? "gold" : "destructive"}
         />
         <KpiCard
-          label={`Profit Margin %`}
+          label="Profit Margin %"
           value={`${profitMargin}%`}
           hint={profitMargin >= 0 ? `${inr(avgDailyProfit)} avg profit / day` : "Loss margin"}
           icon={PercentCircle}
@@ -540,11 +567,21 @@ function ProfitsPage() {
                 </td>
               </tr>
               <tr className="bg-secondary/40 font-bold">
-                <td className="py-3 px-3 text-foreground">Total Inflow Gross Revenue</td>
+                <td className="py-3 px-3 text-foreground">Total Realized Inflow Revenue</td>
                 <td className="py-3 px-3 text-right text-emerald-600 font-bold">{inr(totalGrossRevenue)}</td>
                 <td className="py-3 px-3 text-foreground">Total Outflow Operating Expenses</td>
                 <td className="py-3 px-3 text-right text-destructive font-bold">{inr(totalOperatingExpenses)}</td>
               </tr>
+              {totalDiscounts > 0 && (
+                <tr className="bg-amber-50/50 dark:bg-amber-950/20 text-xs">
+                  <td className="py-2.5 px-3 font-medium text-amber-800 dark:text-amber-400" colSpan={2}>
+                    ℹ️ Total Approved Concessions / Discounts granted in this timeframe: <span className="font-bold">{inr(totalDiscounts)}</span> ({discountCount} folios)
+                  </td>
+                  <td className="py-2.5 px-3 font-medium text-muted-foreground" colSpan={2}>
+                    Gross Booked Folio Value: <span className="font-semibold text-foreground">{inr(totalGrossRevenue + totalDiscounts)}</span>
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
 

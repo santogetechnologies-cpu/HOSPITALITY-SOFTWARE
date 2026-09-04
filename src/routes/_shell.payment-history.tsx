@@ -36,11 +36,12 @@ function PaymentHistoryPage() {
     const approvedDiscount = getApprovedDiscount(p.reservation_id);
     const originalAmount = Number(res?.base_amount) || Number(p.total_amount) || 0;
     let total = Number(p.total_amount) || originalAmount;
-    if (approvedDiscount > 0 && total >= originalAmount && originalAmount > approvedDiscount) {
+    if (approvedDiscount > 0 && total >= originalAmount && originalAmount >= approvedDiscount) {
       total = Math.max(0, originalAmount - approvedDiscount);
     }
     const paid = Number(p.paid_amount) || 0;
-    return p.status === 'COMPLETED' || (paid >= total && total > 0);
+    const isComplimentary = approvedDiscount > 0 && total === 0;
+    return p.status === 'COMPLETED' || (paid >= total && total > 0) || isComplimentary;
   };
 
   const isPaymentPartial = (p: typeof payments[0]) => {
@@ -159,18 +160,19 @@ function PaymentHistoryPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filtered.map((p) => {
               const res = getReservation(p.reservation_id);
               const guest = res ? getGuest(res.guest_id) : null;
               const room = res ? getRoom(res.room_id) : null;
               const approvedDiscount = getApprovedDiscount(p.reservation_id);
               const originalAmount = Number(res?.base_amount) || Number(p.total_amount) || 0;
               let total = Number(p.total_amount) || originalAmount;
-              if (approvedDiscount > 0 && total >= originalAmount && originalAmount > approvedDiscount) {
+              if (approvedDiscount > 0 && total >= originalAmount && originalAmount >= approvedDiscount) {
                 total = Math.max(0, originalAmount - approvedDiscount);
               }
               const paid = Number(p.paid_amount) || 0;
               const balance = Math.max(0, total - paid);
+              const isComplimentary = approvedDiscount > 0 && total === 0;
+              const isSettled = isComplimentary || (balance === 0 && total > 0) || p.status === 'COMPLETED';
               const folioId = String(p.id || 'FOLIO').slice(0, 10).toUpperCase();
 
               return (
@@ -194,7 +196,7 @@ function PaymentHistoryPage() {
                   <TableCell className="font-medium">
                     <div>{inr(total)}</div>
                     {approvedDiscount > 0 ? (
-                      <div className="text-[11px] text-success font-medium">
+                      <div className="text-[11px] text-amber-600 font-medium">
                         -{inr(approvedDiscount)} discount applied
                       </div>
                     ) : null}
@@ -205,8 +207,8 @@ function PaymentHistoryPage() {
                   </TableCell>
                   <TableCell className="text-xs font-medium">{p.payment_method || "CASH / UPI"}</TableCell>
                   <TableCell>
-                    <Pill tone={balance === 0 && total > 0 ? 'success' : balance > 0 && paid > 0 ? 'warning' : p.status === 'FROZEN' ? 'info' : 'destructive'}>
-                      {balance === 0 && total > 0 ? 'COMPLETED' : balance > 0 && paid > 0 ? 'PARTIAL' : (p.status || 'PENDING')}
+                    <Pill tone={isComplimentary ? 'info' : isSettled ? 'success' : balance > 0 && paid > 0 ? 'warning' : p.status === 'FROZEN' ? 'info' : 'destructive'}>
+                      {isComplimentary ? 'COMPLIMENTARY' : isSettled ? 'COMPLETED' : balance > 0 && paid > 0 ? 'PARTIAL' : (p.status || 'PENDING')}
                     </Pill>
                   </TableCell>
                   <TableCell className="text-right">

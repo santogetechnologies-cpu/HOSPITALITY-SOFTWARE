@@ -103,13 +103,18 @@ export function FrontDesk() {
       } else if (rawPayTotal > approvedDiscount) {
         total = Math.max(0, rawPayTotal - approvedDiscount);
         originalAmount = rawPayTotal;
+      } else {
+        // 100% discount / complimentary stay
+        total = 0;
+        originalAmount = Math.max(rawResBase, rawPayTotal, approvedDiscount);
       }
     }
 
     const paid = Number(p?.paid_amount) || 0;
     const balance = Math.max(0, total - paid);
-    const isPaid = balance === 0 && total > 0;
-    return { total, paid, balance, isPaid, payment: p, approvedDiscount, hasPendingDiscount, originalAmount, discountReasons };
+    const isComplimentary = approvedDiscount > 0 && total === 0;
+    const isPaid = (balance === 0 && (total > 0 || isComplimentary)) || (paid >= total && total > 0);
+    return { total, paid, balance, isPaid, isComplimentary, payment: p, approvedDiscount, hasPendingDiscount, originalAmount, discountReasons };
   };
 
   // Helper: check if a room is overlapping with any active reservation on given dates and times

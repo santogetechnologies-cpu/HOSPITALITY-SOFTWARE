@@ -60,7 +60,7 @@ function GuestsPage() {
       stats[r.guest_id].stays += 1;
 
       const p = payments.find((pay) => pay.reservation_id === r.id);
-      const paid = Number(p?.paid_amount) || Number(r.base_amount) || 0;
+      const paid = Number(p?.paid_amount) || 0;
       stats[r.guest_id].spend += paid;
     });
     return stats;

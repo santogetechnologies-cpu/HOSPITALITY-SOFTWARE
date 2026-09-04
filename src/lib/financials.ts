@@ -1,4 +1,5 @@
 export interface ReservationFinancials {
+  originalGross: number;
   baseAmt: number;
   addlCharges: number;
   approvedDiscount: number;
@@ -11,6 +12,8 @@ export interface ReservationFinancials {
   balance: number;
   isPaid: boolean;
   isPartial: boolean;
+  isDiscounted: boolean;
+  isComplimentary: boolean;
   payment?: any;
   isPartyHall: boolean;
   gstRatePercent: number;
@@ -35,6 +38,7 @@ export function getApprovedDiscount(resId?: string, discounts: any[] = []): numb
 /**
  * Canonical unified financial calculation for folios, reservations, and payments.
  * Guarantees: grandTotal === taxableValue + totalGst exactly (and taxableValue + cgst + sgst === grandTotal)
+ * Properly isolates and accounts for 100% complimentary discounts (e.g. VIP / Municipality waivers).
  */
 export function getReservationFinancials(
   r: any,
@@ -44,6 +48,7 @@ export function getReservationFinancials(
 ): ReservationFinancials {
   if (!r) {
     return {
+      originalGross: 0,
       baseAmt: 0,
       addlCharges: 0,
       approvedDiscount: 0,
@@ -56,6 +61,8 @@ export function getReservationFinancials(
       balance: 0,
       isPaid: false,
       isPartial: false,
+      isDiscounted: false,
+      isComplimentary: false,
       isPartyHall: false,
       gstRatePercent: 5,
       cgstRatePercent: 2.5,
@@ -75,11 +82,33 @@ export function getReservationFinancials(
   const gstRate = isPartyHall ? 0.18 : 0.05;
   const gstDivisor = 1 + gstRate;
 
+  // Determine pre-discount gross value
+  let originalGross = Math.max(payTotal, resBase);
+  if (approvedDiscount > 0) {
+    if (payTotal === 0 && resBase === 0) {
+      originalGross = approvedDiscount;
+    } else if (originalGross <= approvedDiscount) {
+      originalGross = Math.max(originalGross, approvedDiscount);
+    } else if (payTotal > 0 && resBase > 0 && Math.abs(payTotal - resBase) >= approvedDiscount - 1) {
+      // One of the totals was already discounted in DB
+      originalGross = Math.max(payTotal, resBase) + (payTotal < resBase ? approvedDiscount : 0);
+    }
+  }
+
   let grandTotal = 0;
   let taxableValue = 0;
 
-  if (payTotal > 0) {
-    grandTotal = Math.max(0, payTotal + addlCharges - approvedDiscount);
+  if (approvedDiscount >= (originalGross + addlCharges) && (originalGross + addlCharges) > 0) {
+    // 100% complimentary discount
+    grandTotal = 0;
+    taxableValue = 0;
+  } else if (payTotal > 0) {
+    // If payTotal is already discounted or pre-discount
+    if (originalGross > payTotal && payTotal + approvedDiscount >= originalGross - 1) {
+      grandTotal = Math.max(0, payTotal + addlCharges);
+    } else {
+      grandTotal = Math.max(0, payTotal + addlCharges - approvedDiscount);
+    }
     taxableValue = Math.round(grandTotal / gstDivisor);
   } else if (resBase > 0) {
     const selRoom = rooms.find((rm) => rm.id === r.room_id);
@@ -101,10 +130,14 @@ export function getReservationFinancials(
 
   const paid = Number(p?.paid_amount) || 0;
   const balance = Math.max(0, grandTotal - paid);
-  const isPaid = balance === 0 && grandTotal > 0;
+
+  const isComplimentary = approvedDiscount > 0 && grandTotal === 0;
+  const isDiscounted = approvedDiscount > 0;
+  const isPaid = (balance === 0 && (grandTotal > 0 || isComplimentary)) || (paid >= grandTotal && grandTotal > 0);
   const isPartial = !isPaid && (p?.status === "PARTIAL" || paid > 0);
 
   return {
+    originalGross,
     baseAmt: taxableValue,
     addlCharges,
     approvedDiscount,
@@ -117,6 +150,8 @@ export function getReservationFinancials(
     balance,
     isPaid,
     isPartial,
+    isDiscounted,
+    isComplimentary,
     payment: p,
     isPartyHall,
     gstRatePercent: isPartyHall ? 18 : 5,

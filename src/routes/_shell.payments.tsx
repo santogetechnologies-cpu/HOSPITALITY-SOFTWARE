@@ -222,6 +222,10 @@ function PaymentsDashboard() {
         guestGstin,
         resourceType: isPartyHall ? "PARTY_HALL" : "ROOM",
         resourceLabel: isPartyHall ? `Party Hall (${res?.event_type || "Banquet"})` : room ? `Room ${room.room_number} (${room.room_name || "Standard"})` : "Room Stay",
+        originalGross: fin.originalGross,
+        approvedDiscount: fin.approvedDiscount,
+        isDiscounted: fin.isDiscounted,
+        isComplimentary: fin.isComplimentary,
         taxableBase: fin.taxableValue,
         cgst: fin.cgst,
         sgst: fin.sgst,
@@ -233,7 +237,7 @@ function PaymentsDashboard() {
         channelRaw: p?.payment_method || "CASH",
         isPaid: fin.isPaid,
         isPartial: fin.isPartial,
-        status: fin.isPaid ? "SETTLED" : fin.isPartial ? "PARTIAL / ADVANCE" : "PENDING",
+        status: fin.isComplimentary ? "COMPLIMENTARY (100% OFF)" : fin.isPaid ? "SETTLED" : fin.isPartial ? "PARTIAL / ADVANCE" : "PENDING",
       });
     });
 
@@ -306,6 +310,9 @@ function PaymentsDashboard() {
   // Aggregate Financial & Inflow Metrics
   const metrics = React.useMemo(() => {
     let grossRevenue = 0;
+    let grossBilledValue = 0;
+    let totalDiscounts = 0;
+    let discountCount = 0;
     let netTaxableTurnover = 0;
     let totalCgst = 0;
     let totalSgst = 0;
@@ -326,6 +333,11 @@ function PaymentsDashboard() {
 
     transactions.forEach((tx) => {
       grossRevenue += tx.grandTotal;
+      grossBilledValue += (tx.originalGross || tx.grandTotal);
+      if (tx.approvedDiscount > 0) {
+        totalDiscounts += tx.approvedDiscount;
+        discountCount++;
+      }
       netTaxableTurnover += tx.taxableBase;
       totalCgst += tx.cgst;
       totalSgst += tx.sgst;
@@ -375,6 +387,9 @@ function PaymentsDashboard() {
 
     return {
       grossRevenue,
+      grossBilledValue,
+      totalDiscounts,
+      discountCount,
       netTaxableTurnover,
       totalCgst,
       totalSgst,
@@ -403,11 +418,13 @@ function PaymentsDashboard() {
       "Guest GSTIN",
       "Resource Type",
       "Resource Details",
+      "Gross Folio Value (INR)",
+      "Discount Applied (INR)",
       "Taxable Value (INR)",
       "CGST (INR)",
       "SGST (INR)",
       "Total GST (INR)",
-      "Gross Total (INR)",
+      "Net Payable Total (INR)",
       "Amount Paid (INR)",
       "Balance Due (INR)",
       "Payment Channel",
@@ -422,6 +439,8 @@ function PaymentsDashboard() {
       `"${tx.guestGstin || "—"}"`,
       `"${tx.resourceType}"`,
       `"${tx.resourceLabel.replace(/"/g, '""')}"`,
+      (tx.originalGross || tx.grandTotal).toFixed(2),
+      (tx.approvedDiscount || 0).toFixed(2),
       tx.taxableBase.toFixed(2),
       tx.cgst.toFixed(2),
       tx.sgst.toFixed(2),
@@ -618,7 +637,7 @@ function PaymentsDashboard() {
       </Panel>
 
       {/* Top Level Financial Summary KPI Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <KpiCard
           label={`Total Inflow Realized (${dateRangeLabel})`}
           value={inr(metrics.totalInflowCollected)}
@@ -627,10 +646,17 @@ function PaymentsDashboard() {
           hint={`Realized Inflow across all channels`}
         />
         <KpiCard
+          label="Discounts & Concessions"
+          value={inr(metrics.totalDiscounts)}
+          icon={Percent}
+          tone="gold"
+          hint={`${metrics.discountCount} discounted / complimentary folios`}
+        />
+        <KpiCard
           label="Net Taxable Turnover"
           value={inr(metrics.netTaxableTurnover)}
           icon={DollarSign}
-          tone="gold"
+          tone="info"
           hint="Gross revenue excluding taxes"
         />
         <KpiCard
@@ -987,9 +1013,11 @@ function PaymentsDashboard() {
                 <TableHead>Date</TableHead>
                 <TableHead>Guest & Contact</TableHead>
                 <TableHead>Resource / Room</TableHead>
+                <TableHead className="text-right">Gross Value</TableHead>
+                <TableHead className="text-right">Discount</TableHead>
                 <TableHead className="text-right">Taxable Base</TableHead>
-                <TableHead className="text-right">GST (5%)</TableHead>
-                <TableHead className="text-right">Gross Total</TableHead>
+                <TableHead className="text-right">GST</TableHead>
+                <TableHead className="text-right">Payable Total</TableHead>
                 <TableHead className="text-right">Paid (Inflow)</TableHead>
                 <TableHead className="text-right">Balance</TableHead>
                 <TableHead>Channel</TableHead>
@@ -1041,6 +1069,20 @@ function PaymentsDashboard() {
                   </TableCell>
 
                   <TableCell className="text-right font-mono text-xs">
+                    {inr(tx.originalGross || tx.grandTotal)}
+                  </TableCell>
+
+                  <TableCell className="text-right font-mono text-xs">
+                    {tx.approvedDiscount > 0 ? (
+                      <span className="font-semibold text-amber-600">
+                        -{inr(tx.approvedDiscount)}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+
+                  <TableCell className="text-right font-mono text-xs">
                     {inr(tx.taxableBase)}
                   </TableCell>
 
@@ -1067,7 +1109,7 @@ function PaymentsDashboard() {
                   </TableCell>
 
                   <TableCell>
-                    <Pill tone={tx.isPaid ? "success" : tx.isPartial ? "warning" : "destructive"}>
+                    <Pill tone={tx.isComplimentary ? "info" : tx.isPaid ? "success" : tx.isPartial ? "warning" : "destructive"}>
                       {tx.status}
                     </Pill>
                   </TableCell>

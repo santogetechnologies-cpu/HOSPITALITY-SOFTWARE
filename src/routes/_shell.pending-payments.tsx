@@ -82,7 +82,7 @@ function PendingPaymentsPage() {
 
       // Effective total bill: apply approved discount if not already deducted
       let effectiveTotal = Number(p.total_amount) || originalAmount;
-      if (approvedDiscount > 0 && effectiveTotal >= originalAmount && originalAmount > approvedDiscount) {
+      if (approvedDiscount > 0 && effectiveTotal >= originalAmount && originalAmount >= approvedDiscount) {
         effectiveTotal = Math.max(0, originalAmount - approvedDiscount);
       }
       
@@ -109,7 +109,7 @@ function PendingPaymentsPage() {
           totalAmount: effectiveTotal,
           paidAmount: paid,
           balance,
-          status: hasPendingDiscount ? 'FROZEN' : (paid >= effectiveTotal && effectiveTotal > 0 ? 'COMPLETED' : paid > 0 ? 'PARTIAL' : 'PENDING'),
+          status: hasPendingDiscount ? 'FROZEN' : ((paid >= effectiveTotal && (effectiveTotal > 0 || approvedDiscount > 0)) ? 'COMPLETED' : paid > 0 ? 'PARTIAL' : 'PENDING'),
           discountAmount: approvedDiscount,
           originalAmount: approvedDiscount > 0 ? (originalAmount > effectiveTotal ? originalAmount : effectiveTotal + approvedDiscount) : undefined
         });

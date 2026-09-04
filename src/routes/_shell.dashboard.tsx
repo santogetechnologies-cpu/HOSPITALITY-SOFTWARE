@@ -57,7 +57,7 @@ export const Route = createFileRoute("/_shell/dashboard")({
 type Timeframe = "1D" | "1W" | "1M" | "CUSTOM";
 
 function Dashboard() {
-  const { rooms, reservations, payments, tickets, guests, session, checkIn, checkOut } = usePms();
+  const { rooms, reservations, payments, discounts, tickets, guests, session, checkIn, checkOut } = usePms();
   const navigate = useNavigate();
   const [openRoom, setOpenRoom] = React.useState<Room | null>(null);
 
@@ -111,6 +111,16 @@ function Dashboard() {
     return filteredPayments.reduce((acc, p) => acc + (Number(p.paid_amount) || 0), 0);
   }, [filteredPayments]);
 
+  const periodDiscounts = React.useMemo(() => {
+    return (discounts || [])
+      .filter((d) => {
+        if (d.status !== "APPROVED") return false;
+        const dDate = new Date(d.created_at || (d as any).date || todayStr);
+        return dDate >= startDate && dDate <= endDate;
+      })
+      .reduce((sum, d) => sum + (Number(d.requested_amount) || 0), 0);
+  }, [discounts, startDate, endDate, todayStr]);
+
   // Payment Breakdown by Method for GM and Front Desk
   const paymentBreakdown = React.useMemo(() => {
     let upi = { total: 0, count: 0 };
@@ -154,15 +164,29 @@ function Dashboard() {
     };
   }, [filteredPayments]);
 
-  const pendingPayments = payments.filter((p) => {
-    const total = Number(p.total_amount) || 0;
-    const paid = Number(p.paid_amount) || 0;
-    return total - paid > 0 && p.status !== "COMPLETED";
-  });
-  const outstandingDues = pendingPayments.reduce(
-    (acc, p) => acc + Math.max(0, (Number(p.total_amount) || 0) - (Number(p.paid_amount) || 0)),
-    0
-  );
+  const pendingPayments = React.useMemo(() => {
+    return payments.filter((p) => {
+      const approvedDiscount = (discounts || [])
+        .filter((d) => (d.reservation_id === p.reservation_id || d.reservation_id?.toLowerCase() === p.reservation_id?.toLowerCase()) && d.status === 'APPROVED')
+        .reduce((sum, d) => sum + (Number(d.requested_amount) || 0), 0);
+      const total = Number(p.total_amount) || 0;
+      const effectiveTotal = (approvedDiscount > 0 && total >= approvedDiscount) ? Math.max(0, total - approvedDiscount) : total;
+      const paid = Number(p.paid_amount) || 0;
+      return effectiveTotal - paid > 0 && p.status !== "COMPLETED";
+    });
+  }, [payments, discounts]);
+
+  const outstandingDues = React.useMemo(() => {
+    return pendingPayments.reduce((acc, p) => {
+      const approvedDiscount = (discounts || [])
+        .filter((d) => (d.reservation_id === p.reservation_id || d.reservation_id?.toLowerCase() === p.reservation_id?.toLowerCase()) && d.status === 'APPROVED')
+        .reduce((sum, d) => sum + (Number(d.requested_amount) || 0), 0);
+      const total = Number(p.total_amount) || 0;
+      const effectiveTotal = (approvedDiscount > 0 && total >= approvedDiscount) ? Math.max(0, total - approvedDiscount) : total;
+      const paid = Number(p.paid_amount) || 0;
+      return acc + Math.max(0, effectiveTotal - paid);
+    }, 0);
+  }, [pendingPayments, discounts]);
 
   // Room Inventory Breakdown
   const occupied = rooms.filter((r) => r.status === "OCCUPIED").length;
@@ -327,7 +351,13 @@ function Dashboard() {
         <KpiCard label="Rooms Available" value={String(vacant)} hint={`${blocked} out of order`} icon={DoorOpen} tone="success" />
         <KpiCard label="ADR" value={inr(adr)} hint="Average Daily Rate" icon={IndianRupee} tone="gold" />
         <KpiCard label="RevPAR" value={inr(revpar)} hint="Revenue Per Room" icon={TrendingUp} tone="success" />
-        <KpiCard label={`Revenue (${dateRangeLabel})`} value={inr(periodRevenue)} hint={`${filteredPayments.length} payments`} icon={Wallet} tone="info" />
+        <KpiCard
+          label={`Revenue (${dateRangeLabel})`}
+          value={inr(periodRevenue)}
+          hint={periodDiscounts > 0 ? `${filteredPayments.length} payments (Discounts: ${inr(periodDiscounts)})` : `${filteredPayments.length} payments`}
+          icon={Wallet}
+          tone="info"
+        />
         <KpiCard label="Outstanding Dues" value={inr(outstandingDues)} hint={`${pendingPayments.length} open folios`} icon={IndianRupee} tone="destructive" />
       </div>
 

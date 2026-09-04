@@ -283,16 +283,17 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         
         const originalAmount = Number(res?.base_amount) || Number(pay.total_amount) || 0;
         let effectiveTotal = Number(pay.total_amount) || originalAmount;
-        if (approvedDisc > 0 && effectiveTotal >= originalAmount && originalAmount > approvedDisc) {
+        if (approvedDisc > 0 && effectiveTotal >= originalAmount && originalAmount >= approvedDisc) {
           effectiveTotal = Math.max(0, originalAmount - approvedDisc);
         }
 
         const paid = Number(pay.paid_amount) || 0;
-        if (paid >= effectiveTotal && effectiveTotal > 0 && pay.status !== 'COMPLETED') {
+        const isSettled = (paid >= effectiveTotal && effectiveTotal > 0) || (effectiveTotal === 0 && approvedDisc > 0);
+        if (isSettled && pay.status !== 'COMPLETED') {
           pay.status = 'COMPLETED';
           void supabase.from('payments').update({ status: 'COMPLETED' }).eq('id', pay.id);
         } else if (pay.status === 'FROZEN' && !loadedDiscounts.some((d: any) => (d.reservation_id === pay.reservation_id || d.reservation_id?.toLowerCase() === pay.reservation_id?.toLowerCase()) && d.status === 'PENDING')) {
-          const newStatus = paid >= effectiveTotal && effectiveTotal > 0 ? 'COMPLETED' : (paid > 0 ? 'PARTIAL' : 'PENDING');
+          const newStatus = isSettled ? 'COMPLETED' : (paid > 0 ? 'PARTIAL' : 'PENDING');
           pay.status = newStatus;
           void supabase.from('payments').update({ status: newStatus }).eq('id', pay.id);
         }
@@ -1419,7 +1420,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             const originalTotal = Number(reservation?.base_amount) || Number(payment?.total_amount) || 0;
             const newTotal = Math.max(0, originalTotal - discountAmt);
             const paid = Number(payment?.paid_amount) || 0;
-            const newStatus = paid >= newTotal && newTotal > 0 ? "COMPLETED" : (paid > 0 ? "PARTIAL" : "PENDING");
+            const newStatus = (paid >= newTotal && newTotal > 0) || (newTotal === 0 && discountAmt > 0) ? "COMPLETED" : (paid > 0 ? "PARTIAL" : "PENDING");
 
             if (payment) {
               const { error: pErr } = await supabase.from('payments').update({ 
@@ -1433,7 +1434,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
                 reservation_id: resId,
                 total_amount: newTotal,
                 paid_amount: 0,
-                status: 'PENDING',
+                status: newStatus,
                 payment_method: 'CASH'
               });
               if (pErr) console.error("Error inserting payment record:", pErr);
