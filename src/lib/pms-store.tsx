@@ -548,7 +548,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         payments: loadedPayments,
         discounts: loadedDiscounts,
         expenses: dedupedExpenses,
-        groupBookings: (groupBookings as any) || [],
+        groupBookings: loadedGroupBookings,
         paymentSplits: loadedSplits,
         inventoryItems: (inventoryItems as any) || [],
         inventoryTransactions: (inventoryTransactions as any) || [],
