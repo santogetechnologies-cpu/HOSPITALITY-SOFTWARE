@@ -123,6 +123,7 @@ type Ctx = State & {
   assignGuestToRoom: (roomId: string, guest: string) => void;
   checkIn: (reservationId: string, roomNumber?: string) => void;
   checkOut: (reservationId: string) => void;
+  setReservationStatus: (id: string, status: string) => Promise<void>;
   addRoomReservation: (booking: {
     guestName: string;
     companyName?: string;
@@ -426,6 +427,8 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
           }
         }
       });
+
+      let loadedProfiles: any[] = (profiles as any) || [];
 
       // Auto-reconcile default staff accounts in Supabase profiles
       const defaultStaffAccounts = [
