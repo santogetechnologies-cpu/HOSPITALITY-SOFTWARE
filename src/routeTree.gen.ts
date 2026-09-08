@@ -14,34 +14,34 @@ import { Route as ShellRouteImport } from './routes/_shell'
 import { Route as ShellBanquetRouteImport } from './routes/_shell.banquet'
 import { Route as ShellBillingRouteImport } from './routes/_shell.billing'
 import { Route as ShellChannelManagerRouteImport } from './routes/_shell.channel-manager'
+import { Route as ShellComplaintsRouteImport } from './routes/_shell.complaints'
 import { Route as ShellComplianceRouteImport } from './routes/_shell.compliance'
 import { Route as ShellDashboardRouteImport } from './routes/_shell.dashboard'
+import { Route as ShellDiscountsRouteImport } from './routes/_shell.discounts'
+import { Route as ShellExpensesRouteImport } from './routes/_shell.expenses'
 import { Route as ShellFrontDeskRouteImport } from './routes/_shell.front-desk'
 import { Route as ShellGroupBookingsRouteImport } from './routes/_shell.group-bookings'
 import { Route as ShellGuestsRouteImport } from './routes/_shell.guests'
 import { Route as ShellHelpRouteImport } from './routes/_shell.help'
 import { Route as ShellHousekeepingRouteImport } from './routes/_shell.housekeeping'
+import { Route as ShellInventoryRouteImport } from './routes/_shell.inventory'
 import { Route as ShellNightAuditRouteImport } from './routes/_shell.night-audit'
 import { Route as ShellNotificationsRouteImport } from './routes/_shell.notifications'
+import { Route as ShellPartyHallRouteImport } from './routes/_shell.party-hall'
+import { Route as ShellPaymentHistoryRouteImport } from './routes/_shell.payment-history'
+import { Route as ShellPaymentsRouteImport } from './routes/_shell.payments'
+import { Route as ShellPendingPaymentsRouteImport } from './routes/_shell.pending-payments'
 import { Route as ShellPosRouteImport } from './routes/_shell.pos'
+import { Route as ShellProfitsRouteImport } from './routes/_shell.profits'
 import { Route as ShellReportsRouteImport } from './routes/_shell.reports'
 import { Route as ShellRevenueRouteImport } from './routes/_shell.revenue'
 import { Route as ShellRoomsRouteImport } from './routes/_shell.rooms'
 import { Route as ShellSettingsRouteImport } from './routes/_shell.settings'
 import { Route as ShellStaffRouteImport } from './routes/_shell.staff'
-import { Route as ShellProfitsRouteImport } from './routes/_shell.profits'
-import { Route as ShellExpensesRouteImport } from './routes/_shell.expenses'
-import { Route as ShellInventoryRouteImport } from './routes/_shell.inventory'
-import { Route as ShellDiscountsRouteImport } from './routes/_shell.discounts'
-import { Route as ShellPendingPaymentsRouteImport } from './routes/_shell.pending-payments'
-import { Route as ShellPaymentHistoryRouteImport } from './routes/_shell.payment-history'
-import { Route as ShellPaymentsRouteImport } from './routes/_shell.payments'
-import { Route as ShellPartyHallRouteImport } from './routes/_shell.party-hall'
+import { Route as ShellSystemWorkflowRouteImport } from './routes/_shell.system-workflow'
 import { Route as ShellVisitorsRouteImport } from './routes/_shell.visitors'
-import { Route as ShellComplaintsRouteImport } from './routes/_shell.complaints'
 import { Route as ShellReservationsIndexRouteImport } from './routes/_shell.reservations.index'
 import { Route as ShellReservationsNewRouteImport } from './routes/_shell.reservations.new'
-import { Route as ShellSystemWorkflowRouteImport } from './routes/_shell.system-workflow'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -67,6 +67,11 @@ const ShellChannelManagerRoute = ShellChannelManagerRouteImport.update({
   path: '/channel-manager',
   getParentRoute: () => ShellRoute,
 } as any)
+const ShellComplaintsRoute = ShellComplaintsRouteImport.update({
+  id: '/complaints',
+  path: '/complaints',
+  getParentRoute: () => ShellRoute,
+} as any)
 const ShellComplianceRoute = ShellComplianceRouteImport.update({
   id: '/compliance',
   path: '/compliance',
@@ -75,6 +80,16 @@ const ShellComplianceRoute = ShellComplianceRouteImport.update({
 const ShellDashboardRoute = ShellDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
+  getParentRoute: () => ShellRoute,
+} as any)
+const ShellDiscountsRoute = ShellDiscountsRouteImport.update({
+  id: '/discounts',
+  path: '/discounts',
+  getParentRoute: () => ShellRoute,
+} as any)
+const ShellExpensesRoute = ShellExpensesRouteImport.update({
+  id: '/expenses',
+  path: '/expenses',
   getParentRoute: () => ShellRoute,
 } as any)
 const ShellFrontDeskRoute = ShellFrontDeskRouteImport.update({
@@ -102,6 +117,11 @@ const ShellHousekeepingRoute = ShellHousekeepingRouteImport.update({
   path: '/housekeeping',
   getParentRoute: () => ShellRoute,
 } as any)
+const ShellInventoryRoute = ShellInventoryRouteImport.update({
+  id: '/inventory',
+  path: '/inventory',
+  getParentRoute: () => ShellRoute,
+} as any)
 const ShellNightAuditRoute = ShellNightAuditRouteImport.update({
   id: '/night-audit',
   path: '/night-audit',
@@ -112,9 +132,34 @@ const ShellNotificationsRoute = ShellNotificationsRouteImport.update({
   path: '/notifications',
   getParentRoute: () => ShellRoute,
 } as any)
+const ShellPartyHallRoute = ShellPartyHallRouteImport.update({
+  id: '/party-hall',
+  path: '/party-hall',
+  getParentRoute: () => ShellRoute,
+} as any)
+const ShellPaymentHistoryRoute = ShellPaymentHistoryRouteImport.update({
+  id: '/payment-history',
+  path: '/payment-history',
+  getParentRoute: () => ShellRoute,
+} as any)
+const ShellPaymentsRoute = ShellPaymentsRouteImport.update({
+  id: '/payments',
+  path: '/payments',
+  getParentRoute: () => ShellRoute,
+} as any)
+const ShellPendingPaymentsRoute = ShellPendingPaymentsRouteImport.update({
+  id: '/pending-payments',
+  path: '/pending-payments',
+  getParentRoute: () => ShellRoute,
+} as any)
 const ShellPosRoute = ShellPosRouteImport.update({
   id: '/pos',
   path: '/pos',
+  getParentRoute: () => ShellRoute,
+} as any)
+const ShellProfitsRoute = ShellProfitsRouteImport.update({
+  id: '/profits',
+  path: '/profits',
   getParentRoute: () => ShellRoute,
 } as any)
 const ShellReportsRoute = ShellReportsRouteImport.update({
@@ -142,54 +187,14 @@ const ShellStaffRoute = ShellStaffRouteImport.update({
   path: '/staff',
   getParentRoute: () => ShellRoute,
 } as any)
-const ShellProfitsRoute = ShellProfitsRouteImport.update({
-  id: '/profits',
-  path: '/profits',
-  getParentRoute: () => ShellRoute,
-} as any)
-const ShellExpensesRoute = ShellExpensesRouteImport.update({
-  id: '/expenses',
-  path: '/expenses',
-  getParentRoute: () => ShellRoute,
-} as any)
-const ShellInventoryRoute = ShellInventoryRouteImport.update({
-  id: '/inventory',
-  path: '/inventory',
-  getParentRoute: () => ShellRoute,
-} as any)
-const ShellDiscountsRoute = ShellDiscountsRouteImport.update({
-  id: '/discounts',
-  path: '/discounts',
-  getParentRoute: () => ShellRoute,
-} as any)
-const ShellPendingPaymentsRoute = ShellPendingPaymentsRouteImport.update({
-  id: '/pending-payments',
-  path: '/pending-payments',
-  getParentRoute: () => ShellRoute,
-} as any)
-const ShellPaymentHistoryRoute = ShellPaymentHistoryRouteImport.update({
-  id: '/payment-history',
-  path: '/payment-history',
-  getParentRoute: () => ShellRoute,
-} as any)
-const ShellPaymentsRoute = ShellPaymentsRouteImport.update({
-  id: '/payments',
-  path: '/payments',
-  getParentRoute: () => ShellRoute,
-} as any)
-const ShellPartyHallRoute = ShellPartyHallRouteImport.update({
-  id: '/party-hall',
-  path: '/party-hall',
+const ShellSystemWorkflowRoute = ShellSystemWorkflowRouteImport.update({
+  id: '/system-workflow',
+  path: '/system-workflow',
   getParentRoute: () => ShellRoute,
 } as any)
 const ShellVisitorsRoute = ShellVisitorsRouteImport.update({
   id: '/visitors',
   path: '/visitors',
-  getParentRoute: () => ShellRoute,
-} as any)
-const ShellComplaintsRoute = ShellComplaintsRouteImport.update({
-  id: '/complaints',
-  path: '/complaints',
   getParentRoute: () => ShellRoute,
 } as any)
 const ShellReservationsIndexRoute = ShellReservationsIndexRouteImport.update({
@@ -208,50 +213,68 @@ export interface FileRoutesByFullPath {
   '/banquet': typeof ShellBanquetRoute
   '/billing': typeof ShellBillingRoute
   '/channel-manager': typeof ShellChannelManagerRoute
+  '/complaints': typeof ShellComplaintsRoute
   '/compliance': typeof ShellComplianceRoute
   '/dashboard': typeof ShellDashboardRoute
+  '/discounts': typeof ShellDiscountsRoute
+  '/expenses': typeof ShellExpensesRoute
   '/front-desk': typeof ShellFrontDeskRoute
   '/group-bookings': typeof ShellGroupBookingsRoute
   '/guests': typeof ShellGuestsRoute
   '/help': typeof ShellHelpRoute
   '/housekeeping': typeof ShellHousekeepingRoute
+  '/inventory': typeof ShellInventoryRoute
   '/night-audit': typeof ShellNightAuditRoute
   '/notifications': typeof ShellNotificationsRoute
+  '/party-hall': typeof ShellPartyHallRoute
+  '/payment-history': typeof ShellPaymentHistoryRoute
+  '/payments': typeof ShellPaymentsRoute
+  '/pending-payments': typeof ShellPendingPaymentsRoute
   '/pos': typeof ShellPosRoute
+  '/profits': typeof ShellProfitsRoute
   '/reports': typeof ShellReportsRoute
   '/revenue': typeof ShellRevenueRoute
   '/rooms': typeof ShellRoomsRoute
   '/settings': typeof ShellSettingsRoute
   '/staff': typeof ShellStaffRoute
-  '/inventory': typeof ShellInventoryRoute
+  '/system-workflow': typeof ShellSystemWorkflowRoute
+  '/visitors': typeof ShellVisitorsRoute
   '/reservations/new': typeof ShellReservationsNewRoute
   '/reservations/': typeof ShellReservationsIndexRoute
-  '/system-workflow': typeof ShellSystemWorkflowRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/banquet': typeof ShellBanquetRoute
   '/billing': typeof ShellBillingRoute
   '/channel-manager': typeof ShellChannelManagerRoute
+  '/complaints': typeof ShellComplaintsRoute
   '/compliance': typeof ShellComplianceRoute
   '/dashboard': typeof ShellDashboardRoute
+  '/discounts': typeof ShellDiscountsRoute
+  '/expenses': typeof ShellExpensesRoute
   '/front-desk': typeof ShellFrontDeskRoute
   '/group-bookings': typeof ShellGroupBookingsRoute
   '/guests': typeof ShellGuestsRoute
   '/help': typeof ShellHelpRoute
   '/housekeeping': typeof ShellHousekeepingRoute
+  '/inventory': typeof ShellInventoryRoute
   '/night-audit': typeof ShellNightAuditRoute
   '/notifications': typeof ShellNotificationsRoute
+  '/party-hall': typeof ShellPartyHallRoute
+  '/payment-history': typeof ShellPaymentHistoryRoute
+  '/payments': typeof ShellPaymentsRoute
+  '/pending-payments': typeof ShellPendingPaymentsRoute
   '/pos': typeof ShellPosRoute
+  '/profits': typeof ShellProfitsRoute
   '/reports': typeof ShellReportsRoute
   '/revenue': typeof ShellRevenueRoute
   '/rooms': typeof ShellRoomsRoute
   '/settings': typeof ShellSettingsRoute
   '/staff': typeof ShellStaffRoute
-  '/inventory': typeof ShellInventoryRoute
+  '/system-workflow': typeof ShellSystemWorkflowRoute
+  '/visitors': typeof ShellVisitorsRoute
   '/reservations/new': typeof ShellReservationsNewRoute
   '/reservations': typeof ShellReservationsIndexRoute
-  '/system-workflow': typeof ShellSystemWorkflowRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -260,25 +283,34 @@ export interface FileRoutesById {
   '/_shell/banquet': typeof ShellBanquetRoute
   '/_shell/billing': typeof ShellBillingRoute
   '/_shell/channel-manager': typeof ShellChannelManagerRoute
+  '/_shell/complaints': typeof ShellComplaintsRoute
   '/_shell/compliance': typeof ShellComplianceRoute
   '/_shell/dashboard': typeof ShellDashboardRoute
+  '/_shell/discounts': typeof ShellDiscountsRoute
+  '/_shell/expenses': typeof ShellExpensesRoute
   '/_shell/front-desk': typeof ShellFrontDeskRoute
   '/_shell/group-bookings': typeof ShellGroupBookingsRoute
   '/_shell/guests': typeof ShellGuestsRoute
   '/_shell/help': typeof ShellHelpRoute
   '/_shell/housekeeping': typeof ShellHousekeepingRoute
+  '/_shell/inventory': typeof ShellInventoryRoute
   '/_shell/night-audit': typeof ShellNightAuditRoute
   '/_shell/notifications': typeof ShellNotificationsRoute
+  '/_shell/party-hall': typeof ShellPartyHallRoute
+  '/_shell/payment-history': typeof ShellPaymentHistoryRoute
+  '/_shell/payments': typeof ShellPaymentsRoute
+  '/_shell/pending-payments': typeof ShellPendingPaymentsRoute
   '/_shell/pos': typeof ShellPosRoute
+  '/_shell/profits': typeof ShellProfitsRoute
   '/_shell/reports': typeof ShellReportsRoute
   '/_shell/revenue': typeof ShellRevenueRoute
   '/_shell/rooms': typeof ShellRoomsRoute
   '/_shell/settings': typeof ShellSettingsRoute
   '/_shell/staff': typeof ShellStaffRoute
-  '/_shell/inventory': typeof ShellInventoryRoute
+  '/_shell/system-workflow': typeof ShellSystemWorkflowRoute
+  '/_shell/visitors': typeof ShellVisitorsRoute
   '/_shell/reservations/new': typeof ShellReservationsNewRoute
   '/_shell/reservations/': typeof ShellReservationsIndexRoute
-  '/_shell/system-workflow': typeof ShellSystemWorkflowRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -287,49 +319,68 @@ export interface FileRouteTypes {
     | '/banquet'
     | '/billing'
     | '/channel-manager'
+    | '/complaints'
     | '/compliance'
     | '/dashboard'
+    | '/discounts'
+    | '/expenses'
     | '/front-desk'
     | '/group-bookings'
     | '/guests'
     | '/help'
     | '/housekeeping'
+    | '/inventory'
     | '/night-audit'
     | '/notifications'
+    | '/party-hall'
+    | '/payment-history'
+    | '/payments'
+    | '/pending-payments'
     | '/pos'
+    | '/profits'
     | '/reports'
     | '/revenue'
     | '/rooms'
     | '/settings'
     | '/staff'
-    | '/inventory'
+    | '/system-workflow'
+    | '/visitors'
     | '/reservations/new'
     | '/reservations/'
-    | '/system-workflow'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/banquet'
     | '/billing'
     | '/channel-manager'
+    | '/complaints'
     | '/compliance'
     | '/dashboard'
+    | '/discounts'
+    | '/expenses'
     | '/front-desk'
+    | '/group-bookings'
     | '/guests'
     | '/help'
     | '/housekeeping'
+    | '/inventory'
     | '/night-audit'
     | '/notifications'
+    | '/party-hall'
+    | '/payment-history'
+    | '/payments'
+    | '/pending-payments'
     | '/pos'
+    | '/profits'
     | '/reports'
     | '/revenue'
     | '/rooms'
     | '/settings'
     | '/staff'
-    | '/inventory'
+    | '/system-workflow'
+    | '/visitors'
     | '/reservations/new'
     | '/reservations'
-    | '/system-workflow'
   id:
     | '__root__'
     | '/'
@@ -337,22 +388,32 @@ export interface FileRouteTypes {
     | '/_shell/banquet'
     | '/_shell/billing'
     | '/_shell/channel-manager'
+    | '/_shell/complaints'
     | '/_shell/compliance'
     | '/_shell/dashboard'
+    | '/_shell/discounts'
+    | '/_shell/expenses'
     | '/_shell/front-desk'
     | '/_shell/group-bookings'
     | '/_shell/guests'
     | '/_shell/help'
     | '/_shell/housekeeping'
+    | '/_shell/inventory'
     | '/_shell/night-audit'
     | '/_shell/notifications'
+    | '/_shell/party-hall'
+    | '/_shell/payment-history'
+    | '/_shell/payments'
+    | '/_shell/pending-payments'
     | '/_shell/pos'
+    | '/_shell/profits'
     | '/_shell/reports'
     | '/_shell/revenue'
     | '/_shell/rooms'
     | '/_shell/settings'
     | '/_shell/staff'
-    | '/_shell/inventory'
+    | '/_shell/system-workflow'
+    | '/_shell/visitors'
     | '/_shell/reservations/new'
     | '/_shell/reservations/'
   fileRoutesById: FileRoutesById
@@ -399,6 +460,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShellChannelManagerRouteImport
       parentRoute: typeof ShellRoute
     }
+    '/_shell/complaints': {
+      id: '/_shell/complaints'
+      path: '/complaints'
+      fullPath: '/complaints'
+      preLoaderRoute: typeof ShellComplaintsRouteImport
+      parentRoute: typeof ShellRoute
+    }
     '/_shell/compliance': {
       id: '/_shell/compliance'
       path: '/compliance'
@@ -411,6 +479,20 @@ declare module '@tanstack/react-router' {
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof ShellDashboardRouteImport
+      parentRoute: typeof ShellRoute
+    }
+    '/_shell/discounts': {
+      id: '/_shell/discounts'
+      path: '/discounts'
+      fullPath: '/discounts'
+      preLoaderRoute: typeof ShellDiscountsRouteImport
+      parentRoute: typeof ShellRoute
+    }
+    '/_shell/expenses': {
+      id: '/_shell/expenses'
+      path: '/expenses'
+      fullPath: '/expenses'
+      preLoaderRoute: typeof ShellExpensesRouteImport
       parentRoute: typeof ShellRoute
     }
     '/_shell/front-desk': {
@@ -448,6 +530,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShellHousekeepingRouteImport
       parentRoute: typeof ShellRoute
     }
+    '/_shell/inventory': {
+      id: '/_shell/inventory'
+      path: '/inventory'
+      fullPath: '/inventory'
+      preLoaderRoute: typeof ShellInventoryRouteImport
+      parentRoute: typeof ShellRoute
+    }
     '/_shell/night-audit': {
       id: '/_shell/night-audit'
       path: '/night-audit'
@@ -462,11 +551,46 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShellNotificationsRouteImport
       parentRoute: typeof ShellRoute
     }
+    '/_shell/party-hall': {
+      id: '/_shell/party-hall'
+      path: '/party-hall'
+      fullPath: '/party-hall'
+      preLoaderRoute: typeof ShellPartyHallRouteImport
+      parentRoute: typeof ShellRoute
+    }
+    '/_shell/payment-history': {
+      id: '/_shell/payment-history'
+      path: '/payment-history'
+      fullPath: '/payment-history'
+      preLoaderRoute: typeof ShellPaymentHistoryRouteImport
+      parentRoute: typeof ShellRoute
+    }
+    '/_shell/payments': {
+      id: '/_shell/payments'
+      path: '/payments'
+      fullPath: '/payments'
+      preLoaderRoute: typeof ShellPaymentsRouteImport
+      parentRoute: typeof ShellRoute
+    }
+    '/_shell/pending-payments': {
+      id: '/_shell/pending-payments'
+      path: '/pending-payments'
+      fullPath: '/pending-payments'
+      preLoaderRoute: typeof ShellPendingPaymentsRouteImport
+      parentRoute: typeof ShellRoute
+    }
     '/_shell/pos': {
       id: '/_shell/pos'
       path: '/pos'
       fullPath: '/pos'
       preLoaderRoute: typeof ShellPosRouteImport
+      parentRoute: typeof ShellRoute
+    }
+    '/_shell/profits': {
+      id: '/_shell/profits'
+      path: '/profits'
+      fullPath: '/profits'
+      preLoaderRoute: typeof ShellProfitsRouteImport
       parentRoute: typeof ShellRoute
     }
     '/_shell/reports': {
@@ -504,11 +628,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShellStaffRouteImport
       parentRoute: typeof ShellRoute
     }
-    '/_shell/inventory': {
-      id: '/_shell/inventory'
-      path: '/inventory'
-      fullPath: '/inventory'
-      preLoaderRoute: typeof ShellInventoryRouteImport
+    '/_shell/system-workflow': {
+      id: '/_shell/system-workflow'
+      path: '/system-workflow'
+      fullPath: '/system-workflow'
+      preLoaderRoute: typeof ShellSystemWorkflowRouteImport
+      parentRoute: typeof ShellRoute
+    }
+    '/_shell/visitors': {
+      id: '/_shell/visitors'
+      path: '/visitors'
+      fullPath: '/visitors'
+      preLoaderRoute: typeof ShellVisitorsRouteImport
       parentRoute: typeof ShellRoute
     }
     '/_shell/reservations/': {
@@ -525,13 +656,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShellReservationsNewRouteImport
       parentRoute: typeof ShellRoute
     }
-    '/_shell/system-workflow': {
-      id: '/_shell/system-workflow'
-      path: '/system-workflow'
-      fullPath: '/system-workflow'
-      preLoaderRoute: typeof ShellSystemWorkflowRouteImport
-      parentRoute: typeof ShellRoute
-    }
   }
 }
 
@@ -539,59 +663,68 @@ interface ShellRouteChildren {
   ShellBanquetRoute: typeof ShellBanquetRoute
   ShellBillingRoute: typeof ShellBillingRoute
   ShellChannelManagerRoute: typeof ShellChannelManagerRoute
+  ShellComplaintsRoute: typeof ShellComplaintsRoute
   ShellComplianceRoute: typeof ShellComplianceRoute
   ShellDashboardRoute: typeof ShellDashboardRoute
+  ShellDiscountsRoute: typeof ShellDiscountsRoute
+  ShellExpensesRoute: typeof ShellExpensesRoute
   ShellFrontDeskRoute: typeof ShellFrontDeskRoute
   ShellGroupBookingsRoute: typeof ShellGroupBookingsRoute
   ShellGuestsRoute: typeof ShellGuestsRoute
   ShellHelpRoute: typeof ShellHelpRoute
   ShellHousekeepingRoute: typeof ShellHousekeepingRoute
+  ShellInventoryRoute: typeof ShellInventoryRoute
   ShellNightAuditRoute: typeof ShellNightAuditRoute
   ShellNotificationsRoute: typeof ShellNotificationsRoute
+  ShellPartyHallRoute: typeof ShellPartyHallRoute
+  ShellPaymentHistoryRoute: typeof ShellPaymentHistoryRoute
+  ShellPaymentsRoute: typeof ShellPaymentsRoute
+  ShellPendingPaymentsRoute: typeof ShellPendingPaymentsRoute
   ShellPosRoute: typeof ShellPosRoute
+  ShellProfitsRoute: typeof ShellProfitsRoute
   ShellReportsRoute: typeof ShellReportsRoute
   ShellRevenueRoute: typeof ShellRevenueRoute
   ShellRoomsRoute: typeof ShellRoomsRoute
   ShellSettingsRoute: typeof ShellSettingsRoute
   ShellStaffRoute: typeof ShellStaffRoute
-  ShellInventoryRoute: typeof ShellInventoryRoute
+  ShellSystemWorkflowRoute: typeof ShellSystemWorkflowRoute
+  ShellVisitorsRoute: typeof ShellVisitorsRoute
   ShellReservationsNewRoute: typeof ShellReservationsNewRoute
   ShellReservationsIndexRoute: typeof ShellReservationsIndexRoute
-  ShellSystemWorkflowRoute: typeof ShellSystemWorkflowRoute
 }
 
 const ShellRouteChildren: ShellRouteChildren = {
   ShellBanquetRoute: ShellBanquetRoute,
   ShellBillingRoute: ShellBillingRoute,
   ShellChannelManagerRoute: ShellChannelManagerRoute,
+  ShellComplaintsRoute: ShellComplaintsRoute,
   ShellComplianceRoute: ShellComplianceRoute,
   ShellDashboardRoute: ShellDashboardRoute,
+  ShellDiscountsRoute: ShellDiscountsRoute,
+  ShellExpensesRoute: ShellExpensesRoute,
   ShellFrontDeskRoute: ShellFrontDeskRoute,
   ShellGroupBookingsRoute: ShellGroupBookingsRoute,
   ShellGuestsRoute: ShellGuestsRoute,
   ShellHelpRoute: ShellHelpRoute,
   ShellHousekeepingRoute: ShellHousekeepingRoute,
+  ShellInventoryRoute: ShellInventoryRoute,
   ShellNightAuditRoute: ShellNightAuditRoute,
   ShellNotificationsRoute: ShellNotificationsRoute,
+  ShellPartyHallRoute: ShellPartyHallRoute,
+  ShellPaymentHistoryRoute: ShellPaymentHistoryRoute,
+  ShellPaymentsRoute: ShellPaymentsRoute,
+  ShellPendingPaymentsRoute: ShellPendingPaymentsRoute,
   ShellPosRoute: ShellPosRoute,
+  ShellProfitsRoute: ShellProfitsRoute,
   ShellReportsRoute: ShellReportsRoute,
   ShellRevenueRoute: ShellRevenueRoute,
   ShellRoomsRoute: ShellRoomsRoute,
   ShellSettingsRoute: ShellSettingsRoute,
   ShellStaffRoute: ShellStaffRoute,
-  ShellProfitsRoute: ShellProfitsRoute,
-  ShellExpensesRoute: ShellExpensesRoute,
-  ShellInventoryRoute: ShellInventoryRoute,
-  ShellDiscountsRoute: ShellDiscountsRoute,
-  ShellPendingPaymentsRoute: ShellPendingPaymentsRoute,
-  ShellPaymentHistoryRoute: ShellPaymentHistoryRoute,
-  ShellPaymentsRoute: ShellPaymentsRoute,
-  ShellPartyHallRoute: ShellPartyHallRoute,
+  ShellSystemWorkflowRoute: ShellSystemWorkflowRoute,
   ShellVisitorsRoute: ShellVisitorsRoute,
-  ShellComplaintsRoute: ShellComplaintsRoute,
   ShellReservationsNewRoute: ShellReservationsNewRoute,
   ShellReservationsIndexRoute: ShellReservationsIndexRoute,
-  ShellSystemWorkflowRoute: ShellSystemWorkflowRoute,
 }
 
 const ShellRouteWithChildren = ShellRoute._addFileChildren(ShellRouteChildren)
@@ -603,3 +736,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
