@@ -1353,32 +1353,66 @@ export function FrontDesk() {
                 </div>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2 pt-1">
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Payment Mode</Label>
-                  <Select
-                    value={b.paymentMethod}
-                    onValueChange={(v) => setB({ ...b, paymentMethod: v })}
+              {/* Split Payment Option for Advance */}
+              {Number(b.paidAmount) > 0 && (
+                <div className="flex items-center justify-between p-2.5 rounded-xl bg-secondary/30 border border-border">
+                  <div className="text-xs">
+                    <div className="font-semibold">Split Advance Payment</div>
+                    <div className="text-muted-foreground text-[11px]">Split across Cash, Card, UPI, Bank Transfer</div>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={isBookingSplit ? "default" : "outline"}
+                    className={`h-7 text-xs ${isBookingSplit ? "bg-brass text-gold-foreground" : "text-muted-foreground"}`}
+                    onClick={() => {
+                      const next = !isBookingSplit;
+                      setIsBookingSplit(next);
+                      if (next && (!bookingSplits.length || bookingSplits.every(s => !s.amount))) {
+                        setBookingSplits([{ method: b.paymentMethod as any, amount: String(b.paidAmount) }]);
+                      }
+                    }}
                   >
-                    <SelectTrigger><SelectValue placeholder="Payment Method" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="CASH">Cash Payment</SelectItem>
-                      <SelectItem value="UPI">UPI / QR (GPay, PhonePe, Paytm)</SelectItem>
-                      <SelectItem value="CARD">Credit / Debit Card (POS Terminal)</SelectItem>
-                      <SelectItem value="BANK_TRANSFER">Bank Transfer / NEFT / IMPS</SelectItem>
-                      <SelectItem value="OTHER">Other / Bill to Company</SelectItem>
-                    </SelectContent>
-                  </Select>
+                    {isBookingSplit ? "Split Enabled" : "Enable Split"}
+                  </Button>
                 </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Special Requests & Notes</Label>
-                  <Input
-                    placeholder="e.g. Late check-in, extra bed, ground floor preference"
-                    value={b.notes}
-                    onChange={(e) => setB({ ...b, notes: e.target.value })}
-                  />
+              )}
+
+              {isBookingSplit && Number(b.paidAmount) > 0 ? (
+                <SplitPaymentInput
+                  totalAmount={Number(b.paidAmount) || 0}
+                  splits={bookingSplits}
+                  onChange={setBookingSplits}
+                  allowExceed={false}
+                />
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2 pt-1">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Payment Mode</Label>
+                    <Select
+                      value={b.paymentMethod}
+                      onValueChange={(v) => setB({ ...b, paymentMethod: v })}
+                    >
+                      <SelectTrigger><SelectValue placeholder="Payment Method" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="CASH">Cash Payment</SelectItem>
+                        <SelectItem value="UPI">UPI / QR (GPay, PhonePe, Paytm)</SelectItem>
+                        <SelectItem value="CARD">Credit / Debit Card (POS Terminal)</SelectItem>
+                        <SelectItem value="BANK_TRANSFER">Bank Transfer / NEFT / IMPS</SelectItem>
+                        <SelectItem value="OTHER">Other / Bill to Company</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Special Requests & Notes</Label>
+                    <Input
+                      placeholder="e.g. Late check-in, extra bed, ground floor preference"
+                      value={b.notes}
+                      onChange={(e) => setB({ ...b, notes: e.target.value })}
+                    />
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
 
