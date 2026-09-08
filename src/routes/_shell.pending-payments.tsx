@@ -9,8 +9,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { usePms } from '@/lib/pms-store'
 import { inr, Payment } from '@/lib/pms-data'
+import { SplitPaymentInput, type SplitRow } from '@/components/pms/split-payment-input'
 import { toast } from 'sonner'
-import { CreditCard, Banknote, Clock, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { CreditCard, Banknote, Clock, AlertCircle, CheckCircle2, Split } from 'lucide-react'
 
 export const Route = createFileRoute('/_shell/pending-payments')({
   component: PendingPaymentsPage,
@@ -39,6 +40,8 @@ function PendingPaymentsPage() {
   const [selectedItem, setSelectedItem] = React.useState<PendingItem | null>(null);
   const [collectionAmount, setCollectionAmount] = React.useState("");
   const [method, setMethod] = React.useState<"CASH" | "UPI" | "CARD" | "BANK_TRANSFER" | "OTHER">("CASH");
+  const [useSplitPayment, setUseSplitPayment] = React.useState(false);
+  const [splits, setSplits] = React.useState<SplitRow[]>([]);
   const [loading, setLoading] = React.useState(false);
 
   // Discount Request Modal State
@@ -161,18 +164,30 @@ function PendingPaymentsPage() {
 
   const handleCollect = async () => {
     if (!selectedItem) return;
-    const amt = parseFloat(collectionAmount);
-    if (isNaN(amt) || amt <= 0) return toast.error("Please enter a valid collection amount");
+
+    let amt = parseFloat(collectionAmount);
+    let splitsToSend: SplitRow[] | undefined = undefined;
+
+    if (useSplitPayment) {
+      amt = splits.reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
+      if (amt <= 0) return toast.error("Please allocate split payment amounts");
+      splitsToSend = splits;
+    } else {
+      if (isNaN(amt) || amt <= 0) return toast.error("Please enter a valid collection amount");
+    }
 
     setLoading(true);
     const targetId = selectedItem.paymentId || selectedItem.reservationId;
-    const res = await settlePayment(targetId, amt, method as any);
+    const finalMethod = useSplitPayment ? (splits[0]?.method || "CASH") : method;
+    const res = await settlePayment(targetId, amt, finalMethod as any, splitsToSend);
     setLoading(false);
 
     if (res?.success) {
       toast.success(`Collected ${inr(amt)} for ${selectedItem.guestName}`);
       setSelectedItem(null);
       setCollectionAmount("");
+      setUseSplitPayment(false);
+      setSplits([]);
     } else {
       toast.error(res?.error || "Failed to record payment");
     }
@@ -335,28 +350,62 @@ function PendingPaymentsPage() {
                 </div>
               </div>
               
-              <div className="space-y-1.5">
-                <Label>Collection Amount (₹)</Label>
-                <Input 
-                  type="number" 
-                  value={collectionAmount} 
-                  onChange={(e) => setCollectionAmount(e.target.value)} 
-                />
+              <div className="flex items-center justify-between border-y border-border/60 py-2.5">
+                <div className="text-xs font-medium text-foreground flex items-center gap-1.5">
+                  <Split className="size-4 text-brass" /> Split payment across multiple modes?
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={useSplitPayment ? "default" : "outline"}
+                  onClick={() => {
+                    const next = !useSplitPayment;
+                    setUseSplitPayment(next);
+                    if (next && splits.length === 0) {
+                      const initialAmt = parseFloat(collectionAmount) || selectedItem.balance || 0;
+                      setSplits([{ id: "1", method: "CASH", amount: initialAmt, reference_note: "" }]);
+                    }
+                  }}
+                  className={`h-7 text-xs rounded-lg ${useSplitPayment ? "bg-brass text-gold-foreground" : ""}`}
+                >
+                  {useSplitPayment ? "✓ Split Mode Active" : "+ Enable Split"}
+                </Button>
               </div>
 
-              <div className="space-y-1.5">
-                <Label>Payment Mode</Label>
-                <Select value={method} onValueChange={(v: any) => setMethod(v)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="CASH">Cash</SelectItem>
-                    <SelectItem value="UPI">UPI / QR (GPay, PhonePe, Paytm)</SelectItem>
-                    <SelectItem value="CARD">Credit / Debit Card</SelectItem>
-                    <SelectItem value="BANK_TRANSFER">Bank Transfer / NEFT</SelectItem>
-                    <SelectItem value="OTHER">Other / Direct</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              {useSplitPayment ? (
+                <SplitPaymentInput
+                  totalAmount={selectedItem.balance}
+                  splits={splits}
+                  onChange={setSplits}
+                  disabled={loading}
+                />
+              ) : (
+                <>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Collection Amount (₹)</Label>
+                    <Input 
+                      type="number" 
+                      value={collectionAmount} 
+                      onChange={(e) => setCollectionAmount(e.target.value)} 
+                      className="text-xs font-mono font-semibold"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Payment Mode</Label>
+                    <Select value={method} onValueChange={(v: any) => setMethod(v)}>
+                      <SelectTrigger className="text-xs"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="CASH">💵 Cash</SelectItem>
+                        <SelectItem value="UPI">📱 UPI / QR (GPay, PhonePe, Paytm)</SelectItem>
+                        <SelectItem value="CARD">💳 Credit / Debit Card</SelectItem>
+                        <SelectItem value="BANK_TRANSFER">🏦 Bank Transfer / NEFT</SelectItem>
+                        <SelectItem value="OTHER">🔖 Other / Direct</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </>
+              )}
 
               <div className="flex justify-end gap-2 pt-3 border-t border-border">
                 <Button variant="ghost" onClick={() => setSelectedItem(null)}>Cancel</Button>

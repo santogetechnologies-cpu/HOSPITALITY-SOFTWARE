@@ -14,6 +14,7 @@ import { usePms } from "@/lib/pms-store";
 import { inr } from "@/lib/pms-data";
 import { useSettings } from "@/lib/use-settings";
 import { getStayTimerStatus } from "@/lib/timer-utils";
+import { SplitPaymentInput, SplitRow } from "@/components/pms/split-payment-input";
 import { toast } from "sonner";
 import { LogIn, LogOut, Plus, Users, DoorOpen, CheckCircle2, Calendar, CreditCard, ShieldCheck, MapPin, User, FileText, AlertTriangle, Timer, Clock } from "lucide-react";
 
@@ -49,6 +50,12 @@ export function FrontDesk() {
 
   const [checkinPayAmount, setCheckinPayAmount] = React.useState("");
   const [checkinPayMethod, setCheckinPayMethod] = React.useState<"CASH" | "UPI" | "CARD" | "BANK_TRANSFER">("CASH");
+  const [isCheckinSplit, setIsCheckinSplit] = React.useState(false);
+  const [checkinSplits, setCheckinSplits] = React.useState<SplitRow[]>([]);
+
+  // New Booking Split Payment State
+  const [isBookingSplit, setIsBookingSplit] = React.useState(false);
+  const [bookingSplits, setBookingSplits] = React.useState<SplitRow[]>([]);
 
   // Stay Adjustment & Extra Days Modal State
   const [adjustModalOpen, setAdjustModalOpen] = React.useState(false);
@@ -270,6 +277,22 @@ export function FrontDesk() {
       return toast.error("This room is already reserved for the selected dates and time. Please select another room.");
     }
 
+    let splitsToSend: any[] | undefined = undefined;
+    let finalMethod = b.paymentMethod;
+    if (isBookingSplit && paidNum > 0) {
+      const activeSplits = bookingSplits.filter(s => (Number(s.amount) || 0) > 0);
+      const splitSum = activeSplits.reduce((acc, s) => acc + (Number(s.amount) || 0), 0);
+      if (Math.abs(splitSum - paidNum) > 0.01) {
+        return toast.error(`Split payments total (${inr(splitSum)}) must match the advance amount (${inr(paidNum)}).`);
+      }
+      splitsToSend = activeSplits.map(s => ({
+        method: s.method,
+        amount: Number(s.amount) || 0,
+        reference_note: s.reference?.trim() || null,
+      }));
+      finalMethod = (activeSplits.length > 1 ? `Split (${activeSplits.map(s => s.method).join('+')})` : (activeSplits[0]?.method || "CASH")) as any;
+    }
+
     setBookingLoading(true);
     try {
       const res = await addRoomReservation({
@@ -278,10 +301,14 @@ export function FrontDesk() {
         gstNumber: b.gstNumber.trim().toUpperCase() || undefined,
         address: b.address.trim() || undefined,
         paidAmount: paidNum,
+        paymentMethod: finalMethod,
+        splits: splitsToSend,
       });
       if (res?.success) {
         toast.success("Room booked successfully with 24-hr check-in model!");
         setBookingOpen(false);
+        setIsBookingSplit(false);
+        setBookingSplits([]);
         setB({
           guestName: "",
           companyName: "",
@@ -319,10 +346,15 @@ export function FrontDesk() {
     if (res) {
       setAssignedRoomId(res.room_id || "");
       const { balance } = getReservationFinancials(res);
-      setCheckinPayAmount(balance > 0 ? String(balance) : "");
+      const bal = balance > 0 ? balance : 0;
+      setCheckinPayAmount(bal > 0 ? String(bal) : "");
+      setIsCheckinSplit(false);
+      setCheckinSplits([{ method: "CASH", amount: bal > 0 ? String(bal) : "" }]);
     } else {
       setAssignedRoomId("");
       setCheckinPayAmount("");
+      setIsCheckinSplit(false);
+      setCheckinSplits([]);
     }
   }, [res, discounts, payments, reservations]);
 
@@ -342,7 +374,23 @@ export function FrontDesk() {
       // If there is an unpaid balance and staff entered an amount, settle it
       const payAmt = parseFloat(checkinPayAmount);
       if (balance > 0 && !isNaN(payAmt) && payAmt > 0) {
-        await settlePayment(res.id, payAmt, checkinPayMethod);
+        let splitsToSend: any[] | undefined = undefined;
+        let finalMethod = checkinPayMethod;
+        if (isCheckinSplit) {
+          const activeSplits = checkinSplits.filter(s => (Number(s.amount) || 0) > 0);
+          const splitSum = activeSplits.reduce((acc, s) => acc + (Number(s.amount) || 0), 0);
+          if (Math.abs(splitSum - payAmt) > 0.01) {
+            setCheckinLoading(false);
+            return toast.error(`Split payments total (${inr(splitSum)}) must match the collection amount (${inr(payAmt)}).`);
+          }
+          splitsToSend = activeSplits.map(s => ({
+            method: s.method,
+            amount: Number(s.amount) || 0,
+            reference_note: s.reference?.trim() || null,
+          }));
+          finalMethod = (activeSplits.length > 1 ? `Split (${activeSplits.map(s => s.method).join('+')})` : (activeSplits[0]?.method || "CASH")) as any;
+        }
+        await settlePayment(res.id, payAmt, finalMethod as any, splitsToSend);
       }
 
       await checkIn(res.id, targetRoomId);
@@ -869,27 +917,66 @@ export function FrontDesk() {
                   </div>
 
                   {balance > 0 && (
-                    <div className="mt-4 pt-3 border-t border-border grid gap-3 sm:grid-cols-2">
-                      <div className="space-y-1">
-                        <Label className="text-xs">Collect Balance on Check-in (₹)</Label>
-                        <Input
-                          type="number"
-                          value={checkinPayAmount}
-                          onChange={(e) => setCheckinPayAmount(e.target.value)}
+                    <div className="mt-4 pt-3 border-t border-border space-y-3">
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="space-y-1">
+                          <Label className="text-xs">Collect Balance on Check-in (₹)</Label>
+                          <Input
+                            type="number"
+                            value={checkinPayAmount}
+                            onChange={(e) => {
+                              const newAmt = e.target.value;
+                              setCheckinPayAmount(newAmt);
+                              if (isCheckinSplit && checkinSplits.length === 1) {
+                                setCheckinSplits([{ ...checkinSplits[0], amount: newAmt }]);
+                              }
+                            }}
+                          />
+                        </div>
+
+                        {/* Split Toggle */}
+                        <div className="flex items-end pb-1">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={isCheckinSplit ? "default" : "outline"}
+                            className={`w-full h-9 text-xs rounded-lg ${isCheckinSplit ? "bg-brass text-gold-foreground" : "text-muted-foreground"}`}
+                            onClick={() => {
+                              const next = !isCheckinSplit;
+                              setIsCheckinSplit(next);
+                              if (next && (!checkinSplits.length || checkinSplits.every(s => !s.amount))) {
+                                setCheckinSplits([
+                                  { method: checkinPayMethod, amount: checkinPayAmount || "0" }
+                                ]);
+                              }
+                            }}
+                          >
+                            {isCheckinSplit ? "✓ Split Payment Enabled" : "⇄ Enable Split Payment"}
+                          </Button>
+                        </div>
+                      </div>
+
+                      {isCheckinSplit ? (
+                        <SplitPaymentInput
+                          totalAmount={parseFloat(checkinPayAmount) || 0}
+                          splits={checkinSplits}
+                          onChange={setCheckinSplits}
+                          allowExceed={false}
                         />
-                      </div>
-                      <div className="space-y-1">
-                        <Label className="text-xs">Payment Method</Label>
-                        <Select value={checkinPayMethod} onValueChange={(v: any) => setCheckinPayMethod(v)}>
-                          <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="CASH">Cash</SelectItem>
-                            <SelectItem value="UPI">UPI / QR</SelectItem>
-                            <SelectItem value="CARD">Credit / Debit Card</SelectItem>
-                            <SelectItem value="BANK_TRANSFER">Bank Transfer</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
+                      ) : (
+                        <div className="space-y-1">
+                          <Label className="text-xs">Payment Method</Label>
+                          <Select value={checkinPayMethod} onValueChange={(v: any) => setCheckinPayMethod(v)}>
+                            <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="CASH">Cash</SelectItem>
+                              <SelectItem value="UPI">UPI / QR</SelectItem>
+                              <SelectItem value="CARD">Credit / Debit Card</SelectItem>
+                              <SelectItem value="BANK_TRANSFER">Bank Transfer</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

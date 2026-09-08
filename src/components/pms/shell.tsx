@@ -68,6 +68,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
     section: "Operations",
     items: [
       { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+      { to: "/group-bookings", label: "Group Bookings", icon: Users },
       { to: "/reservations", label: "Reservations", icon: CalendarCheck },
       { to: "/billing", label: "Bills", icon: Receipt },
       { to: "/guests", label: "Guests", icon: Users },
@@ -80,6 +81,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
   {
     section: "Finance",
     items: [
+      { to: "/reports", label: "GST Sales Statement", icon: FileBarChart, roles: ["SUPER_ADMIN", "GM"] },
       { to: "/profits", label: "Profit & Loss (P&L)", icon: TrendingUp, roles: ["SUPER_ADMIN", "GM"] },
       { to: "/payments", label: "Payment Dashboard & Inflow Analytics", icon: Receipt, roles: ["SUPER_ADMIN", "GM"] },
       { to: "/pending-payments", label: "Pending Payments", icon: Receipt },
@@ -107,8 +109,10 @@ const NAV: { section: string; items: NavItem[] }[] = [
 ];
 
 const QUICK_ACTIONS: { label: string; to: string; icon: React.ComponentType<{ className?: string }> }[] = [
+  { label: "New Group Booking", to: "/group-bookings", icon: Users },
   { label: "New Room Booking", to: "/front-desk", icon: CalendarCheck },
   { label: "Front Desk Check-In", to: "/front-desk", icon: ConciergeBell },
+  { label: "GST Sales Statement", to: "/reports", icon: FileBarChart },
   { label: "Add Guest", to: "/guests", icon: Users },
   { label: "Log Expense", to: "/expenses", icon: Receipt },
   { label: "Inventory & Supplies", to: "/inventory", icon: Boxes },

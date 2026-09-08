@@ -134,10 +134,36 @@ export type Reservation = {
   gst_number?: string;
   company_name?: string;
   address?: string;
+  group_id?: string;
+  transferred_amount?: number;
+  transferred_from?: string;
 
   // Relations
   guest?: Guest;
   room?: Room;
+};
+
+export type GroupBooking = {
+  id: string;
+  name: string;
+  contact_name?: string;
+  contact_phone?: string;
+  contact_email?: string;
+  payer_type: "LAST_ROOM" | "CUSTOM_ROOM";
+  custom_payer_room_id?: string;
+  status: "ACTIVE" | "COMPLETED" | "CANCELLED";
+  notes?: string;
+  created_at?: string;
+};
+
+export type PaymentSplit = {
+  id: string;
+  payment_id: string;
+  reservation_id: string;
+  method: "CASH" | "CARD" | "UPI" | "BANK_TRANSFER" | "OTHER";
+  amount: number;
+  reference_note?: string;
+  created_at?: string;
 };
 
 export type Payment = {
@@ -147,6 +173,7 @@ export type Payment = {
   paid_amount: number;
   status: "PENDING" | "PARTIAL" | "COMPLETED" | "FROZEN";
   payment_method?: string;
+  splits?: PaymentSplit[];
 };
 
 export type Discount = {
@@ -160,10 +187,22 @@ export type Discount = {
   created_at?: string;
 };
 
+export const EXPENSE_CATEGORIES = [
+  "Operational",
+  "Salary Advance",
+  "Inventory / Supplies",
+  "Maintenance",
+  "F&B Supplies",
+  "Refund",
+  "Other",
+] as const;
+
+export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number] | string;
+
 export type Expense = {
   id: string;
   amount: number;
-  category: string;
+  category: ExpenseCategory;
   description: string;
   receipt_url?: string;
   recorded_by?: string;

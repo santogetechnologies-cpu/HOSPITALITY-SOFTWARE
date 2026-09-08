@@ -172,6 +172,31 @@ create table if not exists public.folio_lines (
     created_at timestamptz default timezone('utc'::text, now()) not null
 );
 
+-- Table 13: Group Bookings (Master Group Folio & Multi-Room Management)
+create table if not exists public.group_bookings (
+    id text primary key default ('GRP-' || upper(substr(md5(random()::text), 1, 6))),
+    name text not null,
+    contact_name text,
+    contact_phone text,
+    contact_email text,
+    payer_type text not null default 'LAST_ROOM',
+    custom_payer_room_id text,
+    status text not null default 'ACTIVE',
+    notes text,
+    created_at timestamptz default timezone('utc'::text, now()) not null
+);
+
+-- Table 14: Payment Splits (Multi-Method Payments Breakdown)
+create table if not exists public.payment_splits (
+    id text primary key default uuid_generate_v4()::text,
+    payment_id text references public.payments(id) on delete cascade,
+    reservation_id text references public.reservations(id) on delete cascade,
+    method text not null default 'CASH',
+    amount numeric(10, 2) not null default 0,
+    reference_note text,
+    created_at timestamptz default timezone('utc'::text, now()) not null
+);
+
 -- ==========================================
 -- 3. ENSURE COLUMNS EXIST (SELF-HEALING)
 -- ==========================================
@@ -187,6 +212,9 @@ alter table public.reservations add column if not exists event_type text;
 alter table public.reservations add column if not exists booking_date date default current_date;
 alter table public.reservations add column if not exists start_time text default '14:00:00';
 alter table public.reservations add column if not exists end_time text default '11:00:00';
+alter table public.reservations add column if not exists group_id text;
+alter table public.reservations add column if not exists transferred_amount numeric(10, 2) default 0;
+alter table public.reservations add column if not exists transferred_from text;
 
 alter table public.payments add column if not exists total_amount numeric(10, 2) default 0;
 alter table public.payments add column if not exists paid_amount numeric(10, 2) default 0;
@@ -222,6 +250,8 @@ alter table public.hk_tasks enable row level security;
 alter table public.tickets enable row level security;
 alter table public.notifications enable row level security;
 alter table public.folio_lines enable row level security;
+alter table public.group_bookings enable row level security;
+alter table public.payment_splits enable row level security;
 
 -- Drop old policies to prevent duplicates and recreate clean full-access policies
 drop policy if exists "Allow all access to rooms" on public.rooms;
@@ -259,6 +289,12 @@ create policy "Allow all access to notifications" on public.notifications for al
 
 drop policy if exists "Allow all access to folio_lines" on public.folio_lines;
 create policy "Allow all access to folio_lines" on public.folio_lines for all using (true) with check (true);
+
+drop policy if exists "Allow all access to group_bookings" on public.group_bookings;
+create policy "Allow all access to group_bookings" on public.group_bookings for all using (true) with check (true);
+
+drop policy if exists "Allow all access to payment_splits" on public.payment_splits;
+create policy "Allow all access to payment_splits" on public.payment_splits for all using (true) with check (true);
 
 -- ==========================================
 -- 5. INITIAL STARTER SEED DATA

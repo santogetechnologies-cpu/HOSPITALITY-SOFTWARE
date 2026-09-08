@@ -16,6 +16,8 @@ import {
   type Profile,
   type HkTask,
   type Ticket,
+  type GroupBooking,
+  type PaymentSplit,
   CANONICAL_ROOMS
 } from "./pms-data";
 
@@ -41,6 +43,8 @@ type State = {
   payments: Payment[];
   discounts: Discount[];
   expenses: Expense[];
+  groupBookings: GroupBooking[];
+  paymentSplits: PaymentSplit[];
   inventoryItems: InventoryItem[];
   inventoryTransactions: InventoryTransaction[];
   profiles: Profile[];
@@ -74,6 +78,8 @@ const initialState: State = {
   payments: [],
   discounts: [],
   expenses: [],
+  groupBookings: [],
+  paymentSplits: [],
   inventoryItems: [],
   inventoryTransactions: [],
   profiles: [],
@@ -138,6 +144,7 @@ type Ctx = State & {
     totalAmount: number;
     paymentMethod?: string;
     paidAmount?: number;
+    splits?: any[];
     notes?: string;
   }) => Promise<{ success: boolean; error?: string }>;
   transferRoom: (reservationId: string, toRoom: string) => void;
@@ -153,9 +160,9 @@ type Ctx = State & {
   toggleRead: (id: string) => void;
   pushNotification: (n: Omit<Notification, "id" | "read" | "time">) => void;
   runNightAudit: () => void;
-  addPartyHallBooking: (b: { customerName: string; companyName?: string; phone: string; email: string; address?: string; gstNumber?: string; eventType: string; guests: number; date: string; startTime: string; endTime: string; baseAmount: number; advance: number; paymentMethod?: string; }) => Promise<{ success: boolean; error?: string }>;
+  addPartyHallBooking: (b: { customerName: string; companyName?: string; phone: string; email: string; address?: string; gstNumber?: string; eventType: string; guests: number; date: string; startTime: string; endTime: string; baseAmount: number; advance: number; paymentMethod?: string; splits?: any[]; }) => Promise<{ success: boolean; error?: string }>;
   updatePartyHallBooking: (reservationId: string, updates: { customerName?: string; phone?: string; email?: string; eventType?: string; guests?: number; date?: string; startTime?: string; endTime?: string; baseAmount?: number; status?: string; }) => Promise<{ success: boolean; error?: string }>;
-  addReservationExtraCharge: (reservationId: string, additionalAmount: number, reason: string, options?: { newEndTime?: string; collectedAmount?: number; paymentMethod?: "CASH" | "UPI" | "CARD" | "BANK_TRANSFER" | "OTHER" }) => Promise<{ success: boolean; error?: string }>;
+  addReservationExtraCharge: (reservationId: string, additionalAmount: number, reason: string, options?: { newEndTime?: string; collectedAmount?: number; paymentMethod?: "CASH" | "UPI" | "CARD" | "BANK_TRANSFER" | "OTHER"; splits?: any[]; }) => Promise<{ success: boolean; error?: string }>;
   adjustRoomStay: (reservationId: string, params: {
     newEndDate: string;
     newNights: number;
@@ -163,16 +170,69 @@ type Ctx = State & {
     newTotalAmount: number;
     collectedAmount?: number;
     paymentMethod?: "CASH" | "UPI" | "CARD" | "BANK_TRANSFER" | "OTHER";
+    splits?: any[];
     isEarlyCheckout?: boolean;
     reason?: string;
   }) => Promise<{ success: boolean; error?: string }>;
   
   // Finance Mutators
-  settlePayment: (paymentId: string, amount: number, method?: "CASH" | "UPI" | "CARD" | "BANK_TRANSFER" | "OTHER") => Promise<{ success: boolean; error?: string }>;
+  settlePayment: (paymentId: string, amount: number, method?: "CASH" | "UPI" | "CARD" | "BANK_TRANSFER" | "OTHER" | string, splits?: any[]) => Promise<{ success: boolean; error?: string }>;
   freezePayment: (paymentId: string) => Promise<{ success: boolean; error?: string }>;
   requestDiscount: (reservationId: string, amount: number, reason: string) => Promise<{ success: boolean; error?: string }>;
   resolveDiscount: (discountId: string, status: "APPROVED" | "REJECTED") => Promise<{ success: boolean; error?: string }>;
   addExpense: (amount: number, category: string, description: string) => Promise<{ success: boolean; error?: string }>;
+
+  // Group Bookings Mutators
+  addGroupBooking: (data: {
+    name: string;
+    contactName: string;
+    contactPhone?: string;
+    contactEmail?: string;
+    idType?: string;
+    idNumber?: string;
+    gstNumber?: string;
+    address?: string;
+    roomIds: string[];
+    startDate: string;
+    endDate: string;
+    checkInTime?: string;
+    checkOutTime?: string;
+    nights: number;
+    baseAmountPerRoom: number;
+    totalAmountPerRoom: number;
+    advancePaid?: number;
+    splits?: any[];
+    payerType?: "LAST_ROOM" | "CUSTOM_ROOM";
+    customPayerRoomId?: string;
+    notes?: string;
+    autoCheckIn?: boolean;
+  }) => Promise<{ success: boolean; error?: string; groupId?: string }>;
+  groupExistingReservations: (data: {
+    groupName: string;
+    reservationIds: string[];
+    payerType?: "LAST_ROOM" | "CUSTOM_ROOM";
+    customPayerRoomId?: string;
+    notes?: string;
+  }) => Promise<{ success: boolean; error?: string; groupId?: string }>;
+  checkInGroupRoom: (reservationId: string) => Promise<{ success: boolean; error?: string }>;
+  checkInAllGroupRooms: (groupId: string) => Promise<{ success: boolean; error?: string }>;
+  checkOutGroupRoom: (reservationId: string) => Promise<{
+    success: boolean;
+    error?: string;
+    isMasterPayerRoom?: boolean;
+    transferredAmount?: number;
+    targetRoomNumber?: string;
+  }>;
+  settleGroupMaster: (data: {
+    groupId: string;
+    payerReservationId: string;
+    totalAmount: number;
+    paidAmount: number;
+    splits: any[];
+    notes?: string;
+  }) => Promise<{ success: boolean; error?: string }>;
+  updateGroupBookingPayer: (groupId: string, payerType: "LAST_ROOM" | "CUSTOM_ROOM", customPayerRoomId?: string) => Promise<{ success: boolean; error?: string }>;
+  deleteGroupBooking: (groupId: string) => Promise<{ success: boolean; error?: string }>;
   
   // Inventory Mutators
   addInventoryItem: (item: {
@@ -249,7 +309,9 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         { data: profiles },
         { data: notifications },
         { data: hkTasks },
-        { data: tickets }
+        { data: tickets },
+        { data: groupBookings },
+        { data: paymentSplits }
       ] = await Promise.all([
         supabase.from('rooms').select('*'),
         supabase.from('reservations').select('*'),
@@ -262,7 +324,9 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         supabase.from('profiles').select('*'),
         supabase.from('notifications').select('*'),
         supabase.from('hk_tasks').select('*'),
-        supabase.from('tickets').select('*')
+        supabase.from('tickets').select('*'),
+        supabase.from('group_bookings').select('*').order('created_at', { ascending: false }),
+        supabase.from('payment_splits').select('*').order('created_at', { ascending: false })
       ]);
 
       if (isJwtExpiredError(errRooms) || isJwtExpiredError(errRes) || isJwtExpiredError(errGuests) || isJwtExpiredError(errPayments)) {
@@ -458,6 +522,11 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         void supabase.from('expenses').delete().in('id', duplicateExpenseIdsToDelete);
       }
 
+      const loadedSplits = (paymentSplits as any) || [];
+      loadedPayments.forEach((pay: any) => {
+        pay.splits = loadedSplits.filter((s: any) => s.payment_id === pay.id || (s.reservation_id && pay.reservation_id && s.reservation_id === pay.reservation_id));
+      });
+
       setState(s => ({
         ...s,
         rooms: reconciledRooms,
@@ -466,6 +535,8 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         payments: loadedPayments,
         discounts: loadedDiscounts,
         expenses: dedupedExpenses,
+        groupBookings: (groupBookings as any) || [],
+        paymentSplits: loadedSplits,
         inventoryItems: (inventoryItems as any) || [],
         inventoryTransactions: (inventoryTransactions as any) || [],
         profiles: loadedProfiles,
@@ -860,8 +931,12 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
           const paidAmt = Number(b.paidAmount) || 0;
           const payStatus = paidAmt >= totalAmt && totalAmt > 0 ? 'COMPLETED' : paidAmt > 0 ? 'PARTIAL' : 'PENDING';
           
-          let method: 'CASH' | 'UPI' | 'CARD' | 'BANK_TRANSFER' | 'OTHER' = 'CASH';
-          if (b.paymentMethod) {
+          let method: string = 'CASH';
+          if (b.splits && b.splits.length > 0) {
+            method = b.splits.length > 1
+              ? `Split (${b.splits.map((s: any) => s.method).join('+')})`
+              : (b.splits[0].method || 'CASH');
+          } else if (b.paymentMethod) {
             const m = b.paymentMethod.toUpperCase().trim();
             if (m.includes('CARD') || m.includes('CREDIT') || m.includes('DEBIT')) method = 'CARD';
             else if (m.includes('UPI') || m.includes('GPAY') || m.includes('PHONEPE') || m.includes('PAYTM')) method = 'UPI';
@@ -870,8 +945,9 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             else method = 'OTHER';
           }
 
+          const payId = crypto.randomUUID();
           const { error: pErr } = await withAuthRetry(() => supabase.from('payments').insert({
-            id: crypto.randomUUID(),
+            id: payId,
             reservation_id: resId,
             total_amount: totalAmt,
             paid_amount: paidAmt,
@@ -879,6 +955,18 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             payment_method: method
           }));
           if (pErr) throw pErr;
+
+          if (b.splits && b.splits.length > 0) {
+            const splitInserts = b.splits.map((s: any) => ({
+              id: crypto.randomUUID(),
+              payment_id: payId,
+              reservation_id: resId,
+              method: s.method || 'CASH',
+              amount: Number(s.amount) || 0,
+              reference_note: s.reference_note || null,
+            }));
+            await withAuthRetry(() => supabase.from('payment_splits').insert(splitInserts));
+          }
 
           await fetchData();
           return { success: true };
@@ -1140,7 +1228,9 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             else method = 'OTHER';
           }
 
+          const payId = crypto.randomUUID();
           const { error: pErr } = await withAuthRetry(() => supabase.from('payments').insert({
+            id: payId,
             reservation_id: resId,
             total_amount: b.baseAmount,
             paid_amount: b.advance,
@@ -1148,6 +1238,18 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             payment_method: method
           }));
           if (pErr) throw pErr;
+
+          if (b.splits && b.splits.length > 0 && b.advance > 0) {
+            const splitInserts = b.splits.map((s: any) => ({
+              id: crypto.randomUUID(),
+              payment_id: payId,
+              reservation_id: resId,
+              method: s.method || 'CASH',
+              amount: Number(s.amount) || 0,
+              reference_note: s.reference_note || null,
+            }));
+            await withAuthRetry(() => supabase.from('payment_splits').insert(splitInserts));
+          }
 
           // Refresh data
           await fetchData();
@@ -1320,14 +1422,23 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         }
       },
 
-      settlePayment: async (paymentId, amount, method = 'CASH') => {
+      settlePayment: async (paymentId, amount, method = 'CASH', splits?: any[]) => {
         try {
           let payment = state.payments.find(p => p.id === paymentId || p.reservation_id === paymentId || (p.reservation_id && paymentId && p.reservation_id.toLowerCase() === paymentId.toLowerCase()));
+          let targetPayId = payment?.id;
+          let targetResId = payment?.reservation_id;
+
+          const methodStr = (splits && splits.length > 1)
+            ? `Split (${splits.map((s: any) => s.method).join('+')})`
+            : (splits?.[0]?.method || method || 'CASH');
+
           if (!payment) {
             // Check if it's a reservation ID without a payment record yet
             const res = state.reservations.find(r => r.id === paymentId || (r.id && paymentId && r.id.toLowerCase() === paymentId.toLowerCase()));
             if (res) {
               const payId = crypto.randomUUID();
+              targetPayId = payId;
+              targetResId = res.id;
               const totalAmt = Number(res.base_amount) || 0;
               const paidAmt = Number(amount) || 0;
               const status = paidAmt >= totalAmt && totalAmt > 0 ? "COMPLETED" : "PARTIAL";
@@ -1337,23 +1448,36 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
                 total_amount: totalAmt,
                 paid_amount: paidAmt,
                 status,
-                payment_method: method || 'CASH'
+                payment_method: methodStr
               }));
               if (error) throw error;
-              await fetchData();
-              return { success: true };
+            } else {
+              return { success: false, error: "Payment record not found" };
             }
-            return { success: false, error: "Payment record not found" };
+          } else {
+            const newPaid = (Number(payment.paid_amount) || 0) + Number(amount);
+            const totalAmt = Number(payment.total_amount) || 0;
+            const status = newPaid >= totalAmt && totalAmt > 0 ? "COMPLETED" : (newPaid > 0 ? "PARTIAL" : "PENDING");
+            const { error } = await withAuthRetry(() => supabase.from('payments').update({ 
+              paid_amount: newPaid, 
+              status,
+              payment_method: methodStr
+            }).eq('id', payment.id));
+            if (error) throw error;
           }
-          const newPaid = (Number(payment.paid_amount) || 0) + Number(amount);
-          const totalAmt = Number(payment.total_amount) || 0;
-          const status = newPaid >= totalAmt && totalAmt > 0 ? "COMPLETED" : (newPaid > 0 ? "PARTIAL" : "PENDING");
-          const { error } = await withAuthRetry(() => supabase.from('payments').update({ 
-            paid_amount: newPaid, 
-            status,
-            payment_method: method || payment.payment_method || 'CASH'
-          }).eq('id', payment.id));
-          if (error) throw error;
+
+          if (splits && splits.length > 0 && targetPayId && targetResId) {
+            const splitInserts = splits.map((s: any) => ({
+              id: crypto.randomUUID(),
+              payment_id: targetPayId,
+              reservation_id: targetResId,
+              method: s.method || 'CASH',
+              amount: Number(s.amount) || 0,
+              reference_note: s.reference_note || null,
+            }));
+            await withAuthRetry(() => supabase.from('payment_splits').insert(splitInserts));
+          }
+
           await fetchData();
           return { success: true };
         } catch (err: any) {
@@ -1497,6 +1621,414 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         } catch (err: any) {
           console.error("Expense error:", err);
           return { success: false, error: err.message || "Failed to record expense" };
+        }
+      },
+
+      // Group Bookings Mutators
+      addGroupBooking: async (b) => {
+        try {
+          await ensureFreshSession();
+          if (!b.name?.trim()) return { success: false, error: "Group name is required." };
+          if (!b.contactName?.trim()) return { success: false, error: "Contact guest name is required." };
+          if (!b.roomIds || b.roomIds.length === 0) return { success: false, error: "Please select at least one room." };
+          if (!b.startDate || !b.endDate) return { success: false, error: "Check-in and check-out dates are required." };
+
+          const inTime = b.checkInTime || "14:00";
+          const outTime = b.checkOutTime || inTime;
+          const startIso = new Date(`${b.startDate}T${inTime}:00`).toISOString();
+          const endIso = new Date(`${b.endDate}T${outTime}:00`).toISOString();
+
+          // 1. Guest Lookup or Insert
+          const phoneTrimmed = b.contactPhone?.trim();
+          let guestId: string;
+          const existingGuest = phoneTrimmed
+            ? state.guests.find((g) => g.phone && g.phone.trim().toLowerCase() === phoneTrimmed.toLowerCase())
+            : null;
+
+          if (existingGuest) {
+            guestId = existingGuest.id;
+          } else {
+            guestId = crypto.randomUUID();
+            const guestData: any = {
+              id: guestId,
+              name: b.contactName.trim(),
+              phone: phoneTrimmed || null,
+              email: b.contactEmail?.trim() || null,
+              id_type: b.idType || null,
+              id_number: b.idNumber?.trim() || null,
+              gst_number: b.gstNumber?.trim().toUpperCase() || null,
+              address: b.address?.trim() || null,
+              country: 'India',
+              notes: b.notes?.trim() || null
+            };
+            const { error: gErr } = await withAuthRetry(() => supabase.from('guests').insert(guestData));
+            if (gErr) {
+              if (gErr.message?.includes('gst_number')) delete guestData.gst_number;
+              await withAuthRetry(() => supabase.from('guests').insert(guestData));
+            }
+          }
+
+          // 2. Create Group Master Entity
+          const groupId = `GRP-${Date.now().toString(36).toUpperCase()}`;
+          const payerType = b.payerType || "LAST_ROOM";
+          const customPayerRoomId = payerType === "CUSTOM_ROOM" ? (b.customPayerRoomId || b.roomIds[0]) : null;
+
+          const groupRecord = {
+            id: groupId,
+            name: b.name.trim(),
+            contact_name: b.contactName.trim(),
+            contact_phone: phoneTrimmed || null,
+            contact_email: b.contactEmail?.trim() || null,
+            payer_type: payerType,
+            custom_payer_room_id: customPayerRoomId,
+            status: "ACTIVE",
+            notes: b.notes?.trim() || null
+          };
+          const { error: grpErr } = await withAuthRetry(() => supabase.from('group_bookings').insert(groupRecord));
+          if (grpErr) throw grpErr;
+
+          // 3. Create Reservations for Each Selected Room
+          let remainingAdvance = Number(b.advancePaid) || 0;
+          for (let i = 0; i < b.roomIds.length; i++) {
+            const rId = b.roomIds[i];
+            const resId = crypto.randomUUID();
+            const baseAmt = Number(b.baseAmountPerRoom) || 0;
+            const totalAmt = Number(b.totalAmountPerRoom) || baseAmt;
+            const initialStatus = b.autoCheckIn ? 'OCCUPIED' : 'CONFIRMED';
+
+            const resData: any = {
+              id: resId,
+              guest_id: guestId,
+              room_id: rId,
+              resource_type: 'ROOM',
+              number_of_guests: 2,
+              booking_date: b.startDate,
+              start_time: startIso,
+              end_time: endIso,
+              status: initialStatus,
+              base_amount: baseAmt,
+              notes: `[Group: ${b.name.trim()}] ${b.notes || ''}`.trim(),
+              gst_number: b.gstNumber?.trim().toUpperCase() || null,
+              address: b.address?.trim() || null,
+              group_id: groupId,
+              transferred_amount: 0
+            };
+            const { error: rErr } = await withAuthRetry(() => supabase.from('reservations').insert(resData));
+            if (rErr) throw rErr;
+
+            // Update room status
+            await withAuthRetry(() => supabase.from('rooms').update({ status: initialStatus === 'OCCUPIED' ? 'OCCUPIED' : 'BOOKED' }).eq('id', rId));
+
+            // Payment allocation
+            const thisRoomAdvance = Math.min(remainingAdvance, totalAmt);
+            remainingAdvance = Math.max(0, remainingAdvance - thisRoomAdvance);
+
+            const payStatus = thisRoomAdvance >= totalAmt && totalAmt > 0 ? 'COMPLETED' : (thisRoomAdvance > 0 ? 'PARTIAL' : 'PENDING');
+            let payMethod: string = 'CASH';
+            if (b.splits && b.splits.length > 0) {
+              payMethod = b.splits.length > 1 ? `Split (${b.splits.map((s: any) => s.method).join('+')})` : (b.splits[0].method || 'CASH');
+            }
+
+            const payId = crypto.randomUUID();
+            const { error: pErr } = await withAuthRetry(() => supabase.from('payments').insert({
+              id: payId,
+              reservation_id: resId,
+              total_amount: totalAmt,
+              paid_amount: thisRoomAdvance,
+              status: payStatus,
+              payment_method: payMethod
+            }));
+            if (pErr) throw pErr;
+
+            // Record splits if applicable
+            if (i === 0 && b.splits && b.splits.length > 0 && thisRoomAdvance > 0) {
+              const splitInserts = b.splits.map((s: any) => ({
+                id: crypto.randomUUID(),
+                payment_id: payId,
+                reservation_id: resId,
+                method: s.method || 'CASH',
+                amount: Number(s.amount) || 0,
+                reference_note: s.reference_note || null,
+              }));
+              await withAuthRetry(() => supabase.from('payment_splits').insert(splitInserts));
+            }
+          }
+
+          await fetchData();
+          return { success: true, groupId };
+        } catch (err: any) {
+          console.error("Add group booking error:", err);
+          return { success: false, error: err.message || "Failed to create group booking" };
+        }
+      },
+
+      groupExistingReservations: async ({ groupName, reservationIds, payerType = "LAST_ROOM", customPayerRoomId, notes }) => {
+        try {
+          await ensureFreshSession();
+          if (!groupName?.trim()) return { success: false, error: "Group name is required." };
+          if (!reservationIds || reservationIds.length < 2) return { success: false, error: "Please select at least 2 bookings to group." };
+
+          const groupId = `GRP-${Date.now().toString(36).toUpperCase()}`;
+          const selectedRes = state.reservations.filter(r => reservationIds.includes(r.id));
+          const firstGuest = selectedRes[0]?.guest_id ? state.guests.find(g => g.id === selectedRes[0].guest_id) : null;
+
+          const groupRecord = {
+            id: groupId,
+            name: groupName.trim(),
+            contact_name: firstGuest?.name || "Group Guest",
+            contact_phone: firstGuest?.phone || null,
+            contact_email: firstGuest?.email || null,
+            payer_type: payerType,
+            custom_payer_room_id: payerType === "CUSTOM_ROOM" ? customPayerRoomId : null,
+            status: "ACTIVE",
+            notes: notes?.trim() || null,
+          };
+          const { error: grpErr } = await withAuthRetry(() => supabase.from('group_bookings').insert(groupRecord));
+          if (grpErr) throw grpErr;
+
+          for (const resId of reservationIds) {
+            await withAuthRetry(() => supabase.from('reservations').update({ group_id: groupId }).eq('id', resId));
+          }
+
+          await fetchData();
+          return { success: true, groupId };
+        } catch (err: any) {
+          console.error("Error grouping existing bookings:", err);
+          return { success: false, error: err.message || "Failed to group existing bookings" };
+        }
+      },
+
+      checkInGroupRoom: async (reservationId: string) => {
+        try {
+          const res = state.reservations.find(r => r.id === reservationId);
+          if (!res) return { success: false, error: "Reservation not found" };
+          await withAuthRetry(() => supabase.from('reservations').update({ status: 'OCCUPIED' }).eq('id', reservationId));
+          if (res.room_id) {
+            await withAuthRetry(() => supabase.from('rooms').update({ status: 'OCCUPIED' }).eq('id', res.room_id));
+          }
+          await fetchData();
+          return { success: true };
+        } catch (err: any) {
+          return { success: false, error: err.message || "Check-in failed" };
+        }
+      },
+
+      checkInAllGroupRooms: async (groupId: string) => {
+        try {
+          const groupRes = state.reservations.filter(r => r.group_id === groupId && (r.status === 'CONFIRMED' || r.status === 'PENDING'));
+          for (const r of groupRes) {
+            await withAuthRetry(() => supabase.from('reservations').update({ status: 'OCCUPIED' }).eq('id', r.id));
+            if (r.room_id) {
+              await withAuthRetry(() => supabase.from('rooms').update({ status: 'OCCUPIED' }).eq('id', r.room_id));
+            }
+          }
+          await fetchData();
+          return { success: true };
+        } catch (err: any) {
+          return { success: false, error: err.message || "Bulk check-in failed" };
+        }
+      },
+
+      checkOutGroupRoom: async (reservationId: string) => {
+        try {
+          await ensureFreshSession();
+          const res = state.reservations.find(r => r.id === reservationId);
+          if (!res) return { success: false, error: "Reservation not found" };
+          const groupId = res.group_id;
+
+          if (!groupId) {
+            // Standard single room checkout
+            await withAuthRetry(() => supabase.from('reservations').update({ status: 'COMPLETED' }).eq('id', reservationId));
+            if (res.room_id) {
+              await withAuthRetry(() => supabase.from('rooms').update({ status: 'DIRTY' }).eq('id', res.room_id));
+            }
+            await fetchData();
+            return { success: true, isMasterPayerRoom: false };
+          }
+
+          const group = state.groupBookings.find(g => g.id === groupId);
+          const allGroupRes = state.reservations.filter(r => r.group_id === groupId && r.status !== 'CANCELLED');
+          const activeGroupRes = allGroupRes.filter(r => r.status !== 'COMPLETED');
+
+          const isCustomPayer = group?.payer_type === 'CUSTOM_ROOM';
+          const isThisCustomPayerRoom = isCustomPayer && res.room_id === group?.custom_payer_room_id;
+          const isThisLastActiveRoom = activeGroupRes.length === 1 && activeGroupRes[0].id === res.id;
+
+          // If this room is the designated payer room, signal master checkout modal
+          if (isThisCustomPayerRoom || (!isCustomPayer && isThisLastActiveRoom)) {
+            return {
+              success: true,
+              isMasterPayerRoom: true,
+            };
+          }
+
+          // Sequential room checkout: calculate net unpaid charges to transfer
+          const pay = state.payments.find(p => p.reservation_id === res.id);
+          const roomTariff = Number(pay?.total_amount) || Number(res.base_amount) || 0;
+          const addl = Number(res.additional_charges) || 0;
+          const paid = Number(pay?.paid_amount) || 0;
+          const netBillToTransfer = Math.max(0, (roomTariff + addl) - paid);
+
+          let targetRes = isCustomPayer
+            ? activeGroupRes.find(r => r.room_id === group?.custom_payer_room_id)
+            : null;
+
+          if (!targetRes) {
+            targetRes = activeGroupRes.find(r => r.id !== res.id);
+          }
+
+          const resRoom = state.rooms.find(rm => rm.id === res.room_id);
+          const targetRoom = targetRes?.room_id ? state.rooms.find(rm => rm.id === targetRes?.room_id) : null;
+
+          // 1. Mark this room as COMPLETED & DIRTY
+          await withAuthRetry(() => supabase.from('reservations').update({
+            status: 'COMPLETED',
+            transferred_amount: netBillToTransfer,
+            notes: `${res.notes || ''} [Bill of ₹${netBillToTransfer} transferred to Room ${targetRoom?.room_number || 'Master'}]`.trim()
+          }).eq('id', res.id));
+
+          if (res.room_id) {
+            await withAuthRetry(() => supabase.from('rooms').update({ status: 'DIRTY' }).eq('id', res.room_id));
+          }
+
+          // 2. Mark this room's payment as transferred
+          if (pay) {
+            await withAuthRetry(() => supabase.from('payments').update({
+              status: 'COMPLETED',
+              payment_method: 'Transferred to Group Master'
+            }).eq('id', pay.id));
+          }
+
+          // 3. Add transferred bill to target room
+          if (targetRes && netBillToTransfer > 0) {
+            const currentTransferred = Number(targetRes.transferred_amount) || 0;
+            const newTransferred = currentTransferred + netBillToTransfer;
+            await withAuthRetry(() => supabase.from('reservations').update({
+              transferred_amount: newTransferred,
+              transferred_from: res.id,
+            }).eq('id', targetRes.id));
+
+            await withAuthRetry(() => supabase.from('folio_lines').insert({
+              id: crypto.randomUUID(),
+              reservation_id: targetRes.id,
+              date: new Date().toISOString().split('T')[0],
+              description: `Transferred Bill from Room ${resRoom?.room_number || 'Room'} (Checked Out)`,
+              category: 'Room Transfer',
+              amount: netBillToTransfer,
+            }));
+          }
+
+          await fetchData();
+          return {
+            success: true,
+            isMasterPayerRoom: false,
+            transferredAmount: netBillToTransfer,
+            targetRoomNumber: targetRoom?.room_number || "Master Room",
+          };
+        } catch (err: any) {
+          console.error("checkOutGroupRoom error:", err);
+          return { success: false, error: err.message || "Failed to checkout room" };
+        }
+      },
+
+      settleGroupMaster: async ({ groupId, payerReservationId, totalAmount, paidAmount, splits, notes }) => {
+        try {
+          await ensureFreshSession();
+          const payerRes = state.reservations.find(r => r.id === payerReservationId);
+          if (!payerRes) return { success: false, error: "Master payer reservation not found" };
+
+          let payment = state.payments.find(p => p.reservation_id === payerReservationId);
+          let payId = payment?.id;
+
+          const methodSummary = splits && splits.length > 1
+            ? `Split (${splits.map((s: any) => s.method).join('+')})`
+            : (splits?.[0]?.method || 'CASH');
+
+          if (payment) {
+            await withAuthRetry(() => supabase.from('payments').update({
+              total_amount: totalAmount,
+              paid_amount: paidAmount,
+              status: paidAmount >= totalAmount ? 'COMPLETED' : 'PARTIAL',
+              payment_method: methodSummary,
+            }).eq('id', payment.id));
+          } else {
+            payId = crypto.randomUUID();
+            await withAuthRetry(() => supabase.from('payments').insert({
+              id: payId,
+              reservation_id: payerReservationId,
+              total_amount: totalAmount,
+              paid_amount: paidAmount,
+              status: paidAmount >= totalAmount ? 'COMPLETED' : 'PARTIAL',
+              payment_method: methodSummary,
+            }));
+          }
+
+          if (splits && splits.length > 0 && payId) {
+            const splitInserts = splits.map((s: any) => ({
+              id: crypto.randomUUID(),
+              payment_id: payId,
+              reservation_id: payerReservationId,
+              method: s.method,
+              amount: Number(s.amount) || 0,
+              reference_note: s.reference_note || null,
+            }));
+            await withAuthRetry(() => supabase.from('payment_splits').insert(splitInserts));
+          }
+
+          // Mark payer reservation as COMPLETED
+          await withAuthRetry(() => supabase.from('reservations').update({
+            status: 'COMPLETED',
+            notes: `${payerRes.notes || ''} [Group Master Bill Settled & Closed]`.trim()
+          }).eq('id', payerReservationId));
+
+          if (payerRes.room_id) {
+            await withAuthRetry(() => supabase.from('rooms').update({ status: 'DIRTY' }).eq('id', payerRes.room_id));
+          }
+
+          // Mark any other non-completed rooms in this group as COMPLETED
+          const remainingGroupRes = state.reservations.filter(r => r.group_id === groupId && r.status !== 'COMPLETED' && r.status !== 'CANCELLED');
+          for (const r of remainingGroupRes) {
+            await withAuthRetry(() => supabase.from('reservations').update({ status: 'COMPLETED' }).eq('id', r.id));
+            if (r.room_id) {
+              await withAuthRetry(() => supabase.from('rooms').update({ status: 'DIRTY' }).eq('id', r.room_id));
+            }
+          }
+
+          // Mark group entity as COMPLETED
+          await withAuthRetry(() => supabase.from('group_bookings').update({
+            status: 'COMPLETED',
+            notes: `${notes || ''} [Settled ₹${paidAmount}]`.trim(),
+          }).eq('id', groupId));
+
+          await fetchData();
+          return { success: true };
+        } catch (err: any) {
+          console.error("settleGroupMaster error:", err);
+          return { success: false, error: err.message || "Failed to settle group master bill" };
+        }
+      },
+
+      updateGroupBookingPayer: async (groupId, payerType, customPayerRoomId) => {
+        try {
+          await withAuthRetry(() => supabase.from('group_bookings').update({
+            payer_type: payerType,
+            custom_payer_room_id: payerType === "CUSTOM_ROOM" ? customPayerRoomId : null,
+          }).eq('id', groupId));
+          await fetchData();
+          return { success: true };
+        } catch (err: any) {
+          return { success: false, error: err.message || "Failed to update payer rule" };
+        }
+      },
+
+      deleteGroupBooking: async (groupId) => {
+        try {
+          await withAuthRetry(() => supabase.from('reservations').update({ group_id: null }).eq('group_id', groupId));
+          await withAuthRetry(() => supabase.from('group_bookings').delete().eq('id', groupId));
+          await fetchData();
+          return { success: true };
+        } catch (err: any) {
+          return { success: false, error: err.message || "Failed to delete group booking" };
         }
       },
       

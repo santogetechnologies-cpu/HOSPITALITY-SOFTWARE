@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Checkbox } from "@/components/ui/checkbox";
 import { inr } from "@/lib/pms-data";
+import { SplitPaymentInput, SplitRow } from "@/components/pms/split-payment-input";
 import {
   calculateDurationHours,
   getPartyHallTimerStatus,
@@ -113,9 +114,15 @@ export function PartyHallPage() {
     paymentMethod: "CASH" as "CASH" | "UPI" | "CARD" | "BANK_TRANSFER" | "OTHER",
   });
 
+  // New Booking Split Payment State
+  const [isBookingSplit, setIsBookingSplit] = React.useState(false);
+  const [bookingSplits, setBookingSplits] = React.useState<SplitRow[]>([]);
+
   // Collect Balance Modal State
   const [collectModalOpen, setCollectModalOpen] = React.useState(false);
   const [selectedResForCollect, setSelectedResForCollect] = React.useState<any>(null);
+  const [isCollectSplit, setIsCollectSplit] = React.useState(false);
+  const [collectSplits, setCollectSplits] = React.useState<SplitRow[]>([]);
   const [collectForm, setCollectForm] = React.useState({
     amount: "",
     paymentMethod: "CASH" as "CASH" | "UPI" | "CARD" | "BANK_TRANSFER" | "OTHER",
@@ -227,8 +234,24 @@ export function PartyHallPage() {
       setLoading(false);
       return;
     }
-    const gst = Number(((base * 18) / 100).toFixed(2));
-    const grandTotal = base + gst;
+    let splitsToSend: any[] | undefined = undefined;
+    let payMethod = form.paymentMethod;
+
+    if (isBookingSplit && adv > 0) {
+      const activeSplits = bookingSplits.filter(s => (Number(s.amount) || 0) > 0);
+      const splitSum = activeSplits.reduce((acc, s) => acc + (Number(s.amount) || 0), 0);
+      if (Math.abs(splitSum - adv) > 0.01) {
+        setErrorMsg(`Split payments total (${inr(splitSum)}) must match the advance amount (${inr(adv)}).`);
+        setLoading(false);
+        return;
+      }
+      splitsToSend = activeSplits.map(s => ({
+        method: s.method,
+        amount: Number(s.amount) || 0,
+        reference_note: s.reference?.trim() || null,
+      }));
+      payMethod = (activeSplits.length > 1 ? `Split (${activeSplits.map(s => s.method).join('+')})` : (activeSplits[0]?.method || "CASH")) as any;
+    }
 
     const res = await addPartyHallBooking({
       customerName: form.customerName,
@@ -244,7 +267,8 @@ export function PartyHallPage() {
       endTime: form.endTime,
       baseAmount: grandTotal,
       advance: adv,
-      paymentMethod: form.paymentMethod,
+      paymentMethod: payMethod,
+      splits: splitsToSend,
     });
 
     setLoading(false);
@@ -328,9 +352,12 @@ export function PartyHallPage() {
 
   const handleOpenCollectBalance = (r: any) => {
     const fin = getReservationFinancials(r);
+    const bal = fin.balance > 0 ? fin.balance : 0;
     setSelectedResForCollect(r);
+    setIsCollectSplit(false);
+    setCollectSplits([{ method: "CASH", amount: bal > 0 ? String(bal) : "" }]);
     setCollectForm({
-      amount: String(fin.balance > 0 ? fin.balance : 0),
+      amount: String(bal),
       paymentMethod: "CASH",
     });
     setCollectModalOpen(true);
@@ -345,12 +372,29 @@ export function PartyHallPage() {
       return toast.error("Please enter a valid collection amount");
     }
 
+    let splitsToSend: any[] | undefined = undefined;
+    let finalMethod = collectForm.paymentMethod;
+
+    if (isCollectSplit) {
+      const activeSplits = collectSplits.filter(s => (Number(s.amount) || 0) > 0);
+      const splitSum = activeSplits.reduce((acc, s) => acc + (Number(s.amount) || 0), 0);
+      if (Math.abs(splitSum - amt) > 0.01) {
+        return toast.error(`Split payments total (${inr(splitSum)}) must match collection amount (${inr(amt)}).`);
+      }
+      splitsToSend = activeSplits.map(s => ({
+        method: s.method,
+        amount: Number(s.amount) || 0,
+        reference_note: s.reference?.trim() || null,
+      }));
+      finalMethod = (activeSplits.length > 1 ? `Split (${activeSplits.map(s => s.method).join('+')})` : (activeSplits[0]?.method || "CASH")) as any;
+    }
+
     setLoading(true);
-    const res = await settlePayment(selectedResForCollect.id, amt, collectForm.paymentMethod);
+    const res = await settlePayment(selectedResForCollect.id, amt, finalMethod as any, splitsToSend);
     setLoading(false);
 
     if (res.success) {
-      toast.success(`Collected ${inr(amt)} via ${collectForm.paymentMethod}`);
+      toast.success(`Collected ${inr(amt)} successfully!`);
       setCollectModalOpen(false);
       setSelectedResForCollect(null);
     } else {
@@ -674,43 +718,77 @@ export function PartyHallPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 pt-1">
-                <div className="space-y-2">
-                  <Label>Payment Mode</Label>
-                  <Select
-                    value={form.paymentMethod}
-                    onValueChange={(v: any) => setForm({ ...form, paymentMethod: v })}
+              {/* Split Payment Toggle for Advance */}
+              {(parseFloat(form.advance) || 0) > 0 && (
+                <div className="flex items-center justify-between p-2.5 rounded-xl bg-secondary/30 border border-border">
+                  <div className="text-xs">
+                    <div className="font-semibold">Split Advance Payment</div>
+                    <div className="text-muted-foreground text-[11px]">Split across Cash, Card, UPI, Bank Transfer</div>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={isBookingSplit ? "default" : "outline"}
+                    className={`h-7 text-xs ${isBookingSplit ? "bg-brass text-gold-foreground" : "text-muted-foreground"}`}
+                    onClick={() => {
+                      const next = !isBookingSplit;
+                      setIsBookingSplit(next);
+                      if (next && (!bookingSplits.length || bookingSplits.every(s => !s.amount))) {
+                        setBookingSplits([{ method: form.paymentMethod as any, amount: form.advance }]);
+                      }
+                    }}
                   >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Payment Mode" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="CASH">Cash</SelectItem>
-                      <SelectItem value="UPI">UPI / QR (GPay, PhonePe, Paytm)</SelectItem>
-                      <SelectItem value="CARD">Credit / Debit Card (POS)</SelectItem>
-                      <SelectItem value="BANK_TRANSFER">Bank Transfer / NEFT</SelectItem>
-                      <SelectItem value="OTHER">Other / Bill to Company</SelectItem>
-                    </SelectContent>
-                  </Select>
+                    {isBookingSplit ? "Split Enabled" : "Enable Split"}
+                  </Button>
                 </div>
-                <div className="flex items-end pb-2">
-                  <div className="text-xs text-muted-foreground">
-                    Status:{" "}
-                    {(() => {
-                      const base = parseFloat(form.baseAmount) || 0;
-                      const gst = Number(((base * 18) / 100).toFixed(2));
-                      const grand = base + gst;
-                      const adv = parseFloat(form.advance) || 0;
-                      const isFull = adv >= grand && grand > 0;
-                      return (
-                        <span className={isFull ? "font-bold text-emerald-600" : "font-bold text-amber-600"}>
-                          {isFull ? "PAID IN FULL (₹0 Due)" : "PARTIAL / ADVANCE"}
-                        </span>
-                      );
-                    })()}
+              )}
+
+              {isBookingSplit && (parseFloat(form.advance) || 0) > 0 ? (
+                <SplitPaymentInput
+                  totalAmount={parseFloat(form.advance) || 0}
+                  splits={bookingSplits}
+                  onChange={setBookingSplits}
+                  allowExceed={false}
+                />
+              ) : (
+                <div className="grid grid-cols-2 gap-4 pt-1">
+                  <div className="space-y-2">
+                    <Label>Payment Mode</Label>
+                    <Select
+                      value={form.paymentMethod}
+                      onValueChange={(v: any) => setForm({ ...form, paymentMethod: v })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Payment Mode" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="CASH">Cash</SelectItem>
+                        <SelectItem value="UPI">UPI / QR (GPay, PhonePe, Paytm)</SelectItem>
+                        <SelectItem value="CARD">Credit / Debit Card (POS)</SelectItem>
+                        <SelectItem value="BANK_TRANSFER">Bank Transfer / NEFT</SelectItem>
+                        <SelectItem value="OTHER">Other / Bill to Company</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex items-end pb-2">
+                    <div className="text-xs text-muted-foreground">
+                      Status:{" "}
+                      {(() => {
+                        const base = parseFloat(form.baseAmount) || 0;
+                        const gst = Number(((base * 18) / 100).toFixed(2));
+                        const grand = base + gst;
+                        const adv = parseFloat(form.advance) || 0;
+                        const isFull = adv >= grand && grand > 0;
+                        return (
+                          <span className={isFull ? "font-bold text-emerald-600" : "font-bold text-amber-600"}>
+                            {isFull ? "PAID IN FULL (₹0 Due)" : "PARTIAL / ADVANCE"}
+                          </span>
+                        );
+                      })()}
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
 
               <div className="pt-4 flex justify-end gap-2 border-t border-border">
                 <Button variant="ghost" type="button" onClick={() => setOpen(false)}>
@@ -1089,18 +1167,56 @@ export function PartyHallPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Amount to Collect (₹) *</Label>
-                    <Input
-                      type="number"
-                      required
-                      className="h-9"
-                      value={collectForm.amount}
-                      onChange={(e) => setCollectForm({ ...collectForm, amount: e.target.value })}
-                    />
-                  </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Amount to Collect (₹) *</Label>
+                  <Input
+                    type="number"
+                    required
+                    className="h-9"
+                    value={collectForm.amount}
+                    onChange={(e) => {
+                      const newAmt = e.target.value;
+                      setCollectForm({ ...collectForm, amount: newAmt });
+                      if (isCollectSplit && collectSplits.length === 1) {
+                        setCollectSplits([{ ...collectSplits[0], amount: newAmt }]);
+                      }
+                    }}
+                  />
+                </div>
 
+                {/* Split Payment Toggle */}
+                <div className="flex items-center justify-between p-2 rounded-xl bg-secondary/30 border border-border">
+                  <div className="text-xs">
+                    <div className="font-semibold">Split Payment (Multiple Modes)</div>
+                    <div className="text-muted-foreground text-[11px]">Pay across Cash, Card, UPI, Bank Transfer</div>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={isCollectSplit ? "default" : "outline"}
+                    className={`h-7 text-xs ${isCollectSplit ? "bg-brass text-gold-foreground" : "text-muted-foreground"}`}
+                    onClick={() => {
+                      const next = !isCollectSplit;
+                      setIsCollectSplit(next);
+                      if (next && (!collectSplits.length || collectSplits.every(s => !s.amount))) {
+                        setCollectSplits([
+                          { method: collectForm.paymentMethod as any, amount: collectForm.amount || "0" }
+                        ]);
+                      }
+                    }}
+                  >
+                    {isCollectSplit ? "Split Enabled" : "Enable Split"}
+                  </Button>
+                </div>
+
+                {isCollectSplit ? (
+                  <SplitPaymentInput
+                    totalAmount={parseFloat(collectForm.amount) || 0}
+                    splits={collectSplits}
+                    onChange={setCollectSplits}
+                    allowExceed={false}
+                  />
+                ) : (
                   <div className="space-y-1.5">
                     <Label className="text-xs">Payment Mode *</Label>
                     <Select
@@ -1119,7 +1235,7 @@ export function PartyHallPage() {
                       </SelectContent>
                     </Select>
                   </div>
-                </div>
+                )}
 
                 <div className="flex justify-end gap-2 pt-2 border-t border-border">
                   <Button variant="ghost" type="button" onClick={() => setCollectModalOpen(false)}>

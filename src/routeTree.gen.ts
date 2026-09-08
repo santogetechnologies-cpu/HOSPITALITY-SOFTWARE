@@ -17,6 +17,7 @@ import { Route as ShellChannelManagerRouteImport } from './routes/_shell.channel
 import { Route as ShellComplianceRouteImport } from './routes/_shell.compliance'
 import { Route as ShellDashboardRouteImport } from './routes/_shell.dashboard'
 import { Route as ShellFrontDeskRouteImport } from './routes/_shell.front-desk'
+import { Route as ShellGroupBookingsRouteImport } from './routes/_shell.group-bookings'
 import { Route as ShellGuestsRouteImport } from './routes/_shell.guests'
 import { Route as ShellHelpRouteImport } from './routes/_shell.help'
 import { Route as ShellHousekeepingRouteImport } from './routes/_shell.housekeeping'
@@ -79,6 +80,11 @@ const ShellDashboardRoute = ShellDashboardRouteImport.update({
 const ShellFrontDeskRoute = ShellFrontDeskRouteImport.update({
   id: '/front-desk',
   path: '/front-desk',
+  getParentRoute: () => ShellRoute,
+} as any)
+const ShellGroupBookingsRoute = ShellGroupBookingsRouteImport.update({
+  id: '/group-bookings',
+  path: '/group-bookings',
   getParentRoute: () => ShellRoute,
 } as any)
 const ShellGuestsRoute = ShellGuestsRouteImport.update({
@@ -205,6 +211,7 @@ export interface FileRoutesByFullPath {
   '/compliance': typeof ShellComplianceRoute
   '/dashboard': typeof ShellDashboardRoute
   '/front-desk': typeof ShellFrontDeskRoute
+  '/group-bookings': typeof ShellGroupBookingsRoute
   '/guests': typeof ShellGuestsRoute
   '/help': typeof ShellHelpRoute
   '/housekeeping': typeof ShellHousekeepingRoute
@@ -229,6 +236,7 @@ export interface FileRoutesByTo {
   '/compliance': typeof ShellComplianceRoute
   '/dashboard': typeof ShellDashboardRoute
   '/front-desk': typeof ShellFrontDeskRoute
+  '/group-bookings': typeof ShellGroupBookingsRoute
   '/guests': typeof ShellGuestsRoute
   '/help': typeof ShellHelpRoute
   '/housekeeping': typeof ShellHousekeepingRoute
@@ -255,6 +263,7 @@ export interface FileRoutesById {
   '/_shell/compliance': typeof ShellComplianceRoute
   '/_shell/dashboard': typeof ShellDashboardRoute
   '/_shell/front-desk': typeof ShellFrontDeskRoute
+  '/_shell/group-bookings': typeof ShellGroupBookingsRoute
   '/_shell/guests': typeof ShellGuestsRoute
   '/_shell/help': typeof ShellHelpRoute
   '/_shell/housekeeping': typeof ShellHousekeepingRoute
@@ -281,6 +290,7 @@ export interface FileRouteTypes {
     | '/compliance'
     | '/dashboard'
     | '/front-desk'
+    | '/group-bookings'
     | '/guests'
     | '/help'
     | '/housekeeping'
@@ -330,6 +340,7 @@ export interface FileRouteTypes {
     | '/_shell/compliance'
     | '/_shell/dashboard'
     | '/_shell/front-desk'
+    | '/_shell/group-bookings'
     | '/_shell/guests'
     | '/_shell/help'
     | '/_shell/housekeeping'
@@ -407,6 +418,13 @@ declare module '@tanstack/react-router' {
       path: '/front-desk'
       fullPath: '/front-desk'
       preLoaderRoute: typeof ShellFrontDeskRouteImport
+      parentRoute: typeof ShellRoute
+    }
+    '/_shell/group-bookings': {
+      id: '/_shell/group-bookings'
+      path: '/group-bookings'
+      fullPath: '/group-bookings'
+      preLoaderRoute: typeof ShellGroupBookingsRouteImport
       parentRoute: typeof ShellRoute
     }
     '/_shell/guests': {
@@ -524,6 +542,7 @@ interface ShellRouteChildren {
   ShellComplianceRoute: typeof ShellComplianceRoute
   ShellDashboardRoute: typeof ShellDashboardRoute
   ShellFrontDeskRoute: typeof ShellFrontDeskRoute
+  ShellGroupBookingsRoute: typeof ShellGroupBookingsRoute
   ShellGuestsRoute: typeof ShellGuestsRoute
   ShellHelpRoute: typeof ShellHelpRoute
   ShellHousekeepingRoute: typeof ShellHousekeepingRoute
@@ -548,6 +567,7 @@ const ShellRouteChildren: ShellRouteChildren = {
   ShellComplianceRoute: ShellComplianceRoute,
   ShellDashboardRoute: ShellDashboardRoute,
   ShellFrontDeskRoute: ShellFrontDeskRoute,
+  ShellGroupBookingsRoute: ShellGroupBookingsRoute,
   ShellGuestsRoute: ShellGuestsRoute,
   ShellHelpRoute: ShellHelpRoute,
   ShellHousekeepingRoute: ShellHousekeepingRoute,

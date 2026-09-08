@@ -12,6 +12,7 @@ import { usePms } from "@/lib/pms-store";
 import { useSettings } from "@/lib/use-settings";
 import { inr } from "@/lib/pms-data";
 import { getReservationFinancials as calculateReservationFinancials } from "@/lib/financials";
+import { SplitPaymentInput, SplitRow } from "@/components/pms/split-payment-input";
 import { toast } from "sonner";
 import {
   Printer,
@@ -110,6 +111,8 @@ function BillingPage() {
   const [selectedResForCollect, setSelectedResForCollect] = React.useState<any>(null);
   const [collectAmount, setCollectAmount] = React.useState("");
   const [collectMethod, setCollectMethod] = React.useState<"CASH" | "UPI" | "CARD" | "BANK_TRANSFER" | "OTHER">("CASH");
+  const [isSplitMode, setIsSplitMode] = React.useState(false);
+  const [splitRows, setSplitRows] = React.useState<SplitRow[]>([]);
   const [settling, setSettling] = React.useState(false);
 
   // Compute Active Date Range
@@ -246,9 +249,14 @@ function BillingPage() {
 
   const handleOpenCollectBalance = (r: (typeof reservations)[0]) => {
     const fin = getReservationFinancials(r);
+    const bal = fin.balance > 0 ? fin.balance : 0;
     setSelectedResForCollect(r);
-    setCollectAmount(String(fin.balance > 0 ? fin.balance : 0));
+    setCollectAmount(String(bal));
     setCollectMethod("CASH");
+    setIsSplitMode(false);
+    setSplitRows([
+      { method: "CASH", amount: bal > 0 ? String(bal) : "" }
+    ]);
     setCollectModalOpen(true);
   };
 
@@ -261,12 +269,29 @@ function BillingPage() {
       return toast.error("Please enter a valid payment amount");
     }
 
+    let splitsToSend: any[] | undefined = undefined;
+    let finalMethod = collectMethod;
+
+    if (isSplitMode) {
+      const activeSplits = splitRows.filter(s => (Number(s.amount) || 0) > 0);
+      const splitSum = activeSplits.reduce((acc, s) => acc + (Number(s.amount) || 0), 0);
+      if (Math.abs(splitSum - amt) > 0.01) {
+        return toast.error(`Split payments total (${inr(splitSum)}) must match the collection amount (${inr(amt)}).`);
+      }
+      splitsToSend = activeSplits.map(s => ({
+        method: s.method,
+        amount: Number(s.amount) || 0,
+        reference_note: s.reference?.trim() || null,
+      }));
+      finalMethod = (activeSplits.length > 1 ? `Split (${activeSplits.map(s => s.method).join('+')})` : (activeSplits[0]?.method || "CASH")) as any;
+    }
+
     setSettling(true);
-    const res = await settlePayment(selectedResForCollect.id, amt, collectMethod);
+    const res = await settlePayment(selectedResForCollect.id, amt, finalMethod as any, splitsToSend);
     setSettling(false);
 
     if (res.success) {
-      toast.success(`Payment of ${inr(amt)} recorded via ${collectMethod}!`);
+      toast.success(`Payment of ${inr(amt)} recorded successfully!`);
       setCollectModalOpen(false);
       setSelectedResForCollect(null);
     } else {
@@ -729,28 +754,68 @@ function BillingPage() {
                   type="number"
                   required
                   value={collectAmount}
-                  onChange={(e) => setCollectAmount(e.target.value)}
+                  onChange={(e) => {
+                    const newAmt = e.target.value;
+                    setCollectAmount(newAmt);
+                    if (isSplitMode && splitRows.length === 1) {
+                      setSplitRows([{ ...splitRows[0], amount: newAmt }]);
+                    }
+                  }}
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label>Payment Mode *</Label>
-                <Select
-                  value={collectMethod}
-                  onValueChange={(v: any) => setCollectMethod(v)}
+              {/* Split payment toggle */}
+              <div className="flex items-center justify-between p-2 rounded-xl bg-secondary/30 border border-border">
+                <div className="text-xs">
+                  <div className="font-semibold">Split Payment (Multiple Modes)</div>
+                  <div className="text-muted-foreground text-[11px]">Pay across Cash, Card, UPI, Bank Transfer</div>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={isSplitMode ? "default" : "outline"}
+                  className={`h-7 text-xs ${isSplitMode ? "bg-brass text-gold-foreground" : "text-muted-foreground"}`}
+                  onClick={() => {
+                    const next = !isSplitMode;
+                    setIsSplitMode(next);
+                    if (next && (!splitRows.length || splitRows.every(s => !s.amount))) {
+                      setSplitRows([
+                        { method: collectMethod, amount: collectAmount || "0" }
+                      ]);
+                    }
+                  }}
                 >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="CASH">Cash</SelectItem>
-                    <SelectItem value="UPI">UPI / QR (GPay, PhonePe, Paytm)</SelectItem>
-                    <SelectItem value="CARD">Credit / Debit Card (POS)</SelectItem>
-                    <SelectItem value="BANK_TRANSFER">Bank Transfer / NEFT</SelectItem>
-                    <SelectItem value="OTHER">Credit / Company Ledger</SelectItem>
-                  </SelectContent>
-                </Select>
+                  {isSplitMode ? "Split Enabled" : "Enable Split"}
+                </Button>
               </div>
+
+              {isSplitMode ? (
+                <SplitPaymentInput
+                  totalAmount={parseFloat(collectAmount) || 0}
+                  splits={splitRows}
+                  onChange={setSplitRows}
+                  allowExceed={false}
+                />
+              ) : (
+                <div className="space-y-2">
+                  <Label>Payment Mode *</Label>
+                  <Select
+                    value={collectMethod}
+                    onValueChange={(v: any) => setCollectMethod(v)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="CASH">Cash</SelectItem>
+                      <SelectItem value="UPI">UPI / QR (GPay, PhonePe, Paytm)</SelectItem>
+                      <SelectItem value="CARD">Credit / Debit Card (POS)</SelectItem>
+                      <SelectItem value="BANK_TRANSFER">Bank Transfer / NEFT</SelectItem>
+                      <SelectItem value="OTHER">Credit / Company Ledger</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
 
               <div className="pt-2 flex justify-end gap-2 border-t border-border">
                 <Button variant="ghost" type="button" onClick={() => setCollectModalOpen(false)}>
