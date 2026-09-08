@@ -23,9 +23,9 @@ alter table public.reservations add column if not exists transferred_from text;
 
 -- 3. Create Payment Splits Table
 create table if not exists public.payment_splits (
-    id text primary key default uuid_generate_v4()::text,
-    payment_id text references public.payments(id) on delete cascade,
-    reservation_id text references public.reservations(id) on delete cascade,
+    id uuid default gen_random_uuid() primary key,
+    payment_id uuid references public.payments(id) on delete cascade,
+    reservation_id uuid references public.reservations(id) on delete cascade,
     method text not null default 'CASH',
     amount numeric(10, 2) not null default 0,
     reference_note text,
