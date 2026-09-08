@@ -232,6 +232,7 @@ type Ctx = State & {
     notes?: string;
   }) => Promise<{ success: boolean; error?: string }>;
   updateGroupBookingPayer: (groupId: string, payerType: "LAST_ROOM" | "CUSTOM_ROOM", customPayerRoomId?: string) => Promise<{ success: boolean; error?: string }>;
+  closeGroupBooking: (groupId: string) => Promise<{ success: boolean; error?: string }>;
   deleteGroupBooking: (groupId: string) => Promise<{ success: boolean; error?: string }>;
   
   // Inventory Mutators
@@ -412,7 +413,19 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         loadedGuests = loadedGuests.filter((g: any) => !duplicateIdsToDelete.includes(g.id));
       }
 
-      let loadedProfiles: any[] = (profiles as any) || [];
+      let loadedGroupBookings = (groupBookings as any) || [];
+
+      // Auto-reconcile group bookings: close groups with 0 rooms or all completed & settled rooms
+      loadedGroupBookings.forEach((grp: any) => {
+        if (grp.status === 'ACTIVE') {
+          const grpRes = loadedReservations.filter((r: any) => r.group_id === grp.id && r.status !== 'CANCELLED');
+          const hasActiveRooms = grpRes.some((r: any) => r.status !== 'COMPLETED');
+          if (grpRes.length === 0 || !hasActiveRooms) {
+            grp.status = 'COMPLETED';
+            void supabase.from('group_bookings').update({ status: 'COMPLETED' }).eq('id', grp.id);
+          }
+        }
+      });
 
       // Auto-reconcile default staff accounts in Supabase profiles
       const defaultStaffAccounts = [
@@ -892,7 +905,12 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
 
           // 3. Insert Reservation with ISO start_time, end_time (24hr cycle), and guest count + GST number + Company + Address
           const resId = crypto.randomUUID();
-          const totalAmt = Number(b.totalAmount) || Number(b.baseAmount) || 0;
+          const selRoom = state.rooms.find((rm) => rm.id === b.roomId);
+          const roomNightRate = Number(selRoom?.price) || 1600;
+          const stayNights = Math.max(1, Number(b.nights) || 1);
+          const calculatedBase = Number(b.baseAmount) > 0 ? Number(b.baseAmount) : (roomNightRate * stayNights);
+          const totalAmt = Number(b.totalAmount) > 0 ? Number(b.totalAmount) : Math.round(calculatedBase * 1.05);
+
           const resData: any = {
             id: resId,
             guest_id: guestId,
@@ -903,7 +921,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             start_time: new Date(`${b.startDate}T${inTime}:00`).toISOString(),
             end_time: new Date(`${b.endDate}T${outTime}:00`).toISOString(),
             status: 'CONFIRMED',
-            base_amount: Number(b.baseAmount) || Math.round(totalAmt / 1.05),
+            base_amount: calculatedBase,
             notes: b.notes?.trim() || null,
             gst_number: gstNumClean,
             company_name: companyNameClean,
@@ -2018,6 +2036,16 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
           return { success: true };
         } catch (err: any) {
           return { success: false, error: err.message || "Failed to update payer rule" };
+        }
+      },
+
+      closeGroupBooking: async (groupId) => {
+        try {
+          await withAuthRetry(() => supabase.from('group_bookings').update({ status: 'COMPLETED' }).eq('id', groupId));
+          await fetchData();
+          return { success: true };
+        } catch (err: any) {
+          return { success: false, error: err.message || "Failed to close group booking" };
         }
       },
 

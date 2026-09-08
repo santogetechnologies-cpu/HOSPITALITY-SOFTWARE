@@ -60,6 +60,7 @@ export function GroupBookingsPage() {
     checkOutGroupRoom,
     settleGroupMaster,
     updateGroupBookingPayer,
+    closeGroupBooking,
     deleteGroupBooking
   } = usePms();
 
@@ -69,6 +70,7 @@ export function GroupBookingsPage() {
   const [settleModalOpen, setSettleModalOpen] = React.useState(false);
   const [printModalOpen, setPrintModalOpen] = React.useState(false);
   const [confirmTransferModalOpen, setConfirmTransferModalOpen] = React.useState(false);
+  const [groupFilterTab, setGroupFilterTab] = React.useState<"ACTIVE" | "COMPLETED" | "ALL">("ACTIVE");
 
   // Selected Group / Action state
   const [selectedGroup, setSelectedGroup] = React.useState<GroupBooking | null>(null);
@@ -211,8 +213,25 @@ export function GroupBookingsPage() {
     };
   };
 
-  // KPI Metrics
-  const activeGroups = groupBookings.filter((g) => g.status === "ACTIVE");
+  // KPI Metrics & Status Evaluation
+  const isGroupActive = React.useCallback((grp: GroupBooking) => {
+    if (grp.status === "COMPLETED" || grp.status === "CANCELLED") return false;
+    const res = getGroupReservations(grp.id);
+    if (res.length === 0) return false;
+    const hasActiveRooms = res.some((r) => r.status !== "COMPLETED" && r.status !== "CANCELLED");
+    const fin = getGroupFinancials(grp);
+    return hasActiveRooms || fin.balance > 0;
+  }, [reservations, payments]);
+
+  const activeGroups = React.useMemo(() => groupBookings.filter(isGroupActive), [groupBookings, isGroupActive]);
+  const completedGroups = React.useMemo(() => groupBookings.filter((g) => !isGroupActive(g)), [groupBookings, isGroupActive]);
+  
+  const displayedGroups = React.useMemo(() => {
+    if (groupFilterTab === "ACTIVE") return activeGroups;
+    if (groupFilterTab === "COMPLETED") return completedGroups;
+    return groupBookings;
+  }, [groupBookings, activeGroups, completedGroups, groupFilterTab]);
+
   const totalOccupiedGroupRooms = activeGroups.reduce((sum, g) => {
     const res = getGroupReservations(g.id);
     return sum + res.filter((r) => r.status === "OCCUPIED").length;
@@ -455,25 +474,54 @@ export function GroupBookingsPage() {
         />
       </div>
 
-      {/* Active Groups List */}
-      <div className="space-y-6">
-        {groupBookings.length === 0 ? (
+      {/* Group Bookings Filter Tabs & List */}
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-3">
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant={groupFilterTab === "ACTIVE" ? "default" : "outline"}
+              onClick={() => setGroupFilterTab("ACTIVE")}
+              className={`rounded-xl text-xs h-8 ${groupFilterTab === "ACTIVE" ? "bg-brass text-gold-foreground font-semibold" : ""}`}
+            >
+              Active Groups ({activeGroups.length})
+            </Button>
+            <Button
+              size="sm"
+              variant={groupFilterTab === "COMPLETED" ? "default" : "outline"}
+              onClick={() => setGroupFilterTab("COMPLETED")}
+              className={`rounded-xl text-xs h-8 ${groupFilterTab === "COMPLETED" ? "bg-brass text-gold-foreground font-semibold" : ""}`}
+            >
+              Completed & Settled ({completedGroups.length})
+            </Button>
+            <Button
+              size="sm"
+              variant={groupFilterTab === "ALL" ? "default" : "outline"}
+              onClick={() => setGroupFilterTab("ALL")}
+              className={`rounded-xl text-xs h-8 ${groupFilterTab === "ALL" ? "bg-brass text-gold-foreground font-semibold" : ""}`}
+            >
+              All Groups ({groupBookings.length})
+            </Button>
+          </div>
+        </div>
+
+        {displayedGroups.length === 0 ? (
           <Panel>
             <EmptyState
-              title="No Group Bookings Found"
-              body="Create a new multi-room group booking or group existing occupied rooms."
+              title={groupFilterTab === "ACTIVE" ? "No Active Groups" : groupFilterTab === "COMPLETED" ? "No Completed Groups" : "No Group Bookings Found"}
+              body={groupFilterTab === "ACTIVE" ? "All group stays have been fully settled and checked out." : "Create a new multi-room group booking or group existing occupied rooms."}
               icon={Users}
               action={
                 <Button onClick={() => setNewGroupOpen(true)} className="bg-brass text-gold-foreground mt-4">
-                  <Plus className="size-4 mr-1.5" /> Create First Group Booking
+                  <Plus className="size-4 mr-1.5" /> Create New Group Booking
                 </Button>
               }
             />
           </Panel>
         ) : (
-          groupBookings.map((grp) => {
+          displayedGroups.map((grp) => {
             const fin = getGroupFinancials(grp);
-            const isCompleted = grp.status === "COMPLETED";
+            const isCompleted = grp.status === "COMPLETED" || !isGroupActive(grp);
 
             return (
               <Panel key={grp.id} className="border-border/80 shadow-xs overflow-hidden">
@@ -513,7 +561,7 @@ export function GroupBookingsPage() {
                   </div>
 
                   {/* Top Right Group Balance Summary & Actions */}
-                  <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex flex-wrap items-center gap-2.5">
                     <div className="rounded-xl border border-border bg-card/90 px-3.5 py-1.5 text-right shadow-2xs">
                       <div className="text-[11px] text-muted-foreground">Group Master Balance Due</div>
                       <div className="text-sm font-bold font-mono text-foreground">
@@ -550,21 +598,34 @@ export function GroupBookingsPage() {
                       <Printer className="size-3.5 mr-1" /> Statement
                     </Button>
 
-                    {isCompleted && (
+                    {grp.status === "ACTIVE" && fin.activeRoomsCount === 0 && (
                       <Button
                         size="sm"
-                        variant="ghost"
+                        variant="outline"
                         onClick={async () => {
-                          if (confirm(`Remove group booking record for "${grp.name}"?`)) {
-                            await deleteGroupBooking(grp.id);
-                            toast.success("Group booking archived");
-                          }
+                          await closeGroupBooking(grp.id);
+                          toast.success(`Group "${grp.name}" marked as completed`);
                         }}
-                        className="text-muted-foreground hover:text-destructive text-xs"
+                        className="rounded-xl border-border text-xs font-medium text-emerald-600 hover:text-emerald-700"
                       >
-                        <Trash2 className="size-3.5" />
+                        <CheckCircle2 className="size-3.5 mr-1" /> Close Group
                       </Button>
                     )}
+
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={async () => {
+                        if (confirm(`Remove group booking record for "${grp.name}"?`)) {
+                          await deleteGroupBooking(grp.id);
+                          toast.success("Group booking removed");
+                        }
+                      }}
+                      className="text-muted-foreground hover:text-destructive text-xs"
+                      title="Delete / Archive Group"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
                   </div>
                 </div>
 

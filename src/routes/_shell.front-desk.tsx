@@ -92,9 +92,11 @@ export function FrontDesk() {
 
     const discountReasons = approvedDiscountList.map(d => d.reason).filter(Boolean);
 
-    // Identify pre-discount base amount
-    const rawResBase = Number(r.base_amount) || 0;
-    const rawPayTotal = Number(p?.total_amount) || 0;
+    // Identify pre-discount base amount with room price fallback
+    const rm = rooms.find((room) => room.id === r.room_id);
+    const fallbackBase = Number(rm?.price) || 1600;
+    const rawResBase = Number(r.base_amount) > 0 ? Number(r.base_amount) : fallbackBase;
+    const rawPayTotal = Number(p?.total_amount) > 0 ? Number(p?.total_amount) : (r.resource_type === 'PARTY_HALL' ? Math.round(rawResBase * 1.18) : Math.round(rawResBase * 1.05));
 
     let originalAmount = Math.max(rawResBase, rawPayTotal);
     let total = rawPayTotal || rawResBase || 0;
@@ -120,7 +122,7 @@ export function FrontDesk() {
     const paid = Number(p?.paid_amount) || 0;
     const balance = Math.max(0, total - paid);
     const isComplimentary = approvedDiscount > 0 && total === 0;
-    const isPaid = (balance === 0 && (total > 0 || isComplimentary)) || (paid >= total && total > 0);
+    const isPaid = (balance === 0 && total > 0 && paid > 0) || (paid >= total && total > 0) || isComplimentary;
     return { total, paid, balance, isPaid, isComplimentary, payment: p, approvedDiscount, hasPendingDiscount, originalAmount, discountReasons };
   };
 

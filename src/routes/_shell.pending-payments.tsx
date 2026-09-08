@@ -36,7 +36,7 @@ interface PendingItem {
 }
 
 function PendingPaymentsPage() {
-  const { payments, reservations, guests, rooms, discounts, settlePayment, freezePayment, requestDiscount } = usePms();
+  const { payments, reservations, guests, rooms, discounts, groupBookings, settlePayment, freezePayment, requestDiscount } = usePms();
   const [selectedItem, setSelectedItem] = React.useState<PendingItem | null>(null);
   const [collectionAmount, setCollectionAmount] = React.useState("");
   const [method, setMethod] = React.useState<"CASH" | "UPI" | "CARD" | "BANK_TRANSFER" | "OTHER">("CASH");
@@ -76,6 +76,12 @@ function PendingPaymentsPage() {
 
       const res = reservations.find(r => r.id === p.reservation_id || r.id?.toLowerCase() === p.reservation_id?.toLowerCase());
       if (res?.status === 'CANCELLED') return;
+
+      // If reservation is part of a completed group booking or transferred to group master, skip
+      if (res?.group_id) {
+        const grp = groupBookings.find(g => g.id === res.group_id);
+        if (grp?.status === 'COMPLETED' || res.notes?.includes('transferred to Room') || p.payment_method?.includes('Transferred')) return;
+      }
 
       const guest = res ? getGuest(res.guest_id) : null;
       const room = res ? getRoom(res.room_id) : null;
@@ -124,6 +130,12 @@ function PendingPaymentsPage() {
       if (r.status === 'CANCELLED') return;
       if (processedResIds.has(r.id)) return;
 
+      // If reservation is part of a completed group booking or transferred to group master, skip
+      if (r.group_id) {
+        const grp = groupBookings.find(g => g.id === r.group_id);
+        if (grp?.status === 'COMPLETED' || r.notes?.includes('transferred to Room')) return;
+      }
+
       const matchingPayment = payments.find(p => p.reservation_id === r.id || p.reservation_id?.toLowerCase() === r.id.toLowerCase());
       const originalAmount = Number(r.base_amount) || 0;
       const approvedDiscount = getApprovedDiscount(r.id);
@@ -158,7 +170,7 @@ function PendingPaymentsPage() {
     });
 
     return list;
-  }, [payments, reservations, guests, rooms, discounts]);
+  }, [payments, reservations, guests, rooms, discounts, groupBookings]);
 
   const totalOutstanding = pendingItems.reduce((acc, i) => acc + i.balance, 0);
 
