@@ -330,8 +330,18 @@ function ReservationsPage() {
                 const guest = getGuest(r.guest_id);
                 const room = getRoom(r.room_id);
                 const confNum = String(r.id || "RES").slice(0, 10).toUpperCase();
-                const startDateStr = r.start_time ? new Date(r.start_time).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : r.booking_date;
-                const endDateStr = r.end_time ? new Date(r.end_time).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "";
+                const formatResDateTime = (dtStr?: string, fallback?: string) => {
+                  const target = dtStr || fallback;
+                  if (!target) return "";
+                  const d = new Date(target);
+                  if (isNaN(d.getTime())) return String(target);
+                  const dFormatted = d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+                  const tFormatted = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+                  return `${dFormatted}, ${tFormatted}`;
+                };
+
+                const startDisplay = formatResDateTime(r.start_time, r.booking_date);
+                const endDisplay = formatResDateTime(r.end_time);
 
                 return (
                   <TableRow key={r.id}>
@@ -363,11 +373,9 @@ function ReservationsPage() {
                       )}
                     </TableCell>
                     <TableCell className="text-xs">
-                      <div>{startDateStr} {endDateStr ? `→ ${endDateStr}` : ''}</div>
-                      {r.start_time && (
-                        <div className="text-[10px] text-muted-foreground">
-                          {new Date(r.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} (24h)
-                        </div>
+                      <div className="font-medium whitespace-nowrap">{startDisplay}</div>
+                      {endDisplay && (
+                        <div className="text-[11px] text-muted-foreground whitespace-nowrap">→ {endDisplay}</div>
                       )}
                     </TableCell>
                     <TableCell className="font-semibold">{inr(r.base_amount || 0)}</TableCell>

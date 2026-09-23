@@ -92,9 +92,9 @@ export function ExpensesPage() {
     return { startDate: start, endDate: end, dateRangeLabel: label };
   }, [timeFilter, customStartDate, customEndDate]);
 
-  // Filtered Expenses
+  // Filtered Expenses (Sorted chronologically date-wise, latest first)
   const filteredExpenses = React.useMemo(() => {
-    return expenses.filter((e) => {
+    const list = expenses.filter((e) => {
       // 1. Time filter
       if (timeFilter !== "ALL") {
         const expDate = e.created_at ? new Date(e.created_at) : new Date();
@@ -116,6 +116,12 @@ export function ExpensesPage() {
       }
 
       return true;
+    });
+
+    return list.sort((a, b) => {
+      const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return timeB - timeA;
     });
   }, [expenses, timeFilter, categoryFilter, searchQuery, startDate, endDate]);
 

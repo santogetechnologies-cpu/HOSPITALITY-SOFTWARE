@@ -106,6 +106,14 @@ function BillingPage() {
   const [paperSize, setPaperSize] = React.useState<PaperSize>("A4");
   const [includeGst, setIncludeGst] = React.useState(true);
 
+  // Stay Dates & Times Editor for Print Bill
+  const [billCheckInDate, setBillCheckInDate] = React.useState("");
+  const [billCheckInTime, setBillCheckInTime] = React.useState("19:30");
+  const [billCheckOutDate, setBillCheckOutDate] = React.useState("");
+  const [billCheckOutTime, setBillCheckOutTime] = React.useState("17:00");
+  const [isEditingStayDates, setIsEditingStayDates] = React.useState(false);
+  const [savingStayDates, setSavingStayDates] = React.useState(false);
+
   // Quick Collect Balance Modal State
   const [collectModalOpen, setCollectModalOpen] = React.useState(false);
   const [selectedResForCollect, setSelectedResForCollect] = React.useState<any>(null);
@@ -244,7 +252,50 @@ function BillingPage() {
 
   const handleOpenPrintBill = (r: (typeof reservations)[0]) => {
     setSelectedResForBill(r);
+    const startStr = r.start_time || `${r.booking_date || todayStr}T14:00:00`;
+    const endStr = r.end_time || startStr;
+    const sDate = new Date(startStr);
+    const eDate = new Date(endStr);
+
+    setBillCheckInDate(startStr.split("T")[0] || todayStr);
+    const sH = String(sDate.getHours()).padStart(2, "0");
+    const sM = String(sDate.getMinutes()).padStart(2, "0");
+    setBillCheckInTime(isNaN(sDate.getTime()) ? "14:00" : `${sH}:${sM}`);
+
+    setBillCheckOutDate(endStr.split("T")[0] || todayStr);
+    const eH = String(eDate.getHours()).padStart(2, "0");
+    const eM = String(eDate.getMinutes()).padStart(2, "0");
+    setBillCheckOutTime(isNaN(eDate.getTime()) ? "11:00" : `${eH}:${eM}`);
+
+    setIsEditingStayDates(false);
     setPrintModalOpen(true);
+  };
+
+  const handleSaveStayDates = async () => {
+    if (!selectedResForBill) return;
+    setSavingStayDates(true);
+    try {
+      const newStartIso = new Date(`${billCheckInDate}T${billCheckInTime}:00`).toISOString();
+      const newEndIso = new Date(`${billCheckOutDate}T${billCheckOutTime}:00`).toISOString();
+      const { supabase } = await import("@/lib/supabase");
+      const { error } = await supabase.from("reservations").update({
+        start_time: newStartIso,
+        end_time: newEndIso,
+      }).eq("id", selectedResForBill.id);
+
+      if (error) throw error;
+      toast.success("Stay dates & checkout time updated successfully!");
+      setIsEditingStayDates(false);
+      setSelectedResForBill((prev: any) => ({
+        ...prev,
+        start_time: newStartIso,
+        end_time: newEndIso,
+      }));
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update dates");
+    } finally {
+      setSavingStayDates(false);
+    }
   };
 
   const handleOpenCollectBalance = (r: (typeof reservations)[0]) => {
@@ -651,12 +702,18 @@ function BillingPage() {
                     </TableCell>
 
                     <TableCell>
-                      <div className="text-xs font-medium">
-                        {formatDateDMY(r.booking_date || (r.start_time ? r.start_time.split("T")[0] : todayStr))}
+                      <div className="text-xs font-medium whitespace-nowrap">
+                        {formatDateDMY(r.start_time || r.booking_date)}, {formatTimeAMPM(r.start_time || `${r.booking_date}T14:00:00`)}
                       </div>
-                      <div className="text-[11px] text-muted-foreground">
-                        {r.resource_type === "PARTY_HALL" ? "Event Booking" : "Room Stay"}
-                      </div>
+                      {r.end_time ? (
+                        <div className="text-[11px] text-muted-foreground whitespace-nowrap">
+                          → {formatDateDMY(r.end_time)}, {formatTimeAMPM(r.end_time)}
+                        </div>
+                      ) : (
+                        <div className="text-[11px] text-muted-foreground">
+                          {r.resource_type === "PARTY_HALL" ? "Event Booking" : "Room Stay"}
+                        </div>
+                      )}
                     </TableCell>
 
                     <TableCell className="font-medium">
@@ -853,17 +910,18 @@ function BillingPage() {
             const room = getRoom(selectedResForBill.room_id);
             const fin = getReservationFinancials(selectedResForBill);
             const invoiceNum = String(selectedResForBill.id || "").replace(/\D/g, "").slice(-4) || "938";
-            
-            const checkInDate = selectedResForBill.start_time 
-              ? new Date(selectedResForBill.start_time)
-              : new Date(`${selectedResForBill.booking_date || todayStr}T10:40:00`);
-            
-            const checkOutDate = selectedResForBill.end_time
-              ? new Date(selectedResForBill.end_time)
-              : new Date(checkInDate.getTime() + 5 * 24 * 60 * 60 * 1000);
 
-            const diffTime = Math.abs(checkOutDate.getTime() - checkInDate.getTime());
-            const nightsCount = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+            const effectiveInStr = `${billCheckInDate || (selectedResForBill.start_time ? selectedResForBill.start_time.split("T")[0] : todayStr)}T${billCheckInTime || "14:00"}:00`;
+            const effectiveOutStr = `${billCheckOutDate || (selectedResForBill.end_time ? selectedResForBill.end_time.split("T")[0] : todayStr)}T${billCheckOutTime || "11:00"}:00`;
+
+            const checkInDate = new Date(effectiveInStr);
+            const checkOutDate = new Date(effectiveOutStr);
+
+            // Exact calendar night calculation
+            const dInCal = new Date(checkInDate.getFullYear(), checkInDate.getMonth(), checkInDate.getDate());
+            const dOutCal = new Date(checkOutDate.getFullYear(), checkOutDate.getMonth(), checkOutDate.getDate());
+            const diffDays = Math.round((dOutCal.getTime() - dInCal.getTime()) / (1000 * 60 * 60 * 24));
+            const nightsCount = Math.max(1, diffDays);
             const ratePerNight = nightsCount > 0 ? fin.taxableValue / nightsCount : fin.taxableValue;
 
             // Generate daily rows
@@ -884,6 +942,86 @@ function BillingPage() {
 
             return (
               <div className="space-y-6 pt-2">
+                {/* Stay Date/Time Toolbar */}
+                <div className="rounded-xl border border-border bg-secondary/30 p-3 flex flex-wrap items-center justify-between gap-3 text-xs">
+                  <div className="flex items-center gap-2">
+                    <Clock className="size-4 text-gold" />
+                    <div>
+                      <span className="font-semibold text-foreground">Stay Dates & Times:</span>{" "}
+                      <span className="text-muted-foreground font-medium">
+                        {checkInFormatted} → {checkOutFormatted} ({nightsCount} Night{nightsCount !== 1 ? "s" : ""})
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs rounded-lg border-gold/40 text-gold hover:bg-gold/10"
+                      onClick={() => setIsEditingStayDates(!isEditingStayDates)}
+                    >
+                      {isEditingStayDates ? "Hide Editor" : "Adjust Stay / Checkout Date & Time"}
+                    </Button>
+                  </div>
+                </div>
+
+                {isEditingStayDates && (
+                  <div className="rounded-xl border border-gold/40 bg-card p-4 space-y-3 text-xs">
+                    <div className="font-semibold text-gold flex items-center gap-1.5">
+                      <CalendarDays className="size-4" /> Adjust Check-In & Check-Out Date / Time
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-[11px]">Check-In Date</Label>
+                        <Input
+                          type="date"
+                          value={billCheckInDate}
+                          onChange={(e) => setBillCheckInDate(e.target.value)}
+                          className="h-8 text-xs"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[11px]">Check-In Time</Label>
+                        <Input
+                          type="time"
+                          value={billCheckInTime}
+                          onChange={(e) => setBillCheckInTime(e.target.value)}
+                          className="h-8 text-xs"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[11px]">Check-Out Date</Label>
+                        <Input
+                          type="date"
+                          value={billCheckOutDate}
+                          onChange={(e) => setBillCheckOutDate(e.target.value)}
+                          className="h-8 text-xs"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[11px]">Check-Out Time</Label>
+                        <Input
+                          type="time"
+                          value={billCheckOutTime}
+                          onChange={(e) => setBillCheckOutTime(e.target.value)}
+                          className="h-8 text-xs"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-2 pt-1">
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={savingStayDates}
+                        className="h-8 bg-brass text-gold-foreground hover:opacity-90 font-semibold"
+                        onClick={handleSaveStayDates}
+                      >
+                        {savingStayDates ? "Saving..." : "Apply & Save to Folio"}
+                      </Button>
+                    </div>
+                  </div>
+                )}
                 {/* Live Bill Preview Box with Exact HOTEL DRB Format */}
                 <div className="overflow-x-auto bg-muted/40 p-4 rounded-xl border border-border flex justify-center">
                   <div

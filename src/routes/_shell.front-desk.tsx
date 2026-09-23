@@ -412,14 +412,6 @@ export function FrontDesk() {
 
   const handleCheckoutSubmit = async (r: typeof reservations[0], timer: any, balance: number, isPartyHall: boolean, gName: string, rmNum: string) => {
     if (checkoutLoading === r.id) return;
-    if (timer.isOverdue && timer.calculatedExtraFee > 0) {
-      const fee = timer.calculatedExtraFee;
-      const hrs = timer.overdueHours;
-      if (confirm(`Guest is ${hrs} hour(s) overdue. Apply late checkout fee of ${inr(fee)} to the folio?`)) {
-        await addReservationExtraCharge(r.id, fee, `Late Check-out Fee (${hrs} hrs)`);
-        toast.info(`Late fee of ${inr(fee)} added to guest folio.`);
-      }
-    }
 
     if (balance > 0) {
       if (!confirm(`This guest has an outstanding balance of ${inr(balance)}. Proceed to check out and mark room for housekeeping?`)) return;
@@ -607,8 +599,18 @@ export function FrontDesk() {
               const { total, paid, balance, isPaid, approvedDiscount, originalAmount, discountReasons } = getReservationFinancials(r);
               const timer = getStayTimerStatus(r, settings);
 
-              const checkInDate = r.start_time ? new Date(r.start_time).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : r.booking_date;
-              const checkOutDate = r.end_time ? new Date(r.end_time).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—";
+              const formatDateTimeDisplay = (dateStr?: string, fallback?: string) => {
+                const target = dateStr || fallback;
+                if (!target) return "—";
+                const d = new Date(target);
+                if (isNaN(d.getTime())) return String(target);
+                const dFormatted = d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+                const tFormatted = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+                return `${dFormatted}, ${tFormatted}`;
+              };
+
+              const checkInDisplay = formatDateTimeDisplay(r.start_time, r.booking_date);
+              const checkOutDisplay = formatDateTimeDisplay(r.end_time);
 
               return (
                 <div key={r.id} className="card-premium hover-lift p-5 flex flex-col justify-between">
@@ -645,8 +647,11 @@ export function FrontDesk() {
                         </dd>
                       </div>
                       <div className="rounded-lg bg-secondary/60 p-2">
-                        <dt className="text-muted-foreground">Stay Dates</dt>
-                        <dd className="font-semibold text-foreground">{checkInDate} → {checkOutDate}</dd>
+                        <dt className="text-muted-foreground">Stay Dates & Times</dt>
+                        <dd className="font-semibold text-foreground text-[11px] leading-snug">
+                          <div>In: {checkInDisplay}</div>
+                          <div>Out: {checkOutDisplay}</div>
+                        </dd>
                       </div>
                       <div className="rounded-lg bg-secondary/60 p-2">
                         <dt className="text-muted-foreground">Total Bill</dt>
@@ -713,8 +718,18 @@ export function FrontDesk() {
                   const { total, paid, balance } = getReservationFinancials(r);
                   const timer = getStayTimerStatus(r, settings);
 
-                  const checkInDate = r.start_time ? new Date(r.start_time).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : r.booking_date;
-                  const checkOutDate = r.end_time ? new Date(r.end_time).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "—";
+                  const formatDateTimeDisplay = (dateStr?: string, fallback?: string) => {
+                    const target = dateStr || fallback;
+                    if (!target) return "—";
+                    const d = new Date(target);
+                    if (isNaN(d.getTime())) return String(target);
+                    const dFormatted = d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+                    const tFormatted = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+                    return `${dFormatted}, ${tFormatted}`;
+                  };
+
+                  const checkInDisplay = formatDateTimeDisplay(r.start_time, r.booking_date);
+                  const checkOutDisplay = formatDateTimeDisplay(r.end_time);
 
                   return (
                     <TableRow key={r.id} className={timer.isOverdue ? "bg-destructive/5 hover:bg-destructive/10" : undefined}>
@@ -729,7 +744,10 @@ export function FrontDesk() {
                           `Room ${rmNum}`
                         )}
                       </TableCell>
-                      <TableCell className="text-xs">{checkInDate} → {checkOutDate}</TableCell>
+                      <TableCell className="text-xs">
+                        <div className="font-medium whitespace-nowrap">{checkInDisplay}</div>
+                        <div className="text-muted-foreground text-[11px] whitespace-nowrap">→ {checkOutDisplay}</div>
+                      </TableCell>
                       <TableCell>
                         <div className="space-y-1">
                           <Pill tone={timer.tone}>{timer.label}</Pill>
@@ -747,24 +765,6 @@ export function FrontDesk() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-2 flex-wrap">
-                          {timer.isOverdue && timer.calculatedExtraFee > 0 && (
-                            <Button
-                              size="sm"
-                              className="rounded-lg text-xs bg-destructive text-white hover:bg-destructive/90 animate-pulse h-8"
-                              onClick={async () => {
-                                const fee = timer.calculatedExtraFee;
-                                const hrs = timer.overdueHours;
-                                const resAdd = await addReservationExtraCharge(r.id, fee, `Late Check-out Fee (${hrs} hrs)`);
-                                if (resAdd.success) {
-                                  toast.success(`Applied ${inr(fee)} late checkout fee. Folio updated.`);
-                                } else {
-                                  toast.error(resAdd.error || "Failed to apply late fee");
-                                }
-                              }}
-                            >
-                              <Timer className="size-3 mr-1" /> Add Late Fee ({inr(timer.calculatedExtraFee)})
-                            </Button>
-                          )}
 
                           {!isPartyHall && (
                             <>

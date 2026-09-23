@@ -122,7 +122,7 @@ type Ctx = State & {
   setRoomStatus: (roomId: string, status: RoomStatus) => void;
   assignGuestToRoom: (roomId: string, guest: string) => void;
   checkIn: (reservationId: string, roomNumber?: string) => void;
-  checkOut: (reservationId: string) => void;
+  checkOut: (reservationId: string, checkOutTime?: string) => Promise<void>;
   setReservationStatus: (id: string, status: string) => Promise<void>;
   addRoomReservation: (booking: {
     guestName: string;
@@ -320,7 +320,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         supabase.from('guests').select('*'),
         supabase.from('payments').select('*'),
         supabase.from('discounts').select('*'),
-        supabase.from('expenses').select('*'),
+        supabase.from('expenses').select('*').order('created_at', { ascending: false }),
         supabase.from('inventory_items').select('*'),
         supabase.from('inventory_transactions').select('*').order('created_at', { ascending: false }),
         supabase.from('profiles').select('*'),
@@ -788,13 +788,17 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         await fetchData();
       },
       
-      checkOut: async (reservationId) => {
+      checkOut: async (reservationId, checkOutTime) => {
         const res = state.reservations.find((r) => r.id === reservationId);
-        await supabase.from('reservations').update({ status: 'COMPLETED' }).eq('id', reservationId);
+        const actualCheckoutTime = checkOutTime || new Date().toISOString();
+        await supabase.from('reservations').update({ 
+          status: 'COMPLETED',
+          end_time: actualCheckoutTime
+        }).eq('id', reservationId);
         if (res?.room_id) {
           await supabase.from('rooms').update({ status: 'DIRTY' }).eq('id', res.room_id);
         }
-        fetchData();
+        await fetchData();
       },
       
       setReservationStatus: async (id, status) => {
