@@ -619,7 +619,7 @@ function Dashboard() {
                   <div className="min-w-0">
                     <div className="truncate text-sm font-semibold">{guestName}</div>
                     <div className="mt-0.5 text-xs text-muted-foreground">
-                      Room {roomNum} · Checkout 11:00
+                      Room {roomNum} · Checkout {r.end_time ? new Date(r.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "24-hr Stay"}
                     </div>
                   </div>
                   <Button

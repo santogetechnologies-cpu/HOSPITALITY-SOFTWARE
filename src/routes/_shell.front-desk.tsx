@@ -63,6 +63,7 @@ export function FrontDesk() {
   const [adjustMode, setAdjustMode] = React.useState<"EXTEND" | "EARLY_CHECKOUT" | "EXTRA_CHARGE">("EXTEND");
   const [adjustExtraDays, setAdjustExtraDays] = React.useState(1);
   const [adjustNewEndDate, setAdjustNewEndDate] = React.useState("");
+  const [adjustCheckOutTime, setAdjustCheckOutTime] = React.useState("14:00");
   const [adjustActualNights, setAdjustActualNights] = React.useState(1);
   const [adjustCollectNow, setAdjustCollectNow] = React.useState(false);
   const [adjustCollectAmount, setAdjustCollectAmount] = React.useState("");
@@ -134,7 +135,7 @@ export function FrontDesk() {
     return reservations.some((r) => {
       if (r.room_id !== roomId || r.status === "CANCELLED" || r.status === "COMPLETED") return false;
       const rStart = new Date(r.start_time || `${r.booking_date}T14:00:00`).getTime();
-      const rEnd = new Date(r.end_time || `${r.booking_date}T11:00:00`).getTime();
+      const rEnd = new Date(r.end_time || (r.start_time ? new Date(new Date(r.start_time).getTime() + 24 * 60 * 60 * 1000).toISOString() : `${r.booking_date}T14:00:00`)).getTime();
       const effEnd = rEnd > rStart ? rEnd : rStart + 24 * 60 * 60 * 1000;
       return reqStart < effEnd && reqEnd > rStart;
     });
@@ -145,7 +146,7 @@ export function FrontDesk() {
   const tomorrowObj = new Date();
   tomorrowObj.setDate(tomorrowObj.getDate() + 1);
   const tomorrowStr = tomorrowObj.toISOString().split("T")[0];
-  const defaultCheckInTime = "14:00";
+  const defaultCheckInTime = settings.checkInStandardTime || "14:00";
 
   const [bookingOpen, setBookingOpen] = React.useState(false);
   const [b, setB] = React.useState({
@@ -431,9 +432,15 @@ export function FrontDesk() {
     setAdjustMode("EXTEND");
     setAdjustExtraDays(1);
     const currEnd = r.end_time ? new Date(r.end_time) : new Date();
+    const currStart = r.start_time ? new Date(r.start_time) : null;
     const newEnd = new Date(currEnd);
     newEnd.setDate(newEnd.getDate() + 1);
     setAdjustNewEndDate(newEnd.toISOString().split("T")[0]);
+
+    // Extract checkout time from existing reservation (24-hr cycle)
+    const eH = !isNaN(currEnd.getTime()) ? String(currEnd.getHours()).padStart(2, "0") : (currStart ? String(currStart.getHours()).padStart(2, "0") : "14");
+    const eM = !isNaN(currEnd.getTime()) ? String(currEnd.getMinutes()).padStart(2, "0") : (currStart ? String(currStart.getMinutes()).padStart(2, "0") : "00");
+    setAdjustCheckOutTime(`${eH}:${eM}`);
     
     const room = rooms.find(rm => rm.id === r.room_id);
     const ratePerNight = Number(room?.price) || 1600;
@@ -491,6 +498,7 @@ export function FrontDesk() {
 
         const res = await adjustRoomStay(r.id, {
           newEndDate: adjustNewEndDate,
+          newCheckOutTime: adjustCheckOutTime,
           newNights: extraDays,
           newBaseAmount: newBase,
           newTotalAmount: newTotal,
@@ -501,7 +509,7 @@ export function FrontDesk() {
         });
 
         if (res.success) {
-          toast.success(`Stay extended by ${extraDays} day(s). Check-out updated to ${adjustNewEndDate}.`);
+          toast.success(`Stay extended by ${extraDays} day(s). Check-out updated to ${adjustNewEndDate} at ${adjustCheckOutTime} (24-hr cycle).`);
           setAdjustModalOpen(false);
           setSelectedResForAdjust(null);
         } else {
@@ -1530,7 +1538,7 @@ export function FrontDesk() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div className="space-y-1.5">
                         <Label className="text-xs font-medium">Extra Nights to Add *</Label>
                         <div className="flex items-center gap-2">
@@ -1592,6 +1600,17 @@ export function FrontDesk() {
                             setAdjustCollectAmount(String(extB + extG));
                           }}
                         />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-medium">Check-Out Time (24-hr)</Label>
+                        <Input
+                          type="time"
+                          required
+                          value={adjustCheckOutTime}
+                          onChange={(e) => setAdjustCheckOutTime(e.target.value)}
+                        />
+                        <span className="text-[10px] text-muted-foreground block">Preserves 24-hr arrival hour</span>
                       </div>
                     </div>
 

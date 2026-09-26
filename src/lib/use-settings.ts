@@ -23,6 +23,7 @@ export type SettingsState = {
   roomTypes: RoomTypeConfig[];
   partyHallHourlyRate: number;
   roomLateCheckoutFeePerHour: number;
+  stayCycleMode: "24_HOURS" | "STANDARD_HOURS";
   checkInStandardTime: string;
   checkOutStandardTime: string;
   gracePeriodMinutes: number;
@@ -52,8 +53,9 @@ const DEFAULT_SETTINGS: SettingsState = {
   ],
   partyHallHourlyRate: 3000,
   roomLateCheckoutFeePerHour: 500,
+  stayCycleMode: "24_HOURS",
   checkInStandardTime: "14:00",
-  checkOutStandardTime: "11:00",
+  checkOutStandardTime: "14:00",
   gracePeriodMinutes: 15,
   allowGmDiscountApproval: false,
   allowFrontDeskDiscountApproval: false,

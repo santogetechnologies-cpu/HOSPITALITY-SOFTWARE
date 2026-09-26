@@ -71,8 +71,9 @@ function SettingsPage() {
   const [policyForm, setPolicyForm] = React.useState({
     partyHallHourlyRate: settings.partyHallHourlyRate || 3000,
     roomLateCheckoutFeePerHour: settings.roomLateCheckoutFeePerHour || 500,
+    stayCycleMode: settings.stayCycleMode || "24_HOURS",
     checkInStandardTime: settings.checkInStandardTime || "14:00",
-    checkOutStandardTime: settings.checkOutStandardTime || "11:00",
+    checkOutStandardTime: settings.checkOutStandardTime || "14:00",
     gracePeriodMinutes: settings.gracePeriodMinutes || 15,
   });
 
@@ -80,8 +81,9 @@ function SettingsPage() {
     setPolicyForm({
       partyHallHourlyRate: settings.partyHallHourlyRate || 3000,
       roomLateCheckoutFeePerHour: settings.roomLateCheckoutFeePerHour || 500,
+      stayCycleMode: settings.stayCycleMode || "24_HOURS",
       checkInStandardTime: settings.checkInStandardTime || "14:00",
-      checkOutStandardTime: settings.checkOutStandardTime || "11:00",
+      checkOutStandardTime: settings.checkOutStandardTime || "14:00",
       gracePeriodMinutes: settings.gracePeriodMinutes || 15,
     });
   }, [settings]);
@@ -338,28 +340,96 @@ function SettingsPage() {
                 </div>
               </div>
 
-              <div className="rounded-xl border border-border p-4 bg-secondary/20 space-y-4">
-                <div className="font-semibold text-base flex items-center gap-2">
-                  <span className="size-2.5 rounded-full bg-gold inline-block" /> Standard Check-in / Check-out Schedule
+              <div className="rounded-xl border border-border p-5 bg-secondary/20 space-y-5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-border">
+                  <div>
+                    <div className="font-semibold text-base flex items-center gap-2">
+                      <span className="size-2.5 rounded-full bg-gold inline-block" /> 24-Hour Stay & Check-In / Check-Out Schedule
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Configure how daily rent and check-out deadlines are calculated across Front Desk, Billing, and Timers.
+                    </p>
+                  </div>
+                  <Badge variant="outline" className="border-gold/50 text-gold bg-gold/10 text-xs w-fit">
+                    {policyForm.stayCycleMode === "24_HOURS" ? "⚡ 24-Hour Check-in Cycle Active" : "Standard Fixed Schedule"}
+                  </Badge>
                 </div>
 
-                <div className="grid gap-4 sm:grid-cols-3">
+                {/* Stay Model Selection */}
+                <div className="space-y-2">
+                  <Label className="text-xs font-semibold text-foreground">Stay Calculation Model *</Label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div
+                      onClick={() => setPolicyForm({ ...policyForm, stayCycleMode: "24_HOURS", checkOutStandardTime: policyForm.checkInStandardTime })}
+                      className={`cursor-pointer rounded-xl border p-3.5 transition-all ${
+                        policyForm.stayCycleMode === "24_HOURS"
+                          ? "border-gold bg-gold/10 shadow-sm"
+                          : "border-border hover:bg-secondary/40"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-sm flex items-center gap-2">
+                          <span className={`size-3 rounded-full border-2 ${policyForm.stayCycleMode === "24_HOURS" ? "border-gold bg-gold" : "border-muted-foreground"}`} />
+                          24-Hour Check-in / Check-out Model
+                        </span>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-gold/20 text-gold uppercase">Recommended</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
+                        Guest check-out is calculated exactly <strong>24 hours</strong> from their arrival time (e.g. 6:00 PM check-in → 6:00 PM check-out next day). Extensions and bill calculations preserve this 24-hour cycle without adding false extra-day charges.
+                      </p>
+                    </div>
+
+                    <div
+                      onClick={() => setPolicyForm({ ...policyForm, stayCycleMode: "STANDARD_HOURS", checkOutStandardTime: "11:00" })}
+                      className={`cursor-pointer rounded-xl border p-3.5 transition-all ${
+                        policyForm.stayCycleMode === "STANDARD_HOURS"
+                          ? "border-gold bg-gold/10 shadow-sm"
+                          : "border-border hover:bg-secondary/40"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-sm flex items-center gap-2">
+                          <span className={`size-3 rounded-full border-2 ${policyForm.stayCycleMode === "STANDARD_HOURS" ? "border-gold bg-gold" : "border-muted-foreground"}`} />
+                          Fixed Standard Schedule (14:00 - 11:00)
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
+                        Fixed property check-in and check-out times regardless of arrival hour (e.g. check-in at 2:00 PM, mandatory checkout by 11:00 AM next day).
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-3 pt-1">
                   <div className="space-y-2">
-                    <Label>Standard Check-In Time</Label>
+                    <Label>Default Check-In Time</Label>
                     <Input
                       type="time"
                       value={policyForm.checkInStandardTime}
-                      onChange={(e) => setPolicyForm({ ...policyForm, checkInStandardTime: e.target.value })}
+                      onChange={(e) => {
+                        const newIn = e.target.value;
+                        setPolicyForm({
+                          ...policyForm,
+                          checkInStandardTime: newIn,
+                          checkOutStandardTime: policyForm.stayCycleMode === "24_HOURS" ? newIn : policyForm.checkOutStandardTime,
+                        });
+                      }}
                     />
+                    <span className="text-[11px] text-muted-foreground">Default arrival reference hour</span>
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Standard Check-Out Time</Label>
+                    <Label>
+                      {policyForm.stayCycleMode === "24_HOURS" ? "24-Hour Cycle Checkout Time" : "Standard Check-Out Time"}
+                    </Label>
                     <Input
                       type="time"
                       value={policyForm.checkOutStandardTime}
                       onChange={(e) => setPolicyForm({ ...policyForm, checkOutStandardTime: e.target.value })}
                     />
+                    <span className="text-[11px] text-muted-foreground">
+                      {policyForm.stayCycleMode === "24_HOURS" ? "Matches check-in time (24 hours per day)" : "Standard property checkout"}
+                    </span>
                   </div>
 
                   <div className="space-y-2">
@@ -370,17 +440,33 @@ function SettingsPage() {
                       onChange={(e) => setPolicyForm({ ...policyForm, gracePeriodMinutes: parseInt(e.target.value) || 0 })}
                       placeholder="15"
                     />
-                    <span className="text-[11px] text-muted-foreground">Buffer before overtime kicks in</span>
+                    <span className="text-[11px] text-muted-foreground">Buffer before late checkout overtime kicks in</span>
                   </div>
                 </div>
               </div>
 
-              <div className="pt-2 flex justify-end">
+              <div className="pt-2 flex justify-end gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setPolicyForm({
+                      ...policyForm,
+                      stayCycleMode: "24_HOURS",
+                      checkInStandardTime: "14:00",
+                      checkOutStandardTime: "14:00",
+                      gracePeriodMinutes: 15,
+                    });
+                    toast.info("Preset loaded: 24-Hour Check-in / Check-out Model.");
+                  }}
+                >
+                  Reset to 24-Hour Defaults
+                </Button>
                 <Button
                   className="rounded-xl bg-brass text-gold-foreground hover:opacity-90 shadow-brass"
                   onClick={() => {
                     updatePolicySettings(policyForm);
-                    toast.success("Timers and Hourly Rates policy saved successfully!");
+                    toast.success("24-Hour Stay Policy and Timers configuration saved successfully!");
                   }}
                 >
                   Save Policy Configuration

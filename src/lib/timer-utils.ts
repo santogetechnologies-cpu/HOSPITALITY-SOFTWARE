@@ -48,15 +48,20 @@ export function getStayTimerStatus(
   }
 
   const now = Date.now();
-  const checkoutTimeStr = settings.checkOutStandardTime || "11:00";
+  const defaultCheckIn = settings.checkInStandardTime || "14:00";
+  const checkoutTimeStr = settings.checkOutStandardTime || defaultCheckIn;
   const lateFeePerHour = settings.roomLateCheckoutFeePerHour || 500;
   const graceMinutes = settings.gracePeriodMinutes || 15;
 
-  const endDateStr = res.end_time
-    ? res.end_time
-    : `${res.booking_date}T${checkoutTimeStr}:00`;
-
-  const endTs = new Date(endDateStr).getTime();
+  let endTs: number;
+  if (res.end_time) {
+    endTs = new Date(res.end_time).getTime();
+  } else if (res.start_time) {
+    // 24-hour cycle from check-in
+    endTs = new Date(res.start_time).getTime() + 24 * 60 * 60 * 1000;
+  } else {
+    endTs = new Date(`${res.booking_date}T${checkoutTimeStr}:00`).getTime();
+  }
 
   if (res.status === "OCCUPIED") {
     const diffMs = endTs - now;

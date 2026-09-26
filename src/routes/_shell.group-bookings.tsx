@@ -128,7 +128,7 @@ export function GroupBookingsPage() {
       return !reservations.some((res) => {
         if (res.room_id !== r.id || res.status === "CANCELLED" || res.status === "COMPLETED") return false;
         const rStart = new Date(res.start_time || `${res.booking_date}T14:00:00`).getTime();
-        const rEnd = new Date(res.end_time || `${res.booking_date}T11:00:00`).getTime();
+        const rEnd = new Date(res.end_time || (res.start_time ? new Date(new Date(res.start_time).getTime() + 24 * 60 * 60 * 1000).toISOString() : `${res.booking_date}T14:00:00`)).getTime();
         const effEnd = rEnd > rStart ? rEnd : rStart + 24 * 60 * 60 * 1000;
         return startTs < effEnd && endTs > rStart;
       });

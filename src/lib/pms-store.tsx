@@ -166,6 +166,7 @@ type Ctx = State & {
   addReservationExtraCharge: (reservationId: string, additionalAmount: number, reason: string, options?: { newEndTime?: string; collectedAmount?: number; paymentMethod?: "CASH" | "UPI" | "CARD" | "BANK_TRANSFER" | "OTHER"; splits?: any[]; }) => Promise<{ success: boolean; error?: string }>;
   adjustRoomStay: (reservationId: string, params: {
     newEndDate: string;
+    newCheckOutTime?: string;
     newNights: number;
     newBaseAmount: number;
     newTotalAmount: number;
@@ -833,7 +834,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
           const isOverlapping = state.reservations.some((r) => {
             if (r.room_id !== b.roomId || r.status === "CANCELLED" || r.status === "COMPLETED") return false;
             const rStart = new Date(r.start_time || `${r.booking_date}T14:00:00`).getTime();
-            const rEnd = new Date(r.end_time || `${r.booking_date}T11:00:00`).getTime();
+            const rEnd = new Date(r.end_time || (r.start_time ? new Date(new Date(r.start_time).getTime() + 24 * 60 * 60 * 1000).toISOString() : `${r.booking_date}T14:00:00`)).getTime();
             const effectiveEnd = rEnd > rStart ? rEnd : rStart + 24 * 60 * 60 * 1000;
             return (startTs < effectiveEnd && endTs > rStart);
           });
@@ -1395,8 +1396,26 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
           const res = state.reservations.find(r => r.id === reservationId);
           if (!res) return { success: false, error: "Reservation not found" };
 
+          // Extract existing arrival/departure time to preserve 24-hr checkout schedule
+          let checkOutTime = params.newCheckOutTime;
+          if (!checkOutTime) {
+            if (res.end_time) {
+              const d = new Date(res.end_time);
+              if (!isNaN(d.getTime())) {
+                checkOutTime = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+              }
+            }
+            if (!checkOutTime && res.start_time) {
+              const d = new Date(res.start_time);
+              if (!isNaN(d.getTime())) {
+                checkOutTime = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+              }
+            }
+          }
+          if (!checkOutTime) checkOutTime = "14:00";
+
           const resUpdates: any = {
-            end_time: new Date(`${params.newEndDate}T11:00:00`).toISOString(),
+            end_time: new Date(`${params.newEndDate}T${checkOutTime}:00`).toISOString(),
             base_amount: params.newBaseAmount,
           };
 

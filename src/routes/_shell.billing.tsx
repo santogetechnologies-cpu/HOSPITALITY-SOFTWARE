@@ -253,19 +253,28 @@ function BillingPage() {
   const handleOpenPrintBill = (r: (typeof reservations)[0]) => {
     setSelectedResForBill(r);
     const startStr = r.start_time || `${r.booking_date || todayStr}T14:00:00`;
-    const endStr = r.end_time || startStr;
     const sDate = new Date(startStr);
+    
+    // In 24-hour cycle model, end_time defaults to 24 hours after arrival time
+    let endStr = r.end_time;
+    if (!endStr) {
+      if (!isNaN(sDate.getTime())) {
+        endStr = new Date(sDate.getTime() + 24 * 60 * 60 * 1000).toISOString();
+      } else {
+        endStr = startStr;
+      }
+    }
     const eDate = new Date(endStr);
 
     setBillCheckInDate(startStr.split("T")[0] || todayStr);
-    const sH = String(sDate.getHours()).padStart(2, "0");
-    const sM = String(sDate.getMinutes()).padStart(2, "0");
-    setBillCheckInTime(isNaN(sDate.getTime()) ? "14:00" : `${sH}:${sM}`);
+    const sH = !isNaN(sDate.getTime()) ? String(sDate.getHours()).padStart(2, "0") : "14";
+    const sM = !isNaN(sDate.getTime()) ? String(sDate.getMinutes()).padStart(2, "0") : "00";
+    setBillCheckInTime(`${sH}:${sM}`);
 
     setBillCheckOutDate(endStr.split("T")[0] || todayStr);
-    const eH = String(eDate.getHours()).padStart(2, "0");
-    const eM = String(eDate.getMinutes()).padStart(2, "0");
-    setBillCheckOutTime(isNaN(eDate.getTime()) ? "11:00" : `${eH}:${eM}`);
+    const eH = !isNaN(eDate.getTime()) ? String(eDate.getHours()).padStart(2, "0") : sH;
+    const eM = !isNaN(eDate.getTime()) ? String(eDate.getMinutes()).padStart(2, "0") : sM;
+    setBillCheckOutTime(`${eH}:${eM}`);
 
     setIsEditingStayDates(false);
     setPrintModalOpen(true);
@@ -912,16 +921,22 @@ function BillingPage() {
             const invoiceNum = String(selectedResForBill.id || "").replace(/\D/g, "").slice(-4) || "938";
 
             const effectiveInStr = `${billCheckInDate || (selectedResForBill.start_time ? selectedResForBill.start_time.split("T")[0] : todayStr)}T${billCheckInTime || "14:00"}:00`;
-            const effectiveOutStr = `${billCheckOutDate || (selectedResForBill.end_time ? selectedResForBill.end_time.split("T")[0] : todayStr)}T${billCheckOutTime || "11:00"}:00`;
+            const effectiveOutStr = `${billCheckOutDate || (selectedResForBill.end_time ? selectedResForBill.end_time.split("T")[0] : todayStr)}T${billCheckOutTime || billCheckInTime || "14:00"}:00`;
 
             const checkInDate = new Date(effectiveInStr);
             const checkOutDate = new Date(effectiveOutStr);
 
-            // Exact calendar night calculation
-            const dInCal = new Date(checkInDate.getFullYear(), checkInDate.getMonth(), checkInDate.getDate());
-            const dOutCal = new Date(checkOutDate.getFullYear(), checkOutDate.getMonth(), checkOutDate.getDate());
-            const diffDays = Math.round((dOutCal.getTime() - dInCal.getTime()) / (1000 * 60 * 60 * 24));
-            const nightsCount = Math.max(1, diffDays);
+            // 24-Hour Cycle & Stay Duration Calculation
+            const durationHours = Math.max(0, (checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60));
+            const graceHours = (settings.gracePeriodMinutes || 15) / 60;
+            
+            // In a 24-hour stay model, each 24-hour block (with grace period) is 1 night
+            let nightsCount = 1;
+            if (durationHours > 24 + graceHours) {
+              nightsCount = Math.max(1, Math.ceil((durationHours - graceHours) / 24));
+            } else {
+              nightsCount = 1;
+            }
             const ratePerNight = nightsCount > 0 ? fin.taxableValue / nightsCount : fin.taxableValue;
 
             // Generate daily rows
