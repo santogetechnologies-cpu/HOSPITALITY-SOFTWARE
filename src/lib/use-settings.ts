@@ -52,10 +52,10 @@ const DEFAULT_SETTINGS: SettingsState = {
     { id: "rt6", name: "Suite Room", basePrice: 3200 },
   ],
   partyHallHourlyRate: 3000,
-  roomLateCheckoutFeePerHour: 500,
-  stayCycleMode: "24_HOURS",
-  checkInStandardTime: "14:00",
-  checkOutStandardTime: "14:00",
+  roomLateCheckoutFeePerHour: 0,
+  stayCycleMode: "STANDARD_HOURS",
+  checkInStandardTime: "12:00",
+  checkOutStandardTime: "11:00",
   gracePeriodMinutes: 15,
   allowGmDiscountApproval: false,
   allowFrontDeskDiscountApproval: false,
@@ -68,6 +68,14 @@ export function useSettings() {
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
+          // Migrate old settings to Hotel DRB 11:00 AM standard checkout & zero late fee
+          if (!parsed.checkOutStandardTime || parsed.checkOutStandardTime === "14:00") {
+            parsed.checkOutStandardTime = "11:00";
+          }
+          parsed.roomLateCheckoutFeePerHour = 0;
+          if (parsed.stayCycleMode === "24_HOURS" && !saved.includes('"stayCycleMode"')) {
+            parsed.stayCycleMode = "STANDARD_HOURS";
+          }
           return { ...DEFAULT_SETTINGS, ...parsed };
         } catch (e) {
           console.error("Failed to parse settings", e);

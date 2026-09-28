@@ -128,14 +128,14 @@ export function FrontDesk() {
   };
 
   // Helper: check if a room is overlapping with any active reservation on given dates and times
-  const isRoomBookedForDates = (roomId: string, startStr: string, endStr: string, inTime: string = "14:00", outTime: string = "14:00") => {
+  const isRoomBookedForDates = (roomId: string, startStr: string, endStr: string, inTime: string = "12:00", outTime: string = "11:00") => {
     if (!startStr || !endStr) return false;
-    const reqStart = new Date(`${startStr}T${inTime || "14:00"}:00`).getTime();
-    const reqEnd = new Date(`${endStr}T${outTime || inTime || "14:00"}:00`).getTime();
+    const reqStart = new Date(`${startStr}T${inTime || "12:00"}:00`).getTime();
+    const reqEnd = new Date(`${endStr}T${outTime || "11:00"}:00`).getTime();
     return reservations.some((r) => {
       if (r.room_id !== roomId || r.status === "CANCELLED" || r.status === "COMPLETED") return false;
-      const rStart = new Date(r.start_time || `${r.booking_date}T14:00:00`).getTime();
-      const rEnd = new Date(r.end_time || (r.start_time ? new Date(new Date(r.start_time).getTime() + 24 * 60 * 60 * 1000).toISOString() : `${r.booking_date}T14:00:00`)).getTime();
+      const rStart = new Date(r.start_time || `${r.booking_date}T12:00:00`).getTime();
+      const rEnd = new Date(r.end_time || (r.start_time ? new Date(new Date(r.start_time).getTime() + 24 * 60 * 60 * 1000).toISOString() : `${r.booking_date}T11:00:00`)).getTime();
       const effEnd = rEnd > rStart ? rEnd : rStart + 24 * 60 * 60 * 1000;
       return reqStart < effEnd && reqEnd > rStart;
     });
@@ -146,7 +146,8 @@ export function FrontDesk() {
   const tomorrowObj = new Date();
   tomorrowObj.setDate(tomorrowObj.getDate() + 1);
   const tomorrowStr = tomorrowObj.toISOString().split("T")[0];
-  const defaultCheckInTime = settings.checkInStandardTime || "14:00";
+  const defaultCheckInTime = settings.checkInStandardTime || "12:00";
+  const defaultCheckOutTime = settings.checkOutStandardTime || "11:00";
 
   const [bookingOpen, setBookingOpen] = React.useState(false);
   const [b, setB] = React.useState({
@@ -164,7 +165,7 @@ export function FrontDesk() {
     startDate: todayStr,
     endDate: tomorrowStr,
     checkInTime: defaultCheckInTime,
-    checkOutTime: defaultCheckInTime,
+    checkOutTime: defaultCheckOutTime,
     nights: 1,
     baseAmount: 0,
     totalAmount: 0,
@@ -182,11 +183,10 @@ export function FrontDesk() {
   };
 
   const handleCheckInTimeChange = (newTime: string) => {
-    // In 24-hour check-in model, check-out time defaults to the same hour/minute
     setB((prev) => ({
       ...prev,
       checkInTime: newTime,
-      checkOutTime: newTime,
+      checkOutTime: settings.stayCycleMode === "24_HOURS" ? newTime : prev.checkOutTime || defaultCheckOutTime,
     }));
   };
 
@@ -327,7 +327,7 @@ export function FrontDesk() {
           startDate: todayStr,
           endDate: tomorrowStr,
           checkInTime: defaultCheckInTime,
-          checkOutTime: defaultCheckInTime,
+          checkOutTime: defaultCheckOutTime,
           nights: 1,
           baseAmount: 0,
           totalAmount: 0,
@@ -437,9 +437,9 @@ export function FrontDesk() {
     newEnd.setDate(newEnd.getDate() + 1);
     setAdjustNewEndDate(newEnd.toISOString().split("T")[0]);
 
-    // Extract checkout time from existing reservation (24-hr cycle)
-    const eH = !isNaN(currEnd.getTime()) ? String(currEnd.getHours()).padStart(2, "0") : (currStart ? String(currStart.getHours()).padStart(2, "0") : "14");
-    const eM = !isNaN(currEnd.getTime()) ? String(currEnd.getMinutes()).padStart(2, "0") : (currStart ? String(currStart.getMinutes()).padStart(2, "0") : "00");
+    // Extract checkout time from existing reservation or use standard 11:00 AM
+    const eH = !isNaN(currEnd.getTime()) ? String(currEnd.getHours()).padStart(2, "0") : "11";
+    const eM = !isNaN(currEnd.getTime()) ? String(currEnd.getMinutes()).padStart(2, "0") : "00";
     setAdjustCheckOutTime(`${eH}:${eM}`);
     
     const room = rooms.find(rm => rm.id === r.room_id);
@@ -509,7 +509,7 @@ export function FrontDesk() {
         });
 
         if (res.success) {
-          toast.success(`Stay extended by ${extraDays} day(s). Check-out updated to ${adjustNewEndDate} at ${adjustCheckOutTime} (24-hr cycle).`);
+          toast.success(`Stay extended by ${extraDays} day(s). Check-out updated to ${adjustNewEndDate} at ${adjustCheckOutTime}.`);
           setAdjustModalOpen(false);
           setSelectedResForAdjust(null);
         } else {
@@ -1051,7 +1051,7 @@ export function FrontDesk() {
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium flex items-center justify-between">
                     <span>Check-In Time *</span>
-                    <span className="text-[10px] text-muted-foreground font-normal">24hr basis</span>
+                    <span className="text-[10px] text-muted-foreground font-normal">Arrival time</span>
                   </Label>
                   <Input
                     type="time"
@@ -1070,7 +1070,7 @@ export function FrontDesk() {
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium flex items-center justify-between">
                     <span>Check-Out Time</span>
-                    <span className="text-[10px] text-gold font-normal">Auto 24h cycle</span>
+                    <span className="text-[10px] text-gold font-normal">Hotel DRB Standard 11:00 AM</span>
                   </Label>
                   <Input
                     type="time"
@@ -1148,9 +1148,9 @@ export function FrontDesk() {
               <div className="flex items-center gap-2 p-2.5 rounded-lg bg-background/80 border border-border/70 text-xs text-muted-foreground">
                 <Timer className="size-4 text-gold shrink-0" />
                 <div>
-                  <span className="font-semibold text-foreground">24-Hour Cycle Summary:</span> Check-in on{" "}
-                  <span className="font-semibold text-gold">{b.startDate} at {b.checkInTime || "14:00"}</span> → Valid for {b.nights} night(s) ({b.nights * 24} hours) until{" "}
-                  <span className="font-semibold text-gold">{b.endDate} at {b.checkOutTime || b.checkInTime || "14:00"}</span>.
+                  <span className="font-semibold text-foreground">Stay Schedule Summary:</span> Check-in on{" "}
+                  <span className="font-semibold text-gold">{b.startDate} at {b.checkInTime || "12:00"}</span> → Valid for {b.nights} night(s) until{" "}
+                  <span className="font-semibold text-gold">{b.endDate} at {b.checkOutTime || "11:00"}</span> (Standard 11:00 AM Check-Out).
                 </div>
               </div>
             </div>
@@ -1603,14 +1603,14 @@ export function FrontDesk() {
                       </div>
 
                       <div className="space-y-1.5">
-                        <Label className="text-xs font-medium">Check-Out Time (24-hr)</Label>
+                        <Label className="text-xs font-medium">Check-Out Time (Standard 11:00 AM)</Label>
                         <Input
                           type="time"
                           required
                           value={adjustCheckOutTime}
                           onChange={(e) => setAdjustCheckOutTime(e.target.value)}
                         />
-                        <span className="text-[10px] text-muted-foreground block">Preserves 24-hr arrival hour</span>
+                        <span className="text-[10px] text-muted-foreground block">Standard Hotel DRB check-out</span>
                       </div>
                     </div>
 

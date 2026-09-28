@@ -108,9 +108,9 @@ function BillingPage() {
 
   // Stay Dates & Times Editor for Print Bill
   const [billCheckInDate, setBillCheckInDate] = React.useState("");
-  const [billCheckInTime, setBillCheckInTime] = React.useState("19:30");
+  const [billCheckInTime, setBillCheckInTime] = React.useState("12:00");
   const [billCheckOutDate, setBillCheckOutDate] = React.useState("");
-  const [billCheckOutTime, setBillCheckOutTime] = React.useState("17:00");
+  const [billCheckOutTime, setBillCheckOutTime] = React.useState("11:00");
   const [isEditingStayDates, setIsEditingStayDates] = React.useState(false);
   const [savingStayDates, setSavingStayDates] = React.useState(false);
 
@@ -920,8 +920,8 @@ function BillingPage() {
             const fin = getReservationFinancials(selectedResForBill);
             const invoiceNum = String(selectedResForBill.id || "").replace(/\D/g, "").slice(-4) || "938";
 
-            const effectiveInStr = `${billCheckInDate || (selectedResForBill.start_time ? selectedResForBill.start_time.split("T")[0] : todayStr)}T${billCheckInTime || "14:00"}:00`;
-            const effectiveOutStr = `${billCheckOutDate || (selectedResForBill.end_time ? selectedResForBill.end_time.split("T")[0] : todayStr)}T${billCheckOutTime || billCheckInTime || "14:00"}:00`;
+            const effectiveInStr = `${billCheckInDate || (selectedResForBill.start_time ? selectedResForBill.start_time.split("T")[0] : todayStr)}T${billCheckInTime || "12:00"}:00`;
+            const effectiveOutStr = `${billCheckOutDate || (selectedResForBill.end_time ? selectedResForBill.end_time.split("T")[0] : todayStr)}T${billCheckOutTime || "11:00"}:00`;
 
             const checkInDate = new Date(effectiveInStr);
             const checkOutDate = new Date(effectiveOutStr);

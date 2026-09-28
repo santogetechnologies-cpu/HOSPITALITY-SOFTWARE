@@ -8,11 +8,11 @@ import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { PageHeader, Panel, Pill } from "@/components/pms/bits";
+import { PageHeader, Panel, Pill, EmptyState } from "@/components/pms/bits";
 import { usePms } from "@/lib/pms-store";
 import { useSettings } from "@/lib/use-settings";
 import { inr } from "@/lib/pms-data";
-import { Plus, Building2, Layers, Trash2 } from "lucide-react";
+import { Plus, Building2, Layers, Trash2, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -70,20 +70,20 @@ function SettingsPage() {
   // Policy Form State
   const [policyForm, setPolicyForm] = React.useState({
     partyHallHourlyRate: settings.partyHallHourlyRate || 3000,
-    roomLateCheckoutFeePerHour: settings.roomLateCheckoutFeePerHour || 500,
-    stayCycleMode: settings.stayCycleMode || "24_HOURS",
-    checkInStandardTime: settings.checkInStandardTime || "14:00",
-    checkOutStandardTime: settings.checkOutStandardTime || "14:00",
+    roomLateCheckoutFeePerHour: 0,
+    stayCycleMode: settings.stayCycleMode || "STANDARD_HOURS",
+    checkInStandardTime: settings.checkInStandardTime || "12:00",
+    checkOutStandardTime: settings.checkOutStandardTime || "11:00",
     gracePeriodMinutes: settings.gracePeriodMinutes || 15,
   });
 
   React.useEffect(() => {
     setPolicyForm({
       partyHallHourlyRate: settings.partyHallHourlyRate || 3000,
-      roomLateCheckoutFeePerHour: settings.roomLateCheckoutFeePerHour || 500,
-      stayCycleMode: settings.stayCycleMode || "24_HOURS",
-      checkInStandardTime: settings.checkInStandardTime || "14:00",
-      checkOutStandardTime: settings.checkOutStandardTime || "14:00",
+      roomLateCheckoutFeePerHour: 0,
+      stayCycleMode: settings.stayCycleMode || "STANDARD_HOURS",
+      checkInStandardTime: settings.checkInStandardTime || "12:00",
+      checkOutStandardTime: settings.checkOutStandardTime || "11:00",
       gracePeriodMinutes: settings.gracePeriodMinutes || 15,
     });
   }, [settings]);
@@ -328,14 +328,10 @@ function SettingsPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Room Late Check-Out Fee (₹ / Hour) *</Label>
-                    <Input
-                      type="number"
-                      value={policyForm.roomLateCheckoutFeePerHour}
-                      onChange={(e) => setPolicyForm({ ...policyForm, roomLateCheckoutFeePerHour: parseFloat(e.target.value) || 0 })}
-                      placeholder="500"
-                    />
-                    <span className="text-[11px] text-muted-foreground">Auto-calculated when guest exceeds checkout time</span>
+                    <Label>Room Overstay Billing Policy</Label>
+                    <div className="rounded-lg border border-border bg-secondary/30 p-2.5 text-xs text-muted-foreground">
+                      <span className="font-semibold text-foreground">No Late Fee System:</span> Overstay beyond 11:00 AM is billed as 1 full day by extending the stay at the standard room day rate.
+                    </div>
                   </div>
                 </div>
               </div>
@@ -344,41 +340,21 @@ function SettingsPage() {
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-border">
                   <div>
                     <div className="font-semibold text-base flex items-center gap-2">
-                      <span className="size-2.5 rounded-full bg-gold inline-block" /> 24-Hour Stay & Check-In / Check-Out Schedule
+                      <span className="size-2.5 rounded-full bg-gold inline-block" /> Hotel DRB Check-In / Check-Out Schedule
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Configure how daily rent and check-out deadlines are calculated across Front Desk, Billing, and Timers.
+                      Standard property schedule with 11:00 AM check-out. Overstay is billed by extending stay by full days.
                     </p>
                   </div>
-                  <Badge variant="outline" className="border-gold/50 text-gold bg-gold/10 text-xs w-fit">
-                    {policyForm.stayCycleMode === "24_HOURS" ? "⚡ 24-Hour Check-in Cycle Active" : "Standard Fixed Schedule"}
-                  </Badge>
+                  <div className="rounded-full border border-gold/50 text-gold bg-gold/10 px-2.5 py-0.5 text-xs font-semibold w-fit">
+                    {policyForm.stayCycleMode === "STANDARD_HOURS" ? "⚡ Standard 11:00 AM Check-Out Active" : "24-Hour Cycle Active"}
+                  </div>
                 </div>
 
                 {/* Stay Model Selection */}
                 <div className="space-y-2">
-                  <Label className="text-xs font-semibold text-foreground">Stay Calculation Model *</Label>
+                  <Label className="text-xs font-semibold text-foreground">Stay Schedule Model *</Label>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div
-                      onClick={() => setPolicyForm({ ...policyForm, stayCycleMode: "24_HOURS", checkOutStandardTime: policyForm.checkInStandardTime })}
-                      className={`cursor-pointer rounded-xl border p-3.5 transition-all ${
-                        policyForm.stayCycleMode === "24_HOURS"
-                          ? "border-gold bg-gold/10 shadow-sm"
-                          : "border-border hover:bg-secondary/40"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold text-sm flex items-center gap-2">
-                          <span className={`size-3 rounded-full border-2 ${policyForm.stayCycleMode === "24_HOURS" ? "border-gold bg-gold" : "border-muted-foreground"}`} />
-                          24-Hour Check-in / Check-out Model
-                        </span>
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-gold/20 text-gold uppercase">Recommended</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
-                        Guest check-out is calculated exactly <strong>24 hours</strong> from their arrival time (e.g. 6:00 PM check-in → 6:00 PM check-out next day). Extensions and bill calculations preserve this 24-hour cycle without adding false extra-day charges.
-                      </p>
-                    </div>
-
                     <div
                       onClick={() => setPolicyForm({ ...policyForm, stayCycleMode: "STANDARD_HOURS", checkOutStandardTime: "11:00" })}
                       className={`cursor-pointer rounded-xl border p-3.5 transition-all ${
@@ -390,11 +366,31 @@ function SettingsPage() {
                       <div className="flex items-center justify-between">
                         <span className="font-semibold text-sm flex items-center gap-2">
                           <span className={`size-3 rounded-full border-2 ${policyForm.stayCycleMode === "STANDARD_HOURS" ? "border-gold bg-gold" : "border-muted-foreground"}`} />
-                          Fixed Standard Schedule (14:00 - 11:00)
+                          Standard 11:00 AM Check-Out Model
+                        </span>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-gold/20 text-gold uppercase">Hotel DRB Standard</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
+                        Fixed property check-out at <strong>11:00 AM</strong>. Guests staying past check-out time are charged one full day by extending the stay, without hourly late fees.
+                      </p>
+                    </div>
+
+                    <div
+                      onClick={() => setPolicyForm({ ...policyForm, stayCycleMode: "24_HOURS", checkOutStandardTime: policyForm.checkInStandardTime })}
+                      className={`cursor-pointer rounded-xl border p-3.5 transition-all ${
+                        policyForm.stayCycleMode === "24_HOURS"
+                          ? "border-gold bg-gold/10 shadow-sm"
+                          : "border-border hover:bg-secondary/40"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-sm flex items-center gap-2">
+                          <span className={`size-3 rounded-full border-2 ${policyForm.stayCycleMode === "24_HOURS" ? "border-gold bg-gold" : "border-muted-foreground"}`} />
+                          24-Hour Cycle Model
                         </span>
                       </div>
                       <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
-                        Fixed property check-in and check-out times regardless of arrival hour (e.g. check-in at 2:00 PM, mandatory checkout by 11:00 AM next day).
+                        Guest check-out is calculated exactly 24 hours from arrival time (e.g. 6:00 PM check-in → 6:00 PM check-out next day).
                       </p>
                     </div>
                   </div>
@@ -415,21 +411,17 @@ function SettingsPage() {
                         });
                       }}
                     />
-                    <span className="text-[11px] text-muted-foreground">Default arrival reference hour</span>
+                    <span className="text-[11px] text-muted-foreground">Default arrival reference time</span>
                   </div>
 
                   <div className="space-y-2">
-                    <Label>
-                      {policyForm.stayCycleMode === "24_HOURS" ? "24-Hour Cycle Checkout Time" : "Standard Check-Out Time"}
-                    </Label>
+                    <Label>Standard Check-Out Time</Label>
                     <Input
                       type="time"
                       value={policyForm.checkOutStandardTime}
                       onChange={(e) => setPolicyForm({ ...policyForm, checkOutStandardTime: e.target.value })}
                     />
-                    <span className="text-[11px] text-muted-foreground">
-                      {policyForm.stayCycleMode === "24_HOURS" ? "Matches check-in time (24 hours per day)" : "Standard property checkout"}
-                    </span>
+                    <span className="text-[11px] text-muted-foreground">Standard Hotel DRB checkout (11:00 AM)</span>
                   </div>
 
                   <div className="space-y-2">
@@ -440,7 +432,7 @@ function SettingsPage() {
                       onChange={(e) => setPolicyForm({ ...policyForm, gracePeriodMinutes: parseInt(e.target.value) || 0 })}
                       placeholder="15"
                     />
-                    <span className="text-[11px] text-muted-foreground">Buffer before late checkout overtime kicks in</span>
+                    <span className="text-[11px] text-muted-foreground">Buffer before checkout reminder triggers</span>
                   </div>
                 </div>
               </div>
@@ -452,21 +444,22 @@ function SettingsPage() {
                   onClick={() => {
                     setPolicyForm({
                       ...policyForm,
-                      stayCycleMode: "24_HOURS",
-                      checkInStandardTime: "14:00",
-                      checkOutStandardTime: "14:00",
+                      stayCycleMode: "STANDARD_HOURS",
+                      checkInStandardTime: "12:00",
+                      checkOutStandardTime: "11:00",
                       gracePeriodMinutes: 15,
+                      roomLateCheckoutFeePerHour: 0,
                     });
-                    toast.info("Preset loaded: 24-Hour Check-in / Check-out Model.");
+                    toast.info("Loaded Hotel DRB standard defaults (11:00 AM check-out).");
                   }}
                 >
-                  Reset to 24-Hour Defaults
+                  Reset to 11:00 AM Defaults
                 </Button>
                 <Button
                   className="rounded-xl bg-brass text-gold-foreground hover:opacity-90 shadow-brass"
                   onClick={() => {
                     updatePolicySettings(policyForm);
-                    toast.success("24-Hour Stay Policy and Timers configuration saved successfully!");
+                    toast.success("Hotel DRB Check-Out Policy configuration saved successfully!");
                   }}
                 >
                   Save Policy Configuration

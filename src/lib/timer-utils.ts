@@ -48,19 +48,20 @@ export function getStayTimerStatus(
   }
 
   const now = Date.now();
-  const defaultCheckIn = settings.checkInStandardTime || "14:00";
-  const checkoutTimeStr = settings.checkOutStandardTime || defaultCheckIn;
-  const lateFeePerHour = settings.roomLateCheckoutFeePerHour || 500;
+  const defaultCheckIn = settings.checkInStandardTime || "12:00";
+  const checkoutTimeStr = settings.checkOutStandardTime || "11:00";
   const graceMinutes = settings.gracePeriodMinutes || 15;
 
   let endTs: number;
   if (res.end_time) {
     endTs = new Date(res.end_time).getTime();
-  } else if (res.start_time) {
+  } else if (settings.stayCycleMode === "24_HOURS" && res.start_time) {
     // 24-hour cycle from check-in
     endTs = new Date(res.start_time).getTime() + 24 * 60 * 60 * 1000;
   } else {
-    endTs = new Date(`${res.booking_date}T${checkoutTimeStr}:00`).getTime();
+    // Standard Hotel DRB Schedule: 11:00 AM Check-out
+    const baseDate = res.booking_date || (res.start_time ? res.start_time.split("T")[0] : new Date().toISOString().split("T")[0]);
+    endTs = new Date(`${baseDate}T${checkoutTimeStr}:00`).getTime();
   }
 
   if (res.status === "OCCUPIED") {
@@ -82,26 +83,23 @@ export function getStayTimerStatus(
     } else {
       const overdueMins = Math.abs(diffMins);
       const isPastGrace = overdueMins > graceMinutes;
-      const overdueHrs = Math.max(1, Math.ceil((overdueMins - graceMinutes) / 60));
-      const extraFee = isPastGrace ? overdueHrs * lateFeePerHour : 0;
-
       const hrs = Math.floor(overdueMins / 60);
       const mins = overdueMins % 60;
 
       return {
         tone: "destructive",
         label: `Late Check-out: +${hrs}h ${mins}m`,
-        subLabel: isPastGrace ? `Late Fee Due: ₹${extraFee} (${overdueHrs}h @ ₹${lateFeePerHour}/hr)` : `Within grace (${graceMinutes}m)`,
+        subLabel: isPastGrace ? `Check-out past 11:00 AM · Extend 1 Day if staying` : `Within grace (${graceMinutes}m)`,
         isOverdue: isPastGrace,
         overdueMinutes: overdueMins,
-        overdueHours: overdueHrs,
-        calculatedExtraFee: extraFee,
+        overdueHours: 0,
+        calculatedExtraFee: 0,
       };
     }
   }
 
   // Arrivals (PENDING / CONFIRMED)
-  const checkinTimeStr = settings.checkInStandardTime || "14:00";
+  const checkinTimeStr = settings.checkInStandardTime || "12:00";
   const startTs = new Date(
     res.start_time || `${res.booking_date}T${checkinTimeStr}:00`
   ).getTime();

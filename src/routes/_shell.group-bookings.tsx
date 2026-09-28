@@ -96,8 +96,8 @@ export function GroupBookingsPage() {
   const [address, setAddress] = React.useState("");
   const [startDate, setStartDate] = React.useState(todayStr);
   const [endDate, setEndDate] = React.useState(tomorrowStr);
-  const [checkInTime, setCheckInTime] = React.useState("14:00");
-  const [checkOutTime, setCheckOutTime] = React.useState("14:00");
+  const [checkInTime, setCheckInTime] = React.useState("12:00");
+  const [checkOutTime, setCheckOutTime] = React.useState("11:00");
   const [selectedRoomIds, setSelectedRoomIds] = React.useState<string[]>([]);
   const [payerType, setPayerType] = React.useState<"LAST_ROOM" | "CUSTOM_ROOM">("LAST_ROOM");
   const [customPayerRoomId, setCustomPayerRoomId] = React.useState<string>("");
@@ -127,8 +127,8 @@ export function GroupBookingsPage() {
       const endTs = new Date(`${endDate}T${checkOutTime}:00`).getTime();
       return !reservations.some((res) => {
         if (res.room_id !== r.id || res.status === "CANCELLED" || res.status === "COMPLETED") return false;
-        const rStart = new Date(res.start_time || `${res.booking_date}T14:00:00`).getTime();
-        const rEnd = new Date(res.end_time || (res.start_time ? new Date(new Date(res.start_time).getTime() + 24 * 60 * 60 * 1000).toISOString() : `${res.booking_date}T14:00:00`)).getTime();
+        const rStart = new Date(res.start_time || `${res.booking_date}T12:00:00`).getTime();
+        const rEnd = new Date(res.end_time || (res.start_time ? new Date(new Date(res.start_time).getTime() + 24 * 60 * 60 * 1000).toISOString() : `${res.booking_date}T11:00:00`)).getTime();
         const effEnd = rEnd > rStart ? rEnd : rStart + 24 * 60 * 60 * 1000;
         return startTs < effEnd && endTs > rStart;
       });
