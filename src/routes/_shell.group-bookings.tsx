@@ -256,8 +256,14 @@ export function GroupBookingsPage() {
       return;
     }
 
-    const basePerRoom = Math.round(totalCalculatedGroupTariff / selectedRoomIds.length);
-    const totalPerRoom = Math.round(totalGroupWithTax / selectedRoomIds.length);
+    const roomAmounts: Record<string, { baseAmount: number; totalAmount: number }> = {};
+    selectedRoomIds.forEach((rId) => {
+      const rm = rooms.find((r) => r.id === rId);
+      const pricePerNight = Number(rm?.price) || 1000;
+      const base = pricePerNight * nights;
+      const total = Math.round(base * 1.05);
+      roomAmounts[rId] = { baseAmount: base, totalAmount: total };
+    });
 
     setSubmitting(true);
     try {
@@ -276,8 +282,7 @@ export function GroupBookingsPage() {
         checkInTime,
         checkOutTime,
         nights,
-        baseAmountPerRoom: basePerRoom,
-        totalAmountPerRoom: totalPerRoom,
+        roomAmounts,
         advancePaid: advanceAmount,
         splits: advanceAmount > 0 ? advanceSplits : [],
         payerType,

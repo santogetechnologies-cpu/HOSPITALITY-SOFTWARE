@@ -200,8 +200,9 @@ type Ctx = State & {
     checkInTime?: string;
     checkOutTime?: string;
     nights: number;
-    baseAmountPerRoom: number;
-    totalAmountPerRoom: number;
+    baseAmountPerRoom?: number;
+    totalAmountPerRoom?: number;
+    roomAmounts?: Record<string, { baseAmount: number; totalAmount: number }>;
     advancePaid?: number;
     splits?: any[];
     payerType?: "LAST_ROOM" | "CUSTOM_ROOM";
@@ -1736,8 +1737,11 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
           for (let i = 0; i < b.roomIds.length; i++) {
             const rId = b.roomIds[i];
             const resId = crypto.randomUUID();
-            const baseAmt = Number(b.baseAmountPerRoom) || 0;
-            const totalAmt = Number(b.totalAmountPerRoom) || baseAmt;
+            const rmObj = state.rooms.find((rm) => rm.id === rId);
+            const rmPrice = Number(rmObj?.price) || 1000;
+            const stayNights = Math.max(1, Number(b.nights) || 1);
+            const baseAmt = b.roomAmounts?.[rId]?.baseAmount ?? (b.baseAmountPerRoom || (rmPrice * stayNights));
+            const totalAmt = b.roomAmounts?.[rId]?.totalAmount ?? (b.totalAmountPerRoom || Math.round(baseAmt * 1.05));
             const initialStatus = b.autoCheckIn ? 'OCCUPIED' : 'CONFIRMED';
 
             const resData: any = {
