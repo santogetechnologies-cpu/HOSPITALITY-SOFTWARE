@@ -483,14 +483,24 @@ export function FrontDesk() {
     newEnd.setDate(newEnd.getDate() + 1);
     setAdjustNewEndDate(newEnd.toISOString().split("T")[0]);
 
-    // Extract checkout time from existing reservation or use standard 11:00 AM
-    const eH = !isNaN(currEnd.getTime()) ? String(currEnd.getHours()).padStart(2, "0") : "11";
-    const eM = !isNaN(currEnd.getTime()) ? String(currEnd.getMinutes()).padStart(2, "0") : "00";
+    // Extract checkout time from existing reservation or 24h arrival time
+    let eH = "12";
+    let eM = "00";
+    if (r.start_time) {
+      const sD = new Date(r.start_time);
+      if (!isNaN(sD.getTime())) {
+        eH = String(sD.getHours()).padStart(2, "0");
+        eM = String(sD.getMinutes()).padStart(2, "0");
+      }
+    } else if (!isNaN(currEnd.getTime())) {
+      eH = String(currEnd.getHours()).padStart(2, "0");
+      eM = String(currEnd.getMinutes()).padStart(2, "0");
+    }
     setAdjustCheckOutTime(`${eH}:${eM}`);
     
     const room = rooms.find(rm => rm.id === r.room_id);
-    const ratePerNight = Number(room?.price) || 1600;
-    const extraTotal = ratePerNight + Number(((ratePerNight * 5) / 100).toFixed(2));
+    const ratePerNight = Number(room?.price) || 1000;
+    const extraTotal = Math.round(ratePerNight * 1.05);
     setAdjustCollectAmount(String(extraTotal));
     setAdjustCollectNow(false);
     setAdjustPaymentMethod("CASH");

@@ -1480,7 +1480,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
               }
             }
           }
-          if (!checkOutTime) checkOutTime = "11:00";
+          if (!checkOutTime) checkOutTime = "12:00";
 
           const resUpdates: any = {
             end_time: new Date(`${params.newEndDate}T${checkOutTime}:00`).toISOString(),

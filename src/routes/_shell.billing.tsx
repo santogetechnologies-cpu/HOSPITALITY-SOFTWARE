@@ -984,20 +984,35 @@ function BillingPage() {
             const fin = getReservationFinancials(selectedResForBill);
             const invoiceNum = getSequentialInvoiceNumber(selectedResForBill, reservations, settings);
 
-            const effectiveInStr = `${billCheckInDate || (selectedResForBill.start_time ? selectedResForBill.start_time.split("T")[0] : todayStr)}T${billCheckInTime || "12:00"}:00`;
-            const effectiveOutStr = `${billCheckOutDate || (selectedResForBill.end_time ? selectedResForBill.end_time.split("T")[0] : todayStr)}T${billCheckOutTime || "11:00"}:00`;
+            const inDatePart = billCheckInDate || (selectedResForBill.start_time ? selectedResForBill.start_time.split("T")[0] : (selectedResForBill.booking_date || todayStr));
+            const inTimePart = billCheckInTime || (selectedResForBill.start_time ? selectedResForBill.start_time.split("T")[1]?.slice(0, 5) : "12:00");
+            const effectiveInStr = `${inDatePart}T${inTimePart || "12:00"}:00`;
+
+            const defaultOutDatePart = selectedResForBill.end_time 
+              ? selectedResForBill.end_time.split("T")[0] 
+              : (() => {
+                  const d = new Date(inDatePart);
+                  d.setDate(d.getDate() + 1);
+                  return !isNaN(d.getTime()) ? d.toISOString().split("T")[0] : inDatePart;
+                })();
+            const defaultOutTimePart = selectedResForBill.end_time 
+              ? selectedResForBill.end_time.split("T")[1]?.slice(0, 5) 
+              : (inTimePart || "12:00");
+            const outDatePart = billCheckOutDate || defaultOutDatePart;
+            const outTimePart = billCheckOutTime || defaultOutTimePart;
+            const effectiveOutStr = `${outDatePart}T${outTimePart || "12:00"}:00`;
 
             const checkInDate = new Date(effectiveInStr);
             const checkOutDate = new Date(effectiveOutStr);
 
-            // 24-Hour Cycle & Stay Duration Calculation
+            // Stay duration strictly based on booked / adjusted dates
             const durationHours = Math.max(0, (checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60));
             const graceHours = (settings.gracePeriodMinutes || 15) / 60;
             
-            // In a 24-hour stay model, each 24-hour block (with grace period) is 1 night
+            // In 24-hour model, nights match booked stay duration
             let nightsCount = 1;
             if (durationHours > 24 + graceHours) {
-              nightsCount = Math.max(1, Math.ceil((durationHours - graceHours) / 24));
+              nightsCount = Math.max(1, Math.round(durationHours / 24));
             } else {
               nightsCount = 1;
             }

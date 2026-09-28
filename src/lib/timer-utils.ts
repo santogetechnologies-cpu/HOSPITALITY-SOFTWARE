@@ -88,8 +88,8 @@ export function getStayTimerStatus(
 
       return {
         tone: "destructive",
-        label: `Late Check-out: +${hrs}h ${mins}m`,
-        subLabel: isPastGrace ? `Overstayed checkout · Extend 1 Day if staying` : `Within grace (${graceMinutes}m)`,
+        label: `Stay Overdue: +${hrs}h ${mins}m`,
+        subLabel: isPastGrace ? `Full Day Charge applies for stay extension` : `Within grace (${graceMinutes}m)`,
         isOverdue: isPastGrace,
         overdueMinutes: overdueMins,
         overdueHours: 0,
