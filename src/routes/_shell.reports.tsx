@@ -9,7 +9,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { usePms } from "@/lib/pms-store";
 import { inr } from "@/lib/pms-data";
+import { useSettings } from "@/lib/use-settings";
 import { getReservationFinancials } from "@/lib/financials";
+import { getSequentialInvoiceNumber } from "@/lib/invoice-utils";
 import { toast } from "sonner";
 import {
   Printer,
@@ -47,6 +49,7 @@ function downloadCSV(csvContent: string, filename: string) {
 
 export function GstReportsPage() {
   const { reservations, payments, guests, rooms, discounts } = usePms();
+  const { settings } = useSettings();
 
   // Date range filters (default: current month)
   const now = new Date();
@@ -57,8 +60,8 @@ export function GstReportsPage() {
     .toISOString()
     .split("T")[0];
 
-  const [fromDate, setFromDate] = React.useState<string>(firstDayOfMonth);
-  const [toDate, setToDate] = React.useState<string>(lastDayOfMonth);
+  const [fromDate, setFromDate] = React.useState<string>(firstDayOfMonth || "2026-09-01");
+  const [toDate, setToDate] = React.useState<string>(lastDayOfMonth || "2026-09-30");
   const [resourceFilter, setResourceFilter] = React.useState<"ALL" | "ROOMS" | "PARTY_HALL">("ALL");
   const [paymentFilter, setPaymentFilter] = React.useState<string>("all");
   const [searchQuery, setSearchQuery] = React.useState<string>("");
@@ -67,18 +70,18 @@ export function GstReportsPage() {
   const applyPreset = (preset: "THIS_MONTH" | "LAST_MONTH" | "TODAY" | "ALL") => {
     const today = new Date();
     if (preset === "THIS_MONTH") {
-      setFromDate(new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split("T")[0]);
-      setToDate(new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split("T")[0]);
+      setFromDate(new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split("T")[0] || "2026-09-01");
+      setToDate(new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split("T")[0] || "2026-09-30");
     } else if (preset === "LAST_MONTH") {
-      setFromDate(new Date(today.getFullYear(), today.getMonth() - 1, 1).toISOString().split("T")[0]);
-      setToDate(new Date(today.getFullYear(), today.getMonth(), 0).toISOString().split("T")[0]);
+      setFromDate(new Date(today.getFullYear(), today.getMonth() - 1, 1).toISOString().split("T")[0] || "2026-08-01");
+      setToDate(new Date(today.getFullYear(), today.getMonth(), 0).toISOString().split("T")[0] || "2026-08-31");
     } else if (preset === "TODAY") {
-      const t = today.toISOString().split("T")[0];
+      const t = today.toISOString().split("T")[0] || "2026-09-28";
       setFromDate(t);
       setToDate(t);
     } else if (preset === "ALL") {
       setFromDate("2020-01-01");
-      setToDate(today.toISOString().split("T")[0]);
+      setToDate(today.toISOString().split("T")[0] || "2026-09-28");
     }
   };
 
@@ -143,7 +146,7 @@ export function GstReportsPage() {
       const guestName = guest?.name || "Mr. Guest";
       const isB2B = Boolean(r.gst_number || guest?.gst_number);
       const billType = isB2B ? "B2B" : "Regular";
-      const invoiceNo = `FO/ ${invoiceCounter + idx}/0`;
+      const invoiceNo = getSequentialInvoiceNumber(r, reservations, settings);
 
       // Search query filter
       if (searchQuery.trim()) {
@@ -313,25 +316,25 @@ export function GstReportsPage() {
         <KpiCard
           label="Total Statements"
           value={totals.totalRooms.toString()}
-          sub="Rooms & Banquets billed"
+          hint="Rooms & Banquets billed"
           icon={FileBarChart}
         />
         <KpiCard
           label="Total Taxable Value"
           value={inr(totals.totalTaxable)}
-          sub="Net lodging revenue"
+          hint="Net lodging revenue"
           icon={Building}
         />
         <KpiCard
           label="Total CGST + SGST"
           value={inr(totals.totalGst)}
-          sub={`CGST: ${inr(totals.totalCgst)} | SGST: ${inr(totals.totalSgst)}`}
+          hint={`CGST: ${inr(totals.totalCgst)} | SGST: ${inr(totals.totalSgst)}`}
           icon={CheckCircle2}
         />
         <KpiCard
           label="Grand Gross Total"
           value={inr(totals.grandTotal)}
-          sub="Inclusive of all GST"
+          hint="Inclusive of all GST"
           icon={Calendar}
         />
       </div>
@@ -427,11 +430,12 @@ export function GstReportsPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Payment Modes</SelectItem>
-                <SelectItem value="cash">Cash</SelectItem>
-                <SelectItem value="card">Card / POS</SelectItem>
-                <SelectItem value="upi">UPI</SelectItem>
-                <SelectItem value="bank">Bank Transfer</SelectItem>
-                <SelectItem value="split">Split</SelectItem>
+                <SelectItem value="cash">💵 Cash</SelectItem>
+                <SelectItem value="card">💳 Card / POS</SelectItem>
+                <SelectItem value="upi">📱 UPI</SelectItem>
+                <SelectItem value="company">🏢 Company / Corporate</SelectItem>
+                <SelectItem value="bank">🏦 Bank Transfer</SelectItem>
+                <SelectItem value="split">⇄ Split</SelectItem>
               </SelectContent>
             </Select>
           </div>

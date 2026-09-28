@@ -15,7 +15,7 @@ import { usePms } from "@/lib/pms-store";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { inr } from "@/lib/pms-data";
-import { Users, Repeat, Crown, Building2, Search } from "lucide-react";
+import { Users, Repeat, Crown, Building2, Search, Edit3, UserCheck } from "lucide-react";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
 export const Route = createFileRoute("/_shell/guests")({
@@ -31,7 +31,7 @@ export const Route = createFileRoute("/_shell/guests")({
 });
 
 function GuestsPage() {
-  const { guests, reservations, payments, addGuest, deleteGuest, session } = usePms();
+  const { guests, reservations, payments, addGuest, updateGuestDetails, deleteGuest, session } = usePms();
   const isAdmin = session?.role === "SUPER_ADMIN" || session?.role === "GM" || !session;
   const [q, setQ] = React.useState("");
   const [type, setType] = React.useState("all");
@@ -39,6 +39,22 @@ function GuestsPage() {
   
   const [addOpen, setAddOpen] = React.useState(false);
   const [form, setForm] = React.useState({
+    name: "",
+    company_name: "",
+    email: "",
+    phone: "",
+    country: "India",
+    address: "",
+    id_number: "",
+    gst_number: "",
+    type: "Individual",
+    vip: false,
+    notes: ""
+  });
+
+  const [editOpen, setEditOpen] = React.useState(false);
+  const [editGuestId, setEditGuestId] = React.useState<string | null>(null);
+  const [editForm, setEditForm] = React.useState({
     name: "",
     company_name: "",
     email: "",
@@ -116,6 +132,55 @@ function GuestsPage() {
         });
       } else {
         toast.error(res?.error || "Failed to add guest profile");
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleStartEdit = (g: any) => {
+    setEditGuestId(g.id);
+    setEditForm({
+      name: g.name || "",
+      company_name: g.company_name || "",
+      email: g.email || "",
+      phone: g.phone || "",
+      country: g.country || "India",
+      address: g.address || "",
+      id_number: g.id_number || "",
+      gst_number: g.gst_number || "",
+      type: g.type || "Individual",
+      vip: Boolean(g.vip),
+      notes: g.notes || ""
+    });
+    setEditOpen(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (saving || !editGuestId) return;
+    if (!editForm.name.trim()) return toast.error("Guest full name is required");
+
+    setSaving(true);
+    try {
+      const res = await updateGuestDetails(editGuestId, {
+        name: editForm.name.trim(),
+        company_name: editForm.company_name.trim() || undefined,
+        email: editForm.email.trim() || undefined,
+        phone: editForm.phone.trim() || undefined,
+        country: editForm.country.trim() || "India",
+        address: editForm.address.trim() || undefined,
+        id_number: editForm.id_number.trim() || undefined,
+        gst_number: editForm.gst_number.trim().toUpperCase() || undefined,
+        type: editForm.type,
+        vip: editForm.vip,
+        notes: editForm.notes.trim() || undefined,
+      });
+
+      if (res?.success) {
+        toast.success("Guest details updated successfully!");
+        setEditOpen(false);
+      } else {
+        toast.error(res?.error || "Failed to update guest details");
       }
     } finally {
       setSaving(false);
@@ -210,12 +275,20 @@ function GuestsPage() {
                   <TableCell>{g.vip ? <Pill tone="gold">VIP</Pill> : "—"}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">
-                      <Button size="sm" variant="ghost" onClick={() => setOpenId(g.id)}>Profile</Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs border-blue-500/40 text-blue-600 dark:text-blue-400 hover:bg-blue-500/10"
+                        onClick={() => handleStartEdit(g)}
+                      >
+                        <Edit3 className="size-3 mr-1" /> Edit
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setOpenId(g.id)}>Profile</Button>
                       {isAdmin && (
                         <Button
                           size="sm"
                           variant="ghost"
-                          className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                          className="h-7 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
                           onClick={async () => {
                             if (confirm(`Are you sure you want to delete guest profile "${g.name}" and all associated booking records?`)) {
                               const delRes = await deleteGuest(g.id);
@@ -242,7 +315,20 @@ function GuestsPage() {
           {guest ? (
             <>
               <SheetHeader className="text-left">
-                <SheetTitle className="flex items-center gap-2 text-2xl">{guest.name}{guest.vip ? <Pill tone="gold">VIP</Pill> : null}</SheetTitle>
+                <div className="flex items-center justify-between">
+                  <SheetTitle className="flex items-center gap-2 text-2xl">{guest.name}{guest.vip ? <Pill tone="gold">VIP</Pill> : null}</SheetTitle>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 text-xs border-blue-500/40 text-blue-600 dark:text-blue-400 hover:bg-blue-500/10"
+                    onClick={() => {
+                      setOpenId(null);
+                      handleStartEdit(guest);
+                    }}
+                  >
+                    <Edit3 className="size-3.5 mr-1" /> Edit Details
+                  </Button>
+                </div>
                 <SheetDescription>
                   {(guest as any).company_name ? `${(guest as any).company_name} · ` : ""}
                   {guest.type || "Individual"} · {guest.country || "India"} · {guest.stays || 0} stays · {inr(guest.spend || 0)} lifetime
@@ -284,6 +370,90 @@ function GuestsPage() {
         </SheetContent>
       </Sheet>
 
+      {/* Edit Guest Profile Dialog */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
+              <UserCheck className="size-5" /> Edit Guest Profile & Tax Info
+            </DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label>Full Name * (Spelling Correction)</Label>
+                <Input placeholder="e.g. Rajesh Sharma" value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="flex items-center justify-between font-semibold text-emerald-600 dark:text-emerald-400">
+                  <span>Company Name</span>
+                  <span className="text-[10px] text-muted-foreground font-normal">B2B Bill</span>
+                </Label>
+                <Input placeholder="e.g. Infosys / TCS" value={editForm.company_name} onChange={e => setEditForm({...editForm, company_name: e.target.value})} />
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label>Phone Number</Label>
+                <Input placeholder="+91 98765 43210" value={editForm.phone} onChange={e => setEditForm({...editForm, phone: e.target.value})} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Email Address</Label>
+                <Input type="email" placeholder="guest@example.com" value={editForm.email} onChange={e => setEditForm({...editForm, email: e.target.value})} />
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="space-y-1.5">
+                <Label>ID Proof Number</Label>
+                <Input placeholder="e.g. 482910384910" value={editForm.id_number} onChange={e => setEditForm({...editForm, id_number: e.target.value})} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="flex items-center justify-between font-semibold text-emerald-600 dark:text-emerald-400">
+                  <span>Customer GSTIN</span>
+                </Label>
+                <Input placeholder="e.g. 33AAAAA0000A1Z5" className="uppercase font-mono text-xs" value={editForm.gst_number} onChange={e => setEditForm({...editForm, gst_number: e.target.value.toUpperCase()})} maxLength={15} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Country</Label>
+                <Input value={editForm.country} onChange={e => setEditForm({...editForm, country: e.target.value})} />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Residential Address / Company Billing Address</Label>
+              <Input placeholder="e.g. #42 MG Road, Bangalore, Karnataka - 560001" value={editForm.address} onChange={e => setEditForm({...editForm, address: e.target.value})} />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label>Guest Type</Label>
+                <Select value={editForm.type} onValueChange={(v) => setEditForm({...editForm, type: v})}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Individual">Individual</SelectItem>
+                    <SelectItem value="Corporate">Corporate</SelectItem>
+                    <SelectItem value="Travel Agent">Travel Agent</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center justify-between rounded-xl border border-border p-2.5 mt-auto">
+                <Label className="text-xs">VIP Status</Label>
+                <Switch checked={editForm.vip} onCheckedChange={(v) => setEditForm({...editForm, vip: v})} />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Notes & Special Requests</Label>
+              <Input placeholder="Special preferences or notes" value={editForm.notes} onChange={e => setEditForm({...editForm, notes: e.target.value})} />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="ghost" onClick={() => setEditOpen(false)} disabled={saving}>Cancel</Button>
+            <Button disabled={saving} onClick={handleSaveEdit} className="bg-blue-600 text-white hover:bg-blue-700 font-semibold">
+              {saving ? "Saving Changes..." : "Save Changes"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add New Guest Profile Dialog */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>Add New Guest Profile</DialogTitle></DialogHeader>

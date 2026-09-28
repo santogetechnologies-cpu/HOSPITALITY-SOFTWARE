@@ -157,13 +157,27 @@ type Ctx = State & {
   addEvent: (e: Omit<EventBooking, "id">) => void;
   addPayment: (p: Omit<Payment, "id">) => void;
   addGuest: (g: Omit<Guest, "id">) => Promise<{id: string, success: boolean, error?: string}>;
+  updateGuestDetails: (guestId: string, data: {
+    name?: string;
+    company_name?: string;
+    phone?: string;
+    email?: string;
+    address?: string;
+    country?: string;
+    gst_number?: string;
+    id_type?: string;
+    id_number?: string;
+    notes?: string;
+    vip?: boolean;
+    type?: string;
+  }, reservationId?: string) => Promise<{ success: boolean; error?: string }>;
   markAllRead: () => void;
   toggleRead: (id: string) => void;
   pushNotification: (n: Omit<Notification, "id" | "read" | "time">) => void;
   runNightAudit: () => void;
   addPartyHallBooking: (b: { customerName: string; companyName?: string; phone: string; email: string; address?: string; gstNumber?: string; eventType: string; guests: number; date: string; startTime: string; endTime: string; baseAmount: number; advance: number; paymentMethod?: string; splits?: any[]; }) => Promise<{ success: boolean; error?: string }>;
   updatePartyHallBooking: (reservationId: string, updates: { customerName?: string; phone?: string; email?: string; eventType?: string; guests?: number; date?: string; startTime?: string; endTime?: string; baseAmount?: number; status?: string; }) => Promise<{ success: boolean; error?: string }>;
-  addReservationExtraCharge: (reservationId: string, additionalAmount: number, reason: string, options?: { newEndTime?: string; collectedAmount?: number; paymentMethod?: "CASH" | "UPI" | "CARD" | "BANK_TRANSFER" | "OTHER"; splits?: any[]; }) => Promise<{ success: boolean; error?: string }>;
+  addReservationExtraCharge: (reservationId: string, additionalAmount: number, reason: string, options?: { newEndTime?: string; collectedAmount?: number; paymentMethod?: "CASH" | "UPI" | "CARD" | "COMPANY" | "BANK_TRANSFER" | "OTHER"; splits?: any[]; }) => Promise<{ success: boolean; error?: string }>;
   adjustRoomStay: (reservationId: string, params: {
     newEndDate: string;
     newCheckOutTime?: string;
@@ -171,14 +185,14 @@ type Ctx = State & {
     newBaseAmount: number;
     newTotalAmount: number;
     collectedAmount?: number;
-    paymentMethod?: "CASH" | "UPI" | "CARD" | "BANK_TRANSFER" | "OTHER";
+    paymentMethod?: "CASH" | "UPI" | "CARD" | "COMPANY" | "BANK_TRANSFER" | "OTHER";
     splits?: any[];
     isEarlyCheckout?: boolean;
     reason?: string;
   }) => Promise<{ success: boolean; error?: string }>;
   
   // Finance Mutators
-  settlePayment: (paymentId: string, amount: number, method?: "CASH" | "UPI" | "CARD" | "BANK_TRANSFER" | "OTHER" | string, splits?: any[]) => Promise<{ success: boolean; error?: string }>;
+  settlePayment: (paymentId: string, amount: number, method?: "CASH" | "UPI" | "CARD" | "COMPANY" | "BANK_TRANSFER" | "OTHER" | string, splits?: any[]) => Promise<{ success: boolean; error?: string }>;
   freezePayment: (paymentId: string) => Promise<{ success: boolean; error?: string }>;
   requestDiscount: (reservationId: string, amount: number, reason: string) => Promise<{ success: boolean; error?: string }>;
   resolveDiscount: (discountId: string, status: "APPROVED" | "REJECTED") => Promise<{ success: boolean; error?: string }>;
@@ -1098,6 +1112,59 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         } catch (err: any) {
           console.error("addGuest catch:", err);
           return { id: '', success: false, error: err.message };
+        }
+      },
+
+      updateGuestDetails: async (guestId, data, reservationId) => {
+        try {
+          await ensureFreshSession();
+          if (!guestId) return { success: false, error: "Guest ID is required" };
+
+          const guestUpdates: any = {};
+          if (data.name !== undefined) guestUpdates.name = data.name.trim();
+          if (data.company_name !== undefined) guestUpdates.company_name = data.company_name.trim() || null;
+          if (data.phone !== undefined) guestUpdates.phone = data.phone.trim() || null;
+          if (data.email !== undefined) guestUpdates.email = data.email.trim() || null;
+          if (data.address !== undefined) guestUpdates.address = data.address.trim() || null;
+          if (data.country !== undefined) guestUpdates.country = data.country.trim() || "India";
+          if (data.gst_number !== undefined) guestUpdates.gst_number = data.gst_number.trim().toUpperCase() || null;
+          if (data.id_number !== undefined) guestUpdates.id_number = data.id_number.trim() || null;
+          if (data.notes !== undefined) guestUpdates.notes = data.notes.trim() || null;
+          if (data.vip !== undefined) guestUpdates.vip = data.vip;
+          if (data.type !== undefined) guestUpdates.type = data.type;
+
+          const { error: gErr } = await withAuthRetry(() => supabase.from('guests').update(guestUpdates).eq('id', guestId));
+          if (gErr) {
+            if (gErr.message?.includes('company_name') || gErr.message?.includes('address') || gErr.message?.includes('gst_number')) {
+              if (gErr.message?.includes('company_name')) delete guestUpdates.company_name;
+              if (gErr.message?.includes('address')) delete guestUpdates.address;
+              if (gErr.message?.includes('gst_number')) delete guestUpdates.gst_number;
+              const { error: retryGErr } = await withAuthRetry(() => supabase.from('guests').update(guestUpdates).eq('id', guestId));
+              if (retryGErr) throw retryGErr;
+            } else {
+              throw gErr;
+            }
+          }
+
+          // Also update linked reservation metadata if applicable
+          const resUpdates: any = {};
+          if (data.gst_number !== undefined) resUpdates.gst_number = data.gst_number.trim().toUpperCase() || null;
+          if (data.company_name !== undefined) resUpdates.company_name = data.company_name.trim() || null;
+          if (data.address !== undefined) resUpdates.address = data.address.trim() || null;
+
+          if (Object.keys(resUpdates).length > 0) {
+            if (reservationId) {
+              await withAuthRetry(() => supabase.from('reservations').update(resUpdates).eq('id', reservationId));
+            } else {
+              await withAuthRetry(() => supabase.from('reservations').update(resUpdates).eq('guest_id', guestId));
+            }
+          }
+
+          await fetchData();
+          return { success: true };
+        } catch (err: any) {
+          console.error("updateGuestDetails error:", err);
+          return { success: false, error: err.message || "Failed to update guest details" };
         }
       },
       

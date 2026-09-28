@@ -8,7 +8,7 @@ import { inr } from "@/lib/pms-data";
 
 export type SplitRow = {
   id: string;
-  method: "CASH" | "CARD" | "UPI" | "BANK_TRANSFER" | "OTHER";
+  method: "CASH" | "CARD" | "UPI" | "COMPANY" | "BANK_TRANSFER" | "OTHER";
   amount: number;
   reference_note?: string;
 };
@@ -31,7 +31,7 @@ export function SplitPaymentInput({
   const isOverpaid = splitTotal > totalAmount;
   const isBalanced = splitTotal === totalAmount && totalAmount > 0;
 
-  const handleAddSplit = (method: "CASH" | "CARD" | "UPI" | "BANK_TRANSFER" | "OTHER" = "CASH") => {
+  const handleAddSplit = (method: "CASH" | "CARD" | "UPI" | "COMPANY" | "BANK_TRANSFER" | "OTHER" = "CASH") => {
     const defaultAmount = remaining > 0 ? remaining : 0;
     const newRow: SplitRow = {
       id: crypto.randomUUID(),
@@ -134,8 +134,9 @@ export function SplitPaymentInput({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="CASH">💵 Cash</SelectItem>
-                    <SelectItem value="CARD">💳 Card / POS</SelectItem>
                     <SelectItem value="UPI">📱 UPI / GPay</SelectItem>
+                    <SelectItem value="CARD">💳 Card / POS</SelectItem>
+                    <SelectItem value="COMPANY">🏢 Company / Corporate</SelectItem>
                     <SelectItem value="BANK_TRANSFER">🏦 Bank Transfer</SelectItem>
                     <SelectItem value="OTHER">🔖 Other</SelectItem>
                   </SelectContent>

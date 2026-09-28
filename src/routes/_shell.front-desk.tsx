@@ -16,7 +16,7 @@ import { useSettings } from "@/lib/use-settings";
 import { getStayTimerStatus } from "@/lib/timer-utils";
 import { SplitPaymentInput, SplitRow } from "@/components/pms/split-payment-input";
 import { toast } from "sonner";
-import { LogIn, LogOut, Plus, Users, DoorOpen, CheckCircle2, Calendar, CreditCard, ShieldCheck, MapPin, User, FileText, AlertTriangle, Timer, Clock } from "lucide-react";
+import { LogIn, LogOut, Plus, Users, DoorOpen, CheckCircle2, Calendar, CreditCard, ShieldCheck, MapPin, User, FileText, AlertTriangle, Timer, Clock, Edit3, UserCheck, Building2 } from "lucide-react";
 
 export const Route = createFileRoute("/_shell/front-desk")({
   head: () => ({
@@ -31,7 +31,7 @@ export const Route = createFileRoute("/_shell/front-desk")({
 const HK_CHECKLIST = ["Keycards encoded & assigned", "Government ID scanned & verified", "Registration card signed", "Advance deposit settled"];
 
 export function FrontDesk() {
-  const { rooms, reservations, guests, payments, discounts, checkIn, checkOut, addRoomReservation, settlePayment, addReservationExtraCharge, adjustRoomStay } = usePms();
+  const { rooms, reservations, guests, payments, discounts, checkIn, checkOut, addRoomReservation, settlePayment, addReservationExtraCharge, adjustRoomStay, updateGuestDetails } = usePms();
   const { settings } = useSettings();
 
   const [, setTick] = React.useState(0);
@@ -49,9 +49,20 @@ export function FrontDesk() {
   const resRoom = res ? rooms.find((r) => r.id === res.room_id) : null;
 
   const [checkinPayAmount, setCheckinPayAmount] = React.useState("");
-  const [checkinPayMethod, setCheckinPayMethod] = React.useState<"CASH" | "UPI" | "CARD" | "BANK_TRANSFER">("CASH");
+  const [checkinPayMethod, setCheckinPayMethod] = React.useState<"CASH" | "UPI" | "CARD" | "COMPANY" | "BANK_TRANSFER">("CASH");
   const [isCheckinSplit, setIsCheckinSplit] = React.useState(false);
   const [checkinSplits, setCheckinSplits] = React.useState<SplitRow[]>([]);
+
+  // Edit Guest Info Modal State
+  const [editGuestModalOpen, setEditGuestModalOpen] = React.useState(false);
+  const [editGuestRes, setEditGuestRes] = React.useState<typeof reservations[0] | null>(null);
+  const [editGuestName, setEditGuestName] = React.useState("");
+  const [editGuestPhone, setEditGuestPhone] = React.useState("");
+  const [editGuestEmail, setEditGuestEmail] = React.useState("");
+  const [editGuestCompany, setEditGuestCompany] = React.useState("");
+  const [editGuestGst, setEditGuestGst] = React.useState("");
+  const [editGuestAddress, setEditGuestAddress] = React.useState("");
+  const [savingGuest, setSavingGuest] = React.useState(false);
 
   // New Booking Split Payment State
   const [isBookingSplit, setIsBookingSplit] = React.useState(false);
@@ -67,7 +78,7 @@ export function FrontDesk() {
   const [adjustActualNights, setAdjustActualNights] = React.useState(1);
   const [adjustCollectNow, setAdjustCollectNow] = React.useState(false);
   const [adjustCollectAmount, setAdjustCollectAmount] = React.useState("");
-  const [adjustPaymentMethod, setAdjustPaymentMethod] = React.useState<"CASH" | "UPI" | "CARD" | "BANK_TRANSFER" | "OTHER">("CASH");
+  const [adjustPaymentMethod, setAdjustPaymentMethod] = React.useState<"CASH" | "UPI" | "CARD" | "COMPANY" | "BANK_TRANSFER" | "OTHER">("CASH");
   const [adjustExtraReason, setAdjustExtraReason] = React.useState("Room Service / Laundry / Addon");
   const [adjustExtraAmount, setAdjustExtraAmount] = React.useState("");
   const [adjustSubmitting, setAdjustSubmitting] = React.useState(false);
@@ -508,6 +519,42 @@ export function FrontDesk() {
     setAdjustModalOpen(true);
   };
 
+  const handleOpenEditGuest = (r: typeof reservations[0]) => {
+    setEditGuestRes(r);
+    const g = guests.find((x) => x.id === r.guest_id);
+    setEditGuestName(g?.name || (r as any).customer_name || "");
+    setEditGuestPhone(g?.phone || (r as any).phone || "");
+    setEditGuestEmail(g?.email || "");
+    setEditGuestCompany((r as any).company_name || (g as any)?.company_name || "");
+    setEditGuestGst((r as any).gst_number || g?.gst_number || "");
+    setEditGuestAddress((r as any).address || g?.address || "");
+    setEditGuestModalOpen(true);
+  };
+
+  const handleSaveGuestFromFrontDesk = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editGuestRes || !editGuestName.trim()) return toast.error("Guest name is required");
+    setSavingGuest(true);
+    try {
+      const res = await updateGuestDetails(editGuestRes.guest_id, {
+        name: editGuestName.trim(),
+        phone: editGuestPhone.trim() || undefined,
+        email: editGuestEmail.trim() || undefined,
+        company_name: editGuestCompany.trim() || undefined,
+        gst_number: editGuestGst.trim().toUpperCase() || undefined,
+        address: editGuestAddress.trim() || undefined,
+      }, editGuestRes.id);
+      if (res?.success) {
+        toast.success("Guest & GST details updated successfully!");
+        setEditGuestModalOpen(false);
+      } else {
+        toast.error(res?.error || "Failed to update guest details");
+      }
+    } finally {
+      setSavingGuest(false);
+    }
+  };
+
   const handleSaveStayAdjustment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedResForAdjust) return;
@@ -714,16 +761,27 @@ export function FrontDesk() {
                     </dl>
                   </div>
 
-                  <Button
-                    className="mt-4 w-full rounded-xl bg-brass text-gold-foreground hover:opacity-90"
-                    onClick={() => {
-                      setSelected(r.id);
-                      setAssignedRoomId(r.room_id || "");
-                      setCheckinPayAmount(String(balance > 0 ? balance : 0));
-                    }}
-                  >
-                    Start Check In
-                  </Button>
+                  <div className="mt-4 flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-10 text-xs rounded-xl border-blue-500/40 text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 shrink-0"
+                      onClick={() => handleOpenEditGuest(r)}
+                      title="Edit Guest Name / Spelling, Phone, Company, GSTIN"
+                    >
+                      <Edit3 className="size-3.5 mr-1" /> Edit Guest / GST
+                    </Button>
+                    <Button
+                      className="h-10 flex-1 rounded-xl bg-brass text-gold-foreground hover:opacity-90 font-semibold"
+                      onClick={() => {
+                        setSelected(r.id);
+                        setAssignedRoomId(r.room_id || "");
+                        setCheckinPayAmount(String(balance > 0 ? balance : 0));
+                      }}
+                    >
+                      Start Check In
+                    </Button>
+                  </div>
                 </div>
               );
             })}
@@ -808,6 +866,15 @@ export function FrontDesk() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-2 flex-wrap">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="rounded-lg h-8 text-xs font-medium border-blue-500/40 text-blue-600 dark:text-blue-400 hover:bg-blue-500/10"
+                            onClick={() => handleOpenEditGuest(r)}
+                            title="Edit Guest Name / Spelling, Phone, Company, GSTIN"
+                          >
+                            <Edit3 className="size-3 mr-1" /> Guest / GST
+                          </Button>
 
                           {!isPartyHall && (
                             <>
@@ -1014,10 +1081,11 @@ export function FrontDesk() {
                           <Select value={checkinPayMethod} onValueChange={(v: any) => setCheckinPayMethod(v)}>
                             <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="CASH">Cash</SelectItem>
-                              <SelectItem value="UPI">UPI / QR</SelectItem>
-                              <SelectItem value="CARD">Credit / Debit Card</SelectItem>
-                              <SelectItem value="BANK_TRANSFER">Bank Transfer</SelectItem>
+                              <SelectItem value="CASH">💵 Cash</SelectItem>
+                              <SelectItem value="UPI">📱 UPI / QR</SelectItem>
+                              <SelectItem value="CARD">💳 Credit / Debit Card</SelectItem>
+                              <SelectItem value="COMPANY">🏢 Company / Corporate (B2B)</SelectItem>
+                              <SelectItem value="BANK_TRANSFER">🏦 Bank Transfer</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
@@ -1442,11 +1510,12 @@ export function FrontDesk() {
                     >
                       <SelectTrigger><SelectValue placeholder="Payment Method" /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="CASH">Cash Payment</SelectItem>
-                        <SelectItem value="UPI">UPI / QR (GPay, PhonePe, Paytm)</SelectItem>
-                        <SelectItem value="CARD">Credit / Debit Card (POS Terminal)</SelectItem>
-                        <SelectItem value="BANK_TRANSFER">Bank Transfer / NEFT / IMPS</SelectItem>
-                        <SelectItem value="OTHER">Other / Bill to Company</SelectItem>
+                        <SelectItem value="CASH">💵 Cash Payment</SelectItem>
+                        <SelectItem value="UPI">📱 UPI / QR (GPay, PhonePe, Paytm)</SelectItem>
+                        <SelectItem value="CARD">💳 Credit / Debit Card (POS Terminal)</SelectItem>
+                        <SelectItem value="COMPANY">🏢 Company / Corporate (B2B Bill)</SelectItem>
+                        <SelectItem value="BANK_TRANSFER">🏦 Bank Transfer / NEFT / IMPS</SelectItem>
+                        <SelectItem value="OTHER">🔖 Other / Bill to Company</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -1702,11 +1771,12 @@ export function FrontDesk() {
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="CASH">Cash Payment</SelectItem>
-                                <SelectItem value="UPI">UPI / QR (GPay, PhonePe, Paytm)</SelectItem>
-                                <SelectItem value="CARD">Credit / Debit Card (POS)</SelectItem>
-                                <SelectItem value="BANK_TRANSFER">Bank Transfer / NEFT</SelectItem>
-                                <SelectItem value="OTHER">Other</SelectItem>
+                                <SelectItem value="CASH">💵 Cash Payment</SelectItem>
+                                <SelectItem value="UPI">📱 UPI / QR (GPay, PhonePe, Paytm)</SelectItem>
+                                <SelectItem value="CARD">💳 Credit / Debit Card (POS)</SelectItem>
+                                <SelectItem value="COMPANY">🏢 Company / Corporate (B2B Bill)</SelectItem>
+                                <SelectItem value="BANK_TRANSFER">🏦 Bank Transfer / NEFT</SelectItem>
+                                <SelectItem value="OTHER">🔖 Other</SelectItem>
                               </SelectContent>
                             </Select>
                           </div>
@@ -1824,7 +1894,7 @@ export function FrontDesk() {
                             <SelectItem value="Room Service / Food & Beverage">Room Service / Food & Beverage</SelectItem>
                             <SelectItem value="Laundry & Dry Cleaning">Laundry & Dry Cleaning</SelectItem>
                             <SelectItem value="Minibar Consumption">Minibar Consumption</SelectItem>
-                            <SelectItem value="Late Check-out Extra Hours">Late Check-out Extra Hours</SelectItem>
+                            <SelectItem value="Day Extension / Extra Day Stay">Day Extension / Extra Day Stay</SelectItem>
                             <SelectItem value="Damage & Special Cleaning Fee">Damage & Special Cleaning Fee</SelectItem>
                             <SelectItem value="Extra Bed / Rollaway Mattress">Extra Bed / Rollaway Mattress</SelectItem>
                             <SelectItem value="Other Miscellaneous Addon">Other Miscellaneous Addon</SelectItem>
@@ -1877,11 +1947,12 @@ export function FrontDesk() {
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="CASH">Cash Payment</SelectItem>
-                                <SelectItem value="UPI">UPI / QR (GPay, PhonePe, Paytm)</SelectItem>
-                                <SelectItem value="CARD">Credit / Debit Card (POS)</SelectItem>
-                                <SelectItem value="BANK_TRANSFER">Bank Transfer / NEFT</SelectItem>
-                                <SelectItem value="OTHER">Other</SelectItem>
+                                <SelectItem value="CASH">💵 Cash Payment</SelectItem>
+                                <SelectItem value="UPI">📱 UPI / QR (GPay, PhonePe, Paytm)</SelectItem>
+                                <SelectItem value="CARD">💳 Credit / Debit Card (POS)</SelectItem>
+                                <SelectItem value="COMPANY">🏢 Company / Corporate (B2B Bill)</SelectItem>
+                                <SelectItem value="BANK_TRANSFER">🏦 Bank Transfer / NEFT</SelectItem>
+                                <SelectItem value="OTHER">🔖 Other</SelectItem>
                               </SelectContent>
                             </Select>
                           </div>
@@ -1906,6 +1977,94 @@ export function FrontDesk() {
               </form>
             );
           })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Guest Details Dialog */}
+      <Dialog open={editGuestModalOpen} onOpenChange={setEditGuestModalOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
+              <UserCheck className="size-5" /> Modify Guest Details & Tax Info
+            </DialogTitle>
+            <DialogDescription>
+              Correct spelling mistakes, update phone, or add B2B Company name and GSTIN for this stay.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSaveGuestFromFrontDesk} className="space-y-4 pt-2">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Guest Full Name * (Spelling Fix)</Label>
+                <Input
+                  required
+                  placeholder="e.g. Rajesh Sharma"
+                  value={editGuestName}
+                  onChange={(e) => setEditGuestName(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Phone Number</Label>
+                <Input
+                  placeholder="e.g. 9876543210"
+                  value={editGuestPhone}
+                  onChange={(e) => setEditGuestPhone(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                  Company / Business Name (B2B Bill)
+                </Label>
+                <Input
+                  placeholder="e.g. TCS / Infosys / Apollo"
+                  value={editGuestCompany}
+                  onChange={(e) => setEditGuestCompany(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                  Recipient GSTIN (15 Digits)
+                </Label>
+                <Input
+                  placeholder="e.g. 33AAAAA0000A1Z5"
+                  className="uppercase font-mono text-xs font-bold"
+                  maxLength={15}
+                  value={editGuestGst}
+                  onChange={(e) => setEditGuestGst(e.target.value.toUpperCase())}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs">Email Address</Label>
+              <Input
+                type="email"
+                placeholder="guest@example.com"
+                value={editGuestEmail}
+                onChange={(e) => setEditGuestEmail(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs">Residential Address / Company Billing Address</Label>
+              <Input
+                placeholder="Address, City, State, PIN"
+                value={editGuestAddress}
+                onChange={(e) => setEditGuestAddress(e.target.value)}
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-border">
+              <Button type="button" variant="ghost" onClick={() => setEditGuestModalOpen(false)} disabled={savingGuest}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={savingGuest} className="bg-blue-600 text-white hover:bg-blue-700 font-semibold">
+                {savingGuest ? "Saving..." : "Save Guest Details"}
+              </Button>
+            </div>
+          </form>
         </DialogContent>
       </Dialog>
     </>

@@ -12,6 +12,7 @@ import { usePms } from "@/lib/pms-store";
 import { useSettings } from "@/lib/use-settings";
 import { inr } from "@/lib/pms-data";
 import { getReservationFinancials as calculateReservationFinancials } from "@/lib/financials";
+import { getSequentialInvoiceNumber } from "@/lib/invoice-utils";
 import { SplitPaymentInput, SplitRow } from "@/components/pms/split-payment-input";
 import { toast } from "sonner";
 import {
@@ -31,6 +32,8 @@ import {
   Download,
   Building2,
   Percent,
+  UserCheck,
+  Edit3,
 } from "lucide-react";
 
 export const Route = createFileRoute("/_shell/billing")({
@@ -88,7 +91,7 @@ function formatTimeAMPM(dateInput?: string | Date): string {
 }
 
 function BillingPage() {
-  const { reservations, guests, rooms, payments, discounts, session, settlePayment } = usePms();
+  const { reservations, guests, rooms, payments, discounts, session, settlePayment, updateGuestDetails } = usePms();
   const { settings } = useSettings();
 
   // Timeframe filter state
@@ -110,15 +113,25 @@ function BillingPage() {
   const [billCheckInDate, setBillCheckInDate] = React.useState("");
   const [billCheckInTime, setBillCheckInTime] = React.useState("12:00");
   const [billCheckOutDate, setBillCheckOutDate] = React.useState("");
-  const [billCheckOutTime, setBillCheckOutTime] = React.useState("11:00");
+  const [billCheckOutTime, setBillCheckOutTime] = React.useState("12:00");
   const [isEditingStayDates, setIsEditingStayDates] = React.useState(false);
   const [savingStayDates, setSavingStayDates] = React.useState(false);
+
+  // Guest Details & GST / Company Editor for Print Bill
+  const [isEditingGuestInfo, setIsEditingGuestInfo] = React.useState(false);
+  const [guestEditName, setGuestEditName] = React.useState("");
+  const [guestEditPhone, setGuestEditPhone] = React.useState("");
+  const [guestEditEmail, setGuestEditEmail] = React.useState("");
+  const [guestEditCompany, setGuestEditCompany] = React.useState("");
+  const [guestEditGst, setGuestEditGst] = React.useState("");
+  const [guestEditAddress, setGuestEditAddress] = React.useState("");
+  const [savingGuestInfo, setSavingGuestInfo] = React.useState(false);
 
   // Quick Collect Balance Modal State
   const [collectModalOpen, setCollectModalOpen] = React.useState(false);
   const [selectedResForCollect, setSelectedResForCollect] = React.useState<any>(null);
   const [collectAmount, setCollectAmount] = React.useState("");
-  const [collectMethod, setCollectMethod] = React.useState<"CASH" | "UPI" | "CARD" | "BANK_TRANSFER" | "OTHER">("CASH");
+  const [collectMethod, setCollectMethod] = React.useState<"CASH" | "UPI" | "CARD" | "COMPANY" | "BANK_TRANSFER" | "OTHER">("CASH");
   const [isSplitMode, setIsSplitMode] = React.useState(false);
   const [splitRows, setSplitRows] = React.useState<SplitRow[]>([]);
   const [settling, setSettling] = React.useState(false);
@@ -252,7 +265,16 @@ function BillingPage() {
 
   const handleOpenPrintBill = (r: (typeof reservations)[0]) => {
     setSelectedResForBill(r);
-    const startStr = r.start_time || `${r.booking_date || todayStr}T14:00:00`;
+    const guest = getGuest(r.guest_id);
+    setGuestEditName(guest?.name || (r as any).customer_name || "");
+    setGuestEditPhone(guest?.phone || (r as any).customer_phone || (r as any).phone || "");
+    setGuestEditEmail(guest?.email || (r as any).email || "");
+    setGuestEditCompany((r as any).company_name || (guest as any)?.company_name || "");
+    setGuestEditGst((r as any).gst_number || guest?.gst_number || "");
+    setGuestEditAddress((r as any).address || guest?.address || "");
+    setIsEditingGuestInfo(false);
+
+    const startStr = r.start_time || `${r.booking_date || todayStr}T12:00:00`;
     const sDate = new Date(startStr);
     
     // In 24-hour cycle model, end_time defaults to 24 hours after arrival time
@@ -267,7 +289,7 @@ function BillingPage() {
     const eDate = new Date(endStr);
 
     setBillCheckInDate(startStr.split("T")[0] || todayStr);
-    const sH = !isNaN(sDate.getTime()) ? String(sDate.getHours()).padStart(2, "0") : "14";
+    const sH = !isNaN(sDate.getTime()) ? String(sDate.getHours()).padStart(2, "0") : "12";
     const sM = !isNaN(sDate.getTime()) ? String(sDate.getMinutes()).padStart(2, "0") : "00";
     setBillCheckInTime(`${sH}:${sM}`);
 
@@ -278,6 +300,47 @@ function BillingPage() {
 
     setIsEditingStayDates(false);
     setPrintModalOpen(true);
+  };
+
+  const handleSaveGuestInfo = async () => {
+    if (!selectedResForBill) return;
+    if (!guestEditName.trim()) {
+      return toast.error("Guest Full Name cannot be blank");
+    }
+
+    setSavingGuestInfo(true);
+    try {
+      const gId = selectedResForBill.guest_id;
+      const res = await updateGuestDetails(
+        gId,
+        {
+          name: guestEditName.trim(),
+          phone: guestEditPhone.trim(),
+          email: guestEditEmail.trim(),
+          company_name: guestEditCompany.trim(),
+          gst_number: guestEditGst.trim().toUpperCase(),
+          address: guestEditAddress.trim(),
+        },
+        selectedResForBill.id
+      );
+
+      if (res.success) {
+        toast.success("Guest & Billing Details updated successfully!");
+        setIsEditingGuestInfo(false);
+        setSelectedResForBill((prev: any) => ({
+          ...prev,
+          company_name: guestEditCompany.trim() || undefined,
+          gst_number: guestEditGst.trim().toUpperCase() || undefined,
+          address: guestEditAddress.trim() || undefined,
+        }));
+      } else {
+        toast.error(res.error || "Failed to update guest details");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save guest information");
+    } finally {
+      setSavingGuestInfo(false);
+    }
   };
 
   const handleSaveStayDates = async () => {
@@ -668,7 +731,7 @@ function BillingPage() {
                 const guest = getGuest(r.guest_id);
                 const room = getRoom(r.room_id);
                 const fin = getReservationFinancials(r);
-                const invoiceNum = String(r.id || "").replace(/\D/g, "").slice(-4) || "938";
+                const invoiceNum = getSequentialInvoiceNumber(r, reservations, settings);
 
                 return (
                   <TableRow key={r.id} className="hover:bg-accent/40">
@@ -873,11 +936,12 @@ function BillingPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="CASH">Cash</SelectItem>
-                      <SelectItem value="UPI">UPI / QR (GPay, PhonePe, Paytm)</SelectItem>
-                      <SelectItem value="CARD">Credit / Debit Card (POS)</SelectItem>
-                      <SelectItem value="BANK_TRANSFER">Bank Transfer / NEFT</SelectItem>
-                      <SelectItem value="OTHER">Credit / Company Ledger</SelectItem>
+                      <SelectItem value="CASH">💵 Cash</SelectItem>
+                      <SelectItem value="UPI">📱 UPI / QR (GPay, PhonePe, Paytm)</SelectItem>
+                      <SelectItem value="CARD">💳 Credit / Debit Card (POS)</SelectItem>
+                      <SelectItem value="COMPANY">🏢 Company / Corporate (B2B Bill)</SelectItem>
+                      <SelectItem value="BANK_TRANSFER">🏦 Bank Transfer / NEFT</SelectItem>
+                      <SelectItem value="OTHER">🔖 Other / Ledger</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -918,7 +982,7 @@ function BillingPage() {
             const guest = getGuest(selectedResForBill.guest_id);
             const room = getRoom(selectedResForBill.room_id);
             const fin = getReservationFinancials(selectedResForBill);
-            const invoiceNum = String(selectedResForBill.id || "").replace(/\D/g, "").slice(-4) || "938";
+            const invoiceNum = getSequentialInvoiceNumber(selectedResForBill, reservations, settings);
 
             const effectiveInStr = `${billCheckInDate || (selectedResForBill.start_time ? selectedResForBill.start_time.split("T")[0] : todayStr)}T${billCheckInTime || "12:00"}:00`;
             const effectiveOutStr = `${billCheckOutDate || (selectedResForBill.end_time ? selectedResForBill.end_time.split("T")[0] : todayStr)}T${billCheckOutTime || "11:00"}:00`;
@@ -957,7 +1021,7 @@ function BillingPage() {
 
             return (
               <div className="space-y-6 pt-2">
-                {/* Stay Date/Time Toolbar */}
+                {/* Stay Date & Guest Details Toolbar */}
                 <div className="rounded-xl border border-border bg-secondary/30 p-3 flex flex-wrap items-center justify-between gap-3 text-xs">
                   <div className="flex items-center gap-2">
                     <Clock className="size-4 text-gold" />
@@ -973,6 +1037,16 @@ function BillingPage() {
                       type="button"
                       size="sm"
                       variant="outline"
+                      className="h-7 text-xs rounded-lg border-blue-500/40 text-blue-600 dark:text-blue-400 hover:bg-blue-500/10"
+                      onClick={() => setIsEditingGuestInfo(!isEditingGuestInfo)}
+                    >
+                      <Edit3 className="size-3.5 mr-1" />
+                      {isEditingGuestInfo ? "Hide Guest Editor" : "Modify Guest / GST / Company"}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
                       className="h-7 text-xs rounded-lg border-gold/40 text-gold hover:bg-gold/10"
                       onClick={() => setIsEditingStayDates(!isEditingStayDates)}
                     >
@@ -980,6 +1054,93 @@ function BillingPage() {
                     </Button>
                   </div>
                 </div>
+
+                {/* Guest Details Editor */}
+                {isEditingGuestInfo && (
+                  <div className="rounded-xl border border-blue-500/40 bg-card p-4 space-y-3 text-xs shadow-sm">
+                    <div className="font-semibold text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
+                      <UserCheck className="size-4" /> Modify Guest Details (Spelling, GSTIN, Company Name, Address)
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-[11px]">Guest Full Name *</Label>
+                        <Input
+                          type="text"
+                          value={guestEditName}
+                          onChange={(e) => setGuestEditName(e.target.value)}
+                          placeholder="e.g. John Doe"
+                          className="h-8 text-xs"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[11px]">Mobile / Phone Number</Label>
+                        <Input
+                          type="text"
+                          value={guestEditPhone}
+                          onChange={(e) => setGuestEditPhone(e.target.value)}
+                          placeholder="e.g. 9876543210"
+                          className="h-8 text-xs"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[11px]">Email Address</Label>
+                        <Input
+                          type="email"
+                          value={guestEditEmail}
+                          onChange={(e) => setGuestEditEmail(e.target.value)}
+                          placeholder="guest@example.com"
+                          className="h-8 text-xs"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                          Company / Business Name (Optional)
+                        </Label>
+                        <Input
+                          type="text"
+                          value={guestEditCompany}
+                          onChange={(e) => setGuestEditCompany(e.target.value)}
+                          placeholder="e.g. Tata Consultancy Services Ltd."
+                          className="h-8 text-xs font-semibold"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                          Recipient GSTIN (15 Digits)
+                        </Label>
+                        <Input
+                          type="text"
+                          value={guestEditGst}
+                          onChange={(e) => setGuestEditGst(e.target.value.toUpperCase())}
+                          placeholder="e.g. 33AAAAA0000A1Z5"
+                          className="h-8 text-xs font-mono font-bold uppercase"
+                          maxLength={15}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[11px]">Billing / Residential Address</Label>
+                        <Input
+                          type="text"
+                          value={guestEditAddress}
+                          onChange={(e) => setGuestEditAddress(e.target.value)}
+                          placeholder="Address, City, State, PIN"
+                          className="h-8 text-xs"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-2 pt-1">
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={savingGuestInfo}
+                        className="h-8 bg-blue-600 text-white hover:bg-blue-700 font-semibold"
+                        onClick={handleSaveGuestInfo}
+                      >
+                        {savingGuestInfo ? "Saving..." : "Save Guest Details & Update Bill"}
+                      </Button>
+                    </div>
+                  </div>
+                )}
 
                 {isEditingStayDates && (
                   <div className="rounded-xl border border-gold/40 bg-card p-4 space-y-3 text-xs">

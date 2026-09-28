@@ -27,6 +27,8 @@ export type SettingsState = {
   checkInStandardTime: string;
   checkOutStandardTime: string;
   gracePeriodMinutes: number;
+  startingInvoiceNumber: number;
+  sequenceStartDate: string;
   allowGmDiscountApproval: boolean;
   allowFrontDeskDiscountApproval: boolean;
 };
@@ -57,6 +59,8 @@ const DEFAULT_SETTINGS: SettingsState = {
   checkInStandardTime: "12:00",
   checkOutStandardTime: "12:00",
   gracePeriodMinutes: 15,
+  startingInvoiceNumber: 963,
+  sequenceStartDate: "2026-09-01",
   allowGmDiscountApproval: false,
   allowFrontDeskDiscountApproval: false,
 };
@@ -69,8 +73,11 @@ export function useSettings() {
         try {
           const parsed = JSON.parse(saved);
           parsed.roomLateCheckoutFeePerHour = 0;
-          if (!parsed.stayCycleMode) {
-            parsed.stayCycleMode = "24_HOURS";
+          if (!parsed.startingInvoiceNumber) {
+            parsed.startingInvoiceNumber = 963;
+          }
+          if (!parsed.sequenceStartDate) {
+            parsed.sequenceStartDate = "2026-09-01";
           }
           return { ...DEFAULT_SETTINGS, ...parsed };
         } catch (e) {

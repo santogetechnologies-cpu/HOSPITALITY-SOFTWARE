@@ -196,9 +196,45 @@ function SettingsPage() {
                 <Label>Address</Label>
                 <Input value={profileForm.address} onChange={e => setProfileForm(p => ({ ...p, address: e.target.value }))} />
               </div>
+
+              <div className="sm:col-span-2 rounded-xl border border-gold/40 bg-gold/5 p-4 space-y-3">
+                <div className="flex items-center gap-2 font-semibold text-sm text-foreground">
+                  <span className="size-2.5 rounded-full bg-gold inline-block" />
+                  Statutory GST Tax Invoice Sequence
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  As per GST Office compliance regulations, invoice numbering must continue uninterrupted. August 31st invoice was 962; all bookings on and after September 1st, 2026 sequentially start from 963.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">Starting Invoice Number (e.g. 963)</Label>
+                    <Input
+                      type="number"
+                      value={settings.startingInvoiceNumber || 963}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value) || 963;
+                        updatePolicySettings({ startingInvoiceNumber: val });
+                      }}
+                      className="font-mono font-bold"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">Sequence Effective Date</Label>
+                    <Input
+                      type="date"
+                      value={settings.sequenceStartDate || "2026-09-01"}
+                      onChange={(e) => {
+                        updatePolicySettings({ sequenceStartDate: e.target.value });
+                      }}
+                      className="font-mono text-xs"
+                    />
+                  </div>
+                </div>
+              </div>
+
               <div className="sm:col-span-2">
-                <Button className="rounded-xl bg-brass text-gold-foreground hover:opacity-90" onClick={handleSaveHotelProfile}>
-                  Save changes
+                <Button className="rounded-xl bg-brass text-gold-foreground hover:opacity-90 font-semibold" onClick={handleSaveHotelProfile}>
+                  Save Hotel Profile & Tax Settings
                 </Button>
               </div>
             </div>

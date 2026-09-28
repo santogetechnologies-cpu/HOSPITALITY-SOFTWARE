@@ -12,6 +12,7 @@ import { inr } from "@/lib/pms-data";
 import { SplitPaymentInput, type SplitRow } from "@/components/pms/split-payment-input";
 import { useSettings } from "@/lib/use-settings";
 import { getReservationFinancials as calculateReservationFinancials } from "@/lib/financials";
+import { getSequentialInvoiceNumber } from "@/lib/invoice-utils";
 import { toast } from "sonner";
 import {
   Banknote,
@@ -169,8 +170,10 @@ function PaymentsDashboard() {
 
       // Normalize channel
       const rawMethod = (p?.payment_method || "CASH").toUpperCase();
-      let channel: "UPI" | "CARD" | "CASH" | "BANK_TRANSFER" | "OTHER" = "CASH";
-      if (rawMethod.includes("UPI") || rawMethod.includes("GPAY") || rawMethod.includes("PHONEPE") || rawMethod.includes("PAYTM") || rawMethod.includes("QR")) {
+      let channel: "UPI" | "CARD" | "CASH" | "COMPANY" | "BANK_TRANSFER" | "OTHER" = "CASH";
+      if (rawMethod.includes("COMPANY") || rawMethod.includes("CORP")) {
+        channel = "COMPANY";
+      } else if (rawMethod.includes("UPI") || rawMethod.includes("GPAY") || rawMethod.includes("PHONEPE") || rawMethod.includes("PAYTM") || rawMethod.includes("QR")) {
         channel = "UPI";
       } else if (rawMethod.includes("CARD") || rawMethod.includes("POS") || rawMethod.includes("DEBIT") || rawMethod.includes("CREDIT")) {
         channel = "CARD";
@@ -188,7 +191,7 @@ function PaymentsDashboard() {
       const room = getRoom(res.room_id);
 
       const searchLower = searchQuery.toLowerCase().trim();
-      const invoiceNum = `INV-${String(res.id).slice(0, 8).toUpperCase()}`;
+      const invoiceNum = getSequentialInvoiceNumber(res, reservations, settings);
       const rawResId = String(res.id || "").toLowerCase();
       const rawPayId = String(p?.id || "").toLowerCase();
       const guestGstin = (res as any)?.gst_number || guest?.gst_number || "";
@@ -263,8 +266,10 @@ function PaymentsDashboard() {
       const isPartial = !isPaid && (p.status === "PARTIAL" || paid > 0);
 
       const rawMethod = (p.payment_method || "CASH").toUpperCase();
-      let channel: "UPI" | "CARD" | "CASH" | "BANK_TRANSFER" | "OTHER" = "CASH";
-      if (rawMethod.includes("UPI") || rawMethod.includes("GPAY") || rawMethod.includes("PHONEPE") || rawMethod.includes("PAYTM") || rawMethod.includes("QR")) {
+      let channel: "UPI" | "CARD" | "CASH" | "COMPANY" | "BANK_TRANSFER" | "OTHER" = "CASH";
+      if (rawMethod.includes("COMPANY") || rawMethod.includes("CORP")) {
+        channel = "COMPANY";
+      } else if (rawMethod.includes("UPI") || rawMethod.includes("GPAY") || rawMethod.includes("PHONEPE") || rawMethod.includes("PAYTM") || rawMethod.includes("QR")) {
         channel = "UPI";
       } else if (rawMethod.includes("CARD") || rawMethod.includes("POS") || rawMethod.includes("DEBIT") || rawMethod.includes("CREDIT")) {
         channel = "CARD";
@@ -285,7 +290,7 @@ function PaymentsDashboard() {
         id: p.id,
         paymentId: p.id,
         reservationId: p.reservation_id || p.id,
-        invoiceNum: `INV-${String(p.id).slice(0, 8).toUpperCase()}`,
+        invoiceNum: `REC-${String(p.id).slice(0, 8).toUpperCase()}`,
         date: todayStr,
         guestName: "Direct Payment",
         guestPhone: "—",
@@ -327,6 +332,7 @@ function PaymentsDashboard() {
     let upiTotal = 0, upiCount = 0;
     let cardTotal = 0, cardCount = 0;
     let cashTotal = 0, cashCount = 0;
+    let companyTotal = 0, companyCount = 0;
     let bankTotal = 0, bankCount = 0;
     let otherTotal = 0, otherCount = 0;
 
@@ -357,6 +363,9 @@ function PaymentsDashboard() {
       } else if (tx.channel === "CASH") {
         cashTotal += tx.paid;
         cashCount++;
+      } else if (tx.channel === "COMPANY") {
+        companyTotal += tx.paid;
+        companyCount++;
       } else if (tx.channel === "BANK_TRANSFER") {
         bankTotal += tx.paid;
         bankCount++;
@@ -404,6 +413,7 @@ function PaymentsDashboard() {
       upi: { total: upiTotal, count: upiCount, pct: totalInflowCollected > 0 ? (upiTotal / totalInflowCollected) * 100 : 0 },
       card: { total: cardTotal, count: cardCount, pct: totalInflowCollected > 0 ? (cardTotal / totalInflowCollected) * 100 : 0 },
       cash: { total: cashTotal, count: cashCount, pct: totalInflowCollected > 0 ? (cashTotal / totalInflowCollected) * 100 : 0 },
+      company: { total: companyTotal, count: companyCount, pct: totalInflowCollected > 0 ? (companyTotal / totalInflowCollected) * 100 : 0 },
       bank: { total: bankTotal, count: bankCount, pct: totalInflowCollected > 0 ? (bankTotal / totalInflowCollected) * 100 : 0 },
       other: { total: otherTotal, count: otherCount, pct: totalInflowCollected > 0 ? (otherTotal / totalInflowCollected) * 100 : 0 },
       rooms: { taxable: roomsTaxable, gst: roomsGst, total: roomsTotal, inflow: roomsInflow, pct: totalInflowCollected > 0 ? (roomsInflow / totalInflowCollected) * 100 : 0 },
@@ -988,10 +998,11 @@ function PaymentsDashboard() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Payment Modes</SelectItem>
-                <SelectItem value="UPI">UPI / QR (GPay/PhonePe)</SelectItem>
-                <SelectItem value="CARD">Card Swipes (POS)</SelectItem>
-                <SelectItem value="CASH">Cash Counter</SelectItem>
-                <SelectItem value="BANK_TRANSFER">Bank Transfer / NEFT</SelectItem>
+                <SelectItem value="CASH">💵 Cash Counter</SelectItem>
+                <SelectItem value="UPI">📱 UPI / QR (GPay/PhonePe)</SelectItem>
+                <SelectItem value="CARD">💳 Card Swipes (POS)</SelectItem>
+                <SelectItem value="COMPANY">🏢 Company / Corporate (B2B)</SelectItem>
+                <SelectItem value="BANK_TRANSFER">🏦 Bank Transfer / NEFT</SelectItem>
               </SelectContent>
             </Select>
 
@@ -1119,7 +1130,7 @@ function PaymentsDashboard() {
                   </TableCell>
 
                   <TableCell>
-                    <Pill tone={tx.channel === "UPI" ? "info" : tx.channel === "CARD" ? "gold" : tx.channel === "CASH" ? "success" : "default"}>
+                    <Pill tone={tx.channel === "UPI" ? "info" : tx.channel === "CARD" ? "gold" : tx.channel === "COMPANY" ? "gold" : tx.channel === "CASH" ? "success" : "default"}>
                       {tx.channel}
                     </Pill>
                   </TableCell>
@@ -1231,6 +1242,7 @@ function PaymentsDashboard() {
                         <SelectItem value="CASH">💵 Cash</SelectItem>
                         <SelectItem value="UPI">📱 UPI / QR (GPay, PhonePe, Paytm)</SelectItem>
                         <SelectItem value="CARD">💳 Credit / Debit Card (POS)</SelectItem>
+                        <SelectItem value="COMPANY">🏢 Company / Corporate (B2B Bill)</SelectItem>
                         <SelectItem value="BANK_TRANSFER">🏦 Bank Transfer / NEFT</SelectItem>
                         <SelectItem value="OTHER">🔖 Other / Bill to Company</SelectItem>
                       </SelectContent>
