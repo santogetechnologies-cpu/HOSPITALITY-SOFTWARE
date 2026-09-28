@@ -240,7 +240,7 @@ function PaymentsDashboard() {
         channelRaw: p?.payment_method || "CASH",
         isPaid: fin.isPaid,
         isPartial: fin.isPartial,
-        status: fin.isComplimentary ? "COMPLIMENTARY (100% OFF)" : fin.isPaid ? "SETTLED" : fin.isPartial ? "PARTIAL / ADVANCE" : "PENDING",
+        status: fin.isTransferred ? "SETTLED (GROUP TRANSFER)" : fin.isComplimentary ? "COMPLIMENTARY (100% OFF)" : fin.isPaid ? "SETTLED" : fin.isPartial ? "PARTIAL / ADVANCE" : "PENDING",
       });
     });
 

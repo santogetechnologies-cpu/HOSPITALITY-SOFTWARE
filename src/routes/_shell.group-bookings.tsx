@@ -182,23 +182,46 @@ export function GroupBookingsPage() {
     let totalPaid = 0;
     let totalTransferred = 0;
 
+    const activeGroupRes = groupRes.filter((res) => res.status !== "COMPLETED");
+    const masterPayerRes = grp.payer_type === "CUSTOM_ROOM"
+      ? groupRes.find((res) => res.room_id === grp.custom_payer_room_id)
+      : (activeGroupRes.length > 0 ? activeGroupRes[activeGroupRes.length - 1] : groupRes[groupRes.length - 1]);
+
     groupRes.forEach((r) => {
       const pay = payments.find((p) => p.reservation_id === r.id);
-      const base = Number(pay?.total_amount) || Number(r.base_amount) || 0;
+      const rm = rooms.find((room) => room.id === r.room_id);
+      const isMasterRoom = masterPayerRes && masterPayerRes.id === r.id;
+
+      let roomCharge = 0;
+      if (Number(r.base_amount) > 0) {
+        const isInclusive = rm && (r.base_amount === rm.total_bill || r.base_amount > Number(rm.price));
+        roomCharge = isInclusive ? Number(r.base_amount) : Math.round(Number(r.base_amount) * 1.05);
+      } else if (!isMasterRoom && Number(pay?.total_amount) > 0) {
+        roomCharge = Number(pay.total_amount);
+      } else {
+        const rmPrice = Number(rm?.price) || 1000;
+        roomCharge = Math.round(rmPrice * nights * 1.05);
+      }
+
       const addl = Number(r.additional_charges) || 0;
       const paid = Number(pay?.paid_amount) || 0;
       const tr = Number(r.transferred_amount) || 0;
 
-      totalBase += base;
+      totalBase += roomCharge;
       totalAddl += addl;
       totalPaid += paid;
       totalTransferred += tr;
     });
 
     const grandTotal = totalBase + totalAddl;
-    const balance = Math.max(0, grandTotal - totalPaid);
     const activeRoomsCount = groupRes.filter((r) => r.status !== "COMPLETED").length;
     const completedRoomsCount = groupRes.filter((r) => r.status === "COMPLETED").length;
+    
+    // Group is fully settled if grp is COMPLETED or all rooms are completed and balance cleared
+    let balance = Math.max(0, grandTotal - totalPaid);
+    if (grp.status === "COMPLETED" || (activeRoomsCount === 0 && totalPaid >= grandTotal * 0.95)) {
+      balance = 0;
+    }
 
     return {
       groupRes,
@@ -661,10 +684,20 @@ export function GroupBookingsPage() {
 
                         const isCustomPayer = grp.payer_type === "CUSTOM_ROOM" && grp.custom_payer_room_id === r.room_id;
                         const activeGroupRes = fin.groupRes.filter((res) => res.status !== "COMPLETED");
-                        const isLastActive = activeGroupRes.length === 1 && activeGroupRes[0].id === r.id;
+                        const isLastActive = (activeGroupRes.length === 1 && activeGroupRes[0].id === r.id) || (activeGroupRes.length === 0 && fin.groupRes[fin.groupRes.length - 1]?.id === r.id);
+                        const isMasterPayer = isCustomPayer || isLastActive;
 
                         const transferredAmt = Number(r.transferred_amount) || 0;
-                        const roomBase = Number(pay?.total_amount) || Number(r.base_amount) || 0;
+                        let roomBase = 0;
+                        if (Number(r.base_amount) > 0) {
+                          const isInclusive = rm && (r.base_amount === rm.total_bill || r.base_amount > Number(rm.price));
+                          roomBase = isInclusive ? Number(r.base_amount) : Math.round(Number(r.base_amount) * 1.05);
+                        } else if (!isMasterPayer && Number(pay?.total_amount) > 0) {
+                          roomBase = Number(pay.total_amount);
+                        } else {
+                          const rmPrice = Number(rm?.price) || 1000;
+                          roomBase = Math.round(rmPrice * nights * 1.05);
+                        }
                         const paid = Number(pay?.paid_amount) || 0;
 
                         return (

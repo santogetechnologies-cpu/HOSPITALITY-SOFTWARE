@@ -16,6 +16,8 @@ export interface ReservationFinancials {
   isComplimentary: boolean;
   payment?: any;
   isPartyHall: boolean;
+  isTransferred: boolean;
+  transferredAmount: number;
   gstRatePercent: number;
   cgstRatePercent: number;
   sgstRatePercent: number;
@@ -38,7 +40,7 @@ export function getApprovedDiscount(resId?: string, discounts: any[] = []): numb
 /**
  * Canonical unified financial calculation for folios, reservations, and payments.
  * Guarantees: grandTotal === taxableValue + totalGst exactly (and taxableValue + cgst + sgst === grandTotal)
- * Properly isolates and accounts for 100% complimentary discounts (e.g. VIP / Municipality waivers).
+ * Properly isolates and accounts for 100% complimentary discounts (e.g. VIP / Municipality waivers) and group transfers.
  */
 export function getReservationFinancials(
   r: any,
@@ -64,6 +66,8 @@ export function getReservationFinancials(
       isDiscounted: false,
       isComplimentary: false,
       isPartyHall: false,
+      isTransferred: false,
+      transferredAmount: 0,
       gstRatePercent: 5,
       cgstRatePercent: 2.5,
       sgstRatePercent: 2.5,
@@ -131,13 +135,20 @@ export function getReservationFinancials(
   const isComplimentary = approvedDiscount > 0 && grandTotal === 0;
   const isDiscounted = approvedDiscount > 0;
 
+  // Check if this room transferred its balance to a group master
+  const isTransferred = Boolean(
+    (Number(r.transferred_amount) > 0 && r.status === "COMPLETED") ||
+    (p?.payment_method && String(p.payment_method).toLowerCase().includes("transferred"))
+  );
+  const transferredAmount = Number(r.transferred_amount) || 0;
+
   // Realized paid cash/UPI inflow: on 100% complimentary stays, no cash was received
   const rawPaid = Number(p?.paid_amount) || 0;
   const paid = isComplimentary ? 0 : Math.min(rawPaid, grandTotal > 0 ? grandTotal : rawPaid);
-  const balance = Math.max(0, grandTotal - paid);
+  const balance = isTransferred ? 0 : Math.max(0, grandTotal - paid);
 
-  const isPaid = (balance === 0 && (grandTotal > 0 || isComplimentary)) || (paid >= grandTotal && grandTotal > 0);
-  const isPartial = !isPaid && (p?.status === "PARTIAL" || paid > 0);
+  const isPaid = isTransferred || (balance === 0 && (grandTotal > 0 || isComplimentary)) || (paid >= grandTotal && grandTotal > 0);
+  const isPartial = !isPaid && !isTransferred && (p?.status === "PARTIAL" || paid > 0);
 
   return {
     originalGross,
@@ -157,6 +168,8 @@ export function getReservationFinancials(
     isComplimentary,
     payment: p,
     isPartyHall,
+    isTransferred,
+    transferredAmount,
     gstRatePercent: isPartyHall ? 18 : 5,
     cgstRatePercent: isPartyHall ? 9 : 2.5,
     sgstRatePercent: isPartyHall ? 9 : 2.5,
