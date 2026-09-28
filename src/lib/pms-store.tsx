@@ -820,9 +820,9 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             return { success: false, error: "Check-in and check-out dates are required." };
           }
 
-          // Hotel DRB Stay Check-In Model (11:00 AM Standard Check-Out)
+          // Hotel DRB Stay Check-In Model (24-Hour Cycle from Check-In)
           const inTime = b.checkInTime || "12:00";
-          const outTime = b.checkOutTime || "11:00";
+          const outTime = b.checkOutTime || inTime;
           const startTs = new Date(`${b.startDate}T${inTime}:00`).getTime();
           const endTs = new Date(`${b.endDate}T${outTime}:00`).getTime();
 
@@ -834,7 +834,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
           const isOverlapping = state.reservations.some((r) => {
             if (r.room_id !== b.roomId || r.status === "CANCELLED" || r.status === "COMPLETED") return false;
             const rStart = new Date(r.start_time || `${r.booking_date}T12:00:00`).getTime();
-            const rEnd = new Date(r.end_time || (r.start_time ? new Date(new Date(r.start_time).getTime() + 24 * 60 * 60 * 1000).toISOString() : `${r.booking_date}T11:00:00`)).getTime();
+            const rEnd = new Date(r.end_time || (r.start_time ? new Date(new Date(r.start_time).getTime() + 24 * 60 * 60 * 1000).toISOString() : `${r.booking_date}T12:00:00`)).getTime();
             const effectiveEnd = rEnd > rStart ? rEnd : rStart + 24 * 60 * 60 * 1000;
             return (startTs < effectiveEnd && endTs > rStart);
           });
@@ -1678,7 +1678,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
           if (!b.startDate || !b.endDate) return { success: false, error: "Check-in and check-out dates are required." };
 
           const inTime = b.checkInTime || "12:00";
-          const outTime = b.checkOutTime || "11:00";
+          const outTime = b.checkOutTime || inTime;
           const startIso = new Date(`${b.startDate}T${inTime}:00`).toISOString();
           const endIso = new Date(`${b.endDate}T${outTime}:00`).toISOString();
 

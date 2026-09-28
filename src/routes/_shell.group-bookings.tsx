@@ -97,7 +97,7 @@ export function GroupBookingsPage() {
   const [startDate, setStartDate] = React.useState(todayStr);
   const [endDate, setEndDate] = React.useState(tomorrowStr);
   const [checkInTime, setCheckInTime] = React.useState("12:00");
-  const [checkOutTime, setCheckOutTime] = React.useState("11:00");
+  const [checkOutTime, setCheckOutTime] = React.useState("12:00");
   const [selectedRoomIds, setSelectedRoomIds] = React.useState<string[]>([]);
   const [payerType, setPayerType] = React.useState<"LAST_ROOM" | "CUSTOM_ROOM">("LAST_ROOM");
   const [customPayerRoomId, setCustomPayerRoomId] = React.useState<string>("");
@@ -926,7 +926,11 @@ export function GroupBookingsPage() {
                 <Input
                   type="time"
                   value={checkInTime}
-                  onChange={(e) => setCheckInTime(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setCheckInTime(val);
+                    setCheckOutTime(val);
+                  }}
                   className="text-xs h-8"
                 />
               </div>

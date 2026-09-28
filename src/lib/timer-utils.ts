@@ -49,17 +49,17 @@ export function getStayTimerStatus(
 
   const now = Date.now();
   const defaultCheckIn = settings.checkInStandardTime || "12:00";
-  const checkoutTimeStr = settings.checkOutStandardTime || "11:00";
+  const checkoutTimeStr = settings.checkOutStandardTime || "12:00";
   const graceMinutes = settings.gracePeriodMinutes || 15;
 
   let endTs: number;
   if (res.end_time) {
     endTs = new Date(res.end_time).getTime();
-  } else if (settings.stayCycleMode === "24_HOURS" && res.start_time) {
+  } else if (res.start_time) {
     // 24-hour cycle from check-in
     endTs = new Date(res.start_time).getTime() + 24 * 60 * 60 * 1000;
   } else {
-    // Standard Hotel DRB Schedule: 11:00 AM Check-out
+    // Standard schedule check-out
     const baseDate = res.booking_date || (res.start_time ? res.start_time.split("T")[0] : new Date().toISOString().split("T")[0]);
     endTs = new Date(`${baseDate}T${checkoutTimeStr}:00`).getTime();
   }
@@ -89,7 +89,7 @@ export function getStayTimerStatus(
       return {
         tone: "destructive",
         label: `Late Check-out: +${hrs}h ${mins}m`,
-        subLabel: isPastGrace ? `Check-out past 11:00 AM · Extend 1 Day if staying` : `Within grace (${graceMinutes}m)`,
+        subLabel: isPastGrace ? `Overstayed checkout · Extend 1 Day if staying` : `Within grace (${graceMinutes}m)`,
         isOverdue: isPastGrace,
         overdueMinutes: overdueMins,
         overdueHours: 0,

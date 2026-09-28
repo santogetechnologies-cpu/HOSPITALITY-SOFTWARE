@@ -330,7 +330,7 @@ function SettingsPage() {
                   <div className="space-y-2">
                     <Label>Room Overstay Billing Policy</Label>
                     <div className="rounded-lg border border-border bg-secondary/30 p-2.5 text-xs text-muted-foreground">
-                      <span className="font-semibold text-foreground">No Late Fee System:</span> Overstay beyond 11:00 AM is billed as 1 full day by extending the stay at the standard room day rate.
+                      <span className="font-semibold text-foreground">No Late Fee System:</span> Overstay beyond the 24-hour cycle is billed by extending the stay at the standard room day rate.
                     </div>
                   </div>
                 </div>
@@ -343,11 +343,11 @@ function SettingsPage() {
                       <span className="size-2.5 rounded-full bg-gold inline-block" /> Hotel DRB Check-In / Check-Out Schedule
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Standard property schedule with 11:00 AM check-out. Overstay is billed by extending stay by full days.
+                      24-hour stay cycle from guest check-in time. Overstay is billed by extending stay by full days.
                     </p>
                   </div>
                   <div className="rounded-full border border-gold/50 text-gold bg-gold/10 px-2.5 py-0.5 text-xs font-semibold w-fit">
-                    {policyForm.stayCycleMode === "STANDARD_HOURS" ? "⚡ Standard 11:00 AM Check-Out Active" : "24-Hour Cycle Active"}
+                    {policyForm.stayCycleMode === "24_HOURS" ? "⚡ 24-Hour Cycle Active" : "Standard Hours Active"}
                   </div>
                 </div>
 
@@ -355,26 +355,6 @@ function SettingsPage() {
                 <div className="space-y-2">
                   <Label className="text-xs font-semibold text-foreground">Stay Schedule Model *</Label>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div
-                      onClick={() => setPolicyForm({ ...policyForm, stayCycleMode: "STANDARD_HOURS", checkOutStandardTime: "11:00" })}
-                      className={`cursor-pointer rounded-xl border p-3.5 transition-all ${
-                        policyForm.stayCycleMode === "STANDARD_HOURS"
-                          ? "border-gold bg-gold/10 shadow-sm"
-                          : "border-border hover:bg-secondary/40"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold text-sm flex items-center gap-2">
-                          <span className={`size-3 rounded-full border-2 ${policyForm.stayCycleMode === "STANDARD_HOURS" ? "border-gold bg-gold" : "border-muted-foreground"}`} />
-                          Standard 11:00 AM Check-Out Model
-                        </span>
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-gold/20 text-gold uppercase">Hotel DRB Standard</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
-                        Fixed property check-out at <strong>11:00 AM</strong>. Guests staying past check-out time are charged one full day by extending the stay, without hourly late fees.
-                      </p>
-                    </div>
-
                     <div
                       onClick={() => setPolicyForm({ ...policyForm, stayCycleMode: "24_HOURS", checkOutStandardTime: policyForm.checkInStandardTime })}
                       className={`cursor-pointer rounded-xl border p-3.5 transition-all ${
@@ -386,11 +366,31 @@ function SettingsPage() {
                       <div className="flex items-center justify-between">
                         <span className="font-semibold text-sm flex items-center gap-2">
                           <span className={`size-3 rounded-full border-2 ${policyForm.stayCycleMode === "24_HOURS" ? "border-gold bg-gold" : "border-muted-foreground"}`} />
-                          24-Hour Cycle Model
+                          24-Hour Cycle Model (Standard)
+                        </span>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-gold/20 text-gold uppercase">Recommended</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
+                        Guest check-out is calculated exactly 24 hours from arrival time (e.g. 3:00 PM check-in → 3:00 PM check-out next day).
+                      </p>
+                    </div>
+
+                    <div
+                      onClick={() => setPolicyForm({ ...policyForm, stayCycleMode: "STANDARD_HOURS", checkOutStandardTime: "11:00" })}
+                      className={`cursor-pointer rounded-xl border p-3.5 transition-all ${
+                        policyForm.stayCycleMode === "STANDARD_HOURS"
+                          ? "border-gold bg-gold/10 shadow-sm"
+                          : "border-border hover:bg-secondary/40"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-sm flex items-center gap-2">
+                          <span className={`size-3 rounded-full border-2 ${policyForm.stayCycleMode === "STANDARD_HOURS" ? "border-gold bg-gold" : "border-muted-foreground"}`} />
+                          Fixed 11:00 AM Check-Out Model
                         </span>
                       </div>
                       <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
-                        Guest check-out is calculated exactly 24 hours from arrival time (e.g. 6:00 PM check-in → 6:00 PM check-out next day).
+                        Fixed property check-out at <strong>11:00 AM</strong> regardless of check-in time.
                       </p>
                     </div>
                   </div>
@@ -421,7 +421,7 @@ function SettingsPage() {
                       value={policyForm.checkOutStandardTime}
                       onChange={(e) => setPolicyForm({ ...policyForm, checkOutStandardTime: e.target.value })}
                     />
-                    <span className="text-[11px] text-muted-foreground">Standard Hotel DRB checkout (11:00 AM)</span>
+                    <span className="text-[11px] text-muted-foreground">Check-out time for fixed schedule mode</span>
                   </div>
 
                   <div className="space-y-2">
@@ -444,16 +444,16 @@ function SettingsPage() {
                   onClick={() => {
                     setPolicyForm({
                       ...policyForm,
-                      stayCycleMode: "STANDARD_HOURS",
+                      stayCycleMode: "24_HOURS",
                       checkInStandardTime: "12:00",
-                      checkOutStandardTime: "11:00",
+                      checkOutStandardTime: "12:00",
                       gracePeriodMinutes: 15,
                       roomLateCheckoutFeePerHour: 0,
                     });
-                    toast.info("Loaded Hotel DRB standard defaults (11:00 AM check-out).");
+                    toast.info("Loaded Hotel DRB 24-Hour stay model defaults.");
                   }}
                 >
-                  Reset to 11:00 AM Defaults
+                  Reset to 24-Hour Defaults
                 </Button>
                 <Button
                   className="rounded-xl bg-brass text-gold-foreground hover:opacity-90 shadow-brass"

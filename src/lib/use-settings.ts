@@ -53,9 +53,9 @@ const DEFAULT_SETTINGS: SettingsState = {
   ],
   partyHallHourlyRate: 3000,
   roomLateCheckoutFeePerHour: 0,
-  stayCycleMode: "STANDARD_HOURS",
+  stayCycleMode: "24_HOURS",
   checkInStandardTime: "12:00",
-  checkOutStandardTime: "11:00",
+  checkOutStandardTime: "12:00",
   gracePeriodMinutes: 15,
   allowGmDiscountApproval: false,
   allowFrontDeskDiscountApproval: false,
@@ -68,13 +68,9 @@ export function useSettings() {
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          // Migrate old settings to Hotel DRB 11:00 AM standard checkout & zero late fee
-          if (!parsed.checkOutStandardTime || parsed.checkOutStandardTime === "14:00") {
-            parsed.checkOutStandardTime = "11:00";
-          }
           parsed.roomLateCheckoutFeePerHour = 0;
-          if (parsed.stayCycleMode === "24_HOURS" && !saved.includes('"stayCycleMode"')) {
-            parsed.stayCycleMode = "STANDARD_HOURS";
+          if (!parsed.stayCycleMode) {
+            parsed.stayCycleMode = "24_HOURS";
           }
           return { ...DEFAULT_SETTINGS, ...parsed };
         } catch (e) {
