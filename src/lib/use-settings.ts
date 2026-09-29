@@ -52,6 +52,7 @@ const DEFAULT_SETTINGS: SettingsState = {
     { id: "rt4", name: "Double Bed Standard AC", basePrice: 1600 },
     { id: "rt5", name: "Double Bed Deluxe AC", basePrice: 2200 },
     { id: "rt6", name: "Suite Room", basePrice: 3200 },
+    { id: "rt7", name: "PARTY HALL", basePrice: 4000 },
   ],
   partyHallHourlyRate: 3000,
   roomLateCheckoutFeePerHour: 0,
@@ -78,6 +79,9 @@ export function useSettings() {
           }
           if (!parsed.sequenceStartDate) {
             parsed.sequenceStartDate = "2026-09-01";
+          }
+          if (parsed.roomTypes && !parsed.roomTypes.some((t: any) => t.name?.toUpperCase() === "PARTY HALL")) {
+            parsed.roomTypes.push({ id: "rt7", name: "PARTY HALL", basePrice: 4000 });
           }
           return { ...DEFAULT_SETTINGS, ...parsed };
         } catch (e) {

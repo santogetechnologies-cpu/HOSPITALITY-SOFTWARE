@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { inr, type Room } from "@/lib/pms-data";
+import { inr, formatFloor, type Room } from "@/lib/pms-data";
 import { usePms } from "@/lib/pms-store";
 import { RoomGlyph, StatusBadge, getSafeStatusMeta } from "./bits";
 import { useNavigate } from "@tanstack/react-router";
@@ -67,7 +67,7 @@ export function RoomDrawer({
                 <StatusBadge status={currentStatus} size="sm" />
               </SheetTitle>
               <SheetDescription className="text-sm">
-                Floor {floorNum} · {roomName} · Up to {capacityNum} guests
+                {formatFloor(floorNum)} · {roomName} · Up to {capacityNum} guests
               </SheetDescription>
             </SheetHeader>
 

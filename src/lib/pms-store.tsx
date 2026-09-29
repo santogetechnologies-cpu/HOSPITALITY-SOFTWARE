@@ -481,32 +481,28 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
 
       let loadedRooms: any[] = (rooms as any) || [];
 
-      // Reconcile and seed exact 25 canonical rooms from user specifications
+      // Reconcile and seed canonical rooms and include all user-configured rooms
       const reconciledRooms: any[] = [];
+      const handledRoomNumbers = new Set<string>();
+
       for (const canon of CANONICAL_ROOMS) {
+        handledRoomNumbers.add(canon.room_number.toString().trim());
         const found = loadedRooms.find((r: any) => 
           (r.room_number || r.number)?.toString().trim() === canon.room_number
         );
         if (found) {
-          const updated = {
-            ...found,
-            room_number: canon.room_number,
-            room_name: canon.room_name,
-            floor: canon.floor,
-            price: canon.price, // direct amount
-            capacity: canon.capacity,
-            is_active: true,
-          };
-          reconciledRooms.push(updated);
-          // If in DB the price, floor, or name was different, sync DB
-          if (found.price !== canon.price || found.room_name !== canon.room_name || found.floor !== canon.floor) {
-            void supabase.from('rooms').update({
-              room_name: canon.room_name,
-              floor: canon.floor,
-              price: canon.price,
-              capacity: canon.capacity,
-              is_active: true
-            }).eq('id', found.id);
+          // If the room exists and was not explicitly deactivated
+          if (found.is_active !== false) {
+            const updated = {
+              ...found,
+              room_number: canon.room_number,
+              room_name: found.room_name || canon.room_name,
+              floor: found.floor || canon.floor,
+              price: found.price !== undefined ? Number(found.price) : canon.price,
+              capacity: found.capacity || canon.capacity,
+              is_active: true,
+            };
+            reconciledRooms.push(updated);
           }
         } else {
           const newRoom = {
@@ -526,8 +522,33 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
+      // Also preserve and include all custom / additional rooms created in Supabase
+      for (const extraRoom of loadedRooms) {
+        const num = (extraRoom.room_number || extraRoom.number)?.toString().trim();
+        if (num && !handledRoomNumbers.has(num) && extraRoom.is_active !== false) {
+          handledRoomNumbers.add(num);
+          reconciledRooms.push({
+            ...extraRoom,
+            room_number: num,
+            room_name: extraRoom.room_name || (extraRoom as any).type || "Standard Room",
+            floor: extraRoom.floor || "Floor 1",
+            price: Number(extraRoom.price || (extraRoom as any).rate || 0),
+            capacity: Number(extraRoom.capacity || 2),
+            status: extraRoom.status || "AVAILABLE",
+            is_active: true,
+          });
+        }
+      }
+
       // Sort naturally by room number
-      reconciledRooms.sort((a, b) => parseInt(a.room_number, 10) - parseInt(b.room_number, 10));
+      reconciledRooms.sort((a, b) => {
+        const numA = parseInt(a.room_number, 10);
+        const numB = parseInt(b.room_number, 10);
+        if (isNaN(numA) || isNaN(numB)) {
+          return String(a.room_number).localeCompare(String(b.room_number));
+        }
+        return numA - numB;
+      });
 
       // Automatic deduplication of expenses table
       const rawExpenses: any[] = (expenses as any) || [];
@@ -2200,8 +2221,11 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
           await supabase.from('hk_tasks').delete().eq('room_id', id);
           await supabase.from('tickets').delete().eq('room_id', id);
 
-          const { error } = await supabase.from('rooms').delete().eq('id', id);
-          if (error) throw error;
+          // Mark room as inactive to prevent canonical re-seeding and preserve foreign keys
+          const { error } = await supabase.from('rooms').update({ is_active: false }).eq('id', id);
+          if (error) {
+            await supabase.from('rooms').delete().eq('id', id);
+          }
           await fetchData();
           return { success: true };
         } catch (err: any) {

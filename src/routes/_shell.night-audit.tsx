@@ -35,13 +35,13 @@ function NightAudit() {
   const { auditRun, runNightAudit, businessDate, rooms } = usePms();
   const [open, setOpen] = React.useState(false);
   const [done, setDone] = React.useState<string[]>(CHECKS.slice(0, 4));
-  const occupied = rooms.filter((r) => r.status === "occupied").length;
+  const occupied = rooms.filter((r) => r.status === "OCCUPIED" || (r.status as string) === "occupied").length;
 
   return (
     <>
       <PageHeader eyebrow="Finance" title="Night Audit" subtitle={`Business date ${businessDate} · ${auditRun ? "audit complete" : "audit open"}`} />
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="Occupancy" value={`${Math.round((occupied / 25) * 100)}%`} icon={Moon} tone="gold" />
+        <KpiCard label="Occupancy" value={`${rooms.length ? Math.round((occupied / rooms.length) * 100) : 0}%`} icon={Moon} tone="gold" />
         <KpiCard label="Room Revenue" value={inr(312000)} tone="info" />
         <KpiCard label="F&B Revenue" value={inr(96400)} tone="success" />
         <KpiCard label="Tax Collected" value={inr(58900)} tone="warning" />

@@ -320,7 +320,15 @@ export const EXPENSES = [
   { id: "e2", category: "F&B Supplies", amount: 450, date: "2026-08-12", description: "Milk packets" },
 ];
 
+export const formatFloor = (floor?: string | number): string => {
+  if (!floor) return "Floor 1";
+  const s = String(floor).trim();
+  const cleaned = s.replace(/^(floor\s*)+/i, "").trim();
+  return `Floor ${cleaned || "1"}`;
+};
+
 export const CANONICAL_ROOMS = [
+  { room_number: "101", room_name: "PARTY HALL", floor: "Floor 1", price: 4000, sgst: 100.0, cgst: 100.0, total_gst: 200.0, total_bill: 4200.0, capacity: 50 },
   { room_number: "202", room_name: "Double Bed Non AC", floor: "Floor 2", price: 700, sgst: 17.5, cgst: 17.5, total_gst: 35.0, total_bill: 735.0, capacity: 2 },
   { room_number: "104", room_name: "Double Bed Non AC Standard", floor: "Floor 1", price: 1000, sgst: 25.0, cgst: 25.0, total_gst: 50.0, total_bill: 1050.0, capacity: 2 },
   { room_number: "201", room_name: "Double Bed Non AC Standard", floor: "Floor 2", price: 1000, sgst: 25.0, cgst: 25.0, total_gst: 50.0, total_bill: 1050.0, capacity: 2 },
@@ -355,6 +363,7 @@ export const ROOM_TYPES = [
   { type: "Double Bed Standard AC", base: 1600 },
   { type: "Double Bed Deluxe AC", base: 2200 },
   { type: "Suite Room", base: 3200 },
+  { type: "PARTY HALL", base: 4000 },
 ];
 
 export const MENU_CATEGORIES = ["Breakfast", "Starters", "Mains", "Drinks"];

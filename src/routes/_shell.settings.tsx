@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { PageHeader, Panel, Pill, EmptyState } from "@/components/pms/bits";
 import { usePms } from "@/lib/pms-store";
 import { useSettings } from "@/lib/use-settings";
-import { inr } from "@/lib/pms-data";
+import { inr, formatFloor } from "@/lib/pms-data";
 import { Plus, Building2, Layers, Trash2, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -38,6 +38,7 @@ function SettingsPage() {
   
   const [addRoomOpen, setAddRoomOpen] = React.useState(false);
   const [r, setR] = React.useState({ number: "", type: "", floor: "", price: 0 });
+  const [customCategory, setCustomCategory] = React.useState("");
   const [newFloor, setNewFloor] = React.useState("");
   const [newType, setNewType] = React.useState({ name: "", price: "" });
 
@@ -100,6 +101,7 @@ function SettingsPage() {
         type: defType,
         price: defPrice
       });
+      setCustomCategory("");
     }
   }, [addRoomOpen, settings]);
 
@@ -111,7 +113,7 @@ function SettingsPage() {
     if (!r.price || r.price <= 0) return toast.error("Please enter a valid room rate");
     
     const floorToSave = r.floor || settings.floors[0] || "1";
-    const typeToSave = r.type || settings.roomTypes[0]?.name || "Standard Room";
+    const typeToSave = (r.type === "CUSTOM" ? customCategory.trim() : r.type) || settings.roomTypes[0]?.name || "Standard Room";
 
     setAddRoomLoading(true);
     try {
@@ -120,6 +122,7 @@ function SettingsPage() {
         toast.success(`Room ${r.number.trim()} created successfully!`);
         setAddRoomOpen(false);
         setR({ number: "", type: "", floor: "", price: 0 });
+        setCustomCategory("");
       } else {
         toast.error(res?.error || "Failed to create room");
       }
@@ -246,7 +249,7 @@ function SettingsPage() {
                   <div className="flex flex-wrap gap-2">
                     {settings.floors.map(f => (
                       <span key={f} className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-card border border-border">
-                        Floor {f}
+                        {formatFloor(f)}
                         <button type="button" className="text-muted-foreground hover:text-destructive font-bold ml-1" onClick={() => removeFloor(f)}>&times;</button>
                       </span>
                     ))}
@@ -303,7 +306,7 @@ function SettingsPage() {
                       <TableRow key={room.id}>
                         <TableCell className="font-bold">Room {room.room_number || (room as any).number}</TableCell>
                         <TableCell>{room.room_name || room.room_type_id || (room as any).type || "Standard Room"}</TableCell>
-                        <TableCell>Floor {room.floor || "1"}</TableCell>
+                        <TableCell>{formatFloor(room.floor)}</TableCell>
                         <TableCell>
                           <Pill tone={room.status === 'AVAILABLE' ? 'success' : room.status === 'OCCUPIED' ? 'info' : 'warning'}>
                             {room.status || "AVAILABLE"}
@@ -533,7 +536,7 @@ function SettingsPage() {
               <Select value={r.floor} onValueChange={v => setR({...r, floor: v})}>
                 <SelectTrigger><SelectValue placeholder="Select Floor..." /></SelectTrigger>
                 <SelectContent>
-                  {settings.floors.map(f => <SelectItem key={f} value={f}>Floor {f}</SelectItem>)}
+                  {settings.floors.map(f => <SelectItem key={f} value={f}>{formatFloor(f)}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -541,8 +544,12 @@ function SettingsPage() {
             <div className="space-y-2">
               <Label>Room Category *</Label>
               <Select value={r.type} onValueChange={v => {
-                const rt = settings.roomTypes.find(t => t.name === v);
-                setR({...r, type: v, price: rt ? rt.basePrice : r.price});
+                if (v === "CUSTOM") {
+                  setR({...r, type: "CUSTOM"});
+                } else {
+                  const rt = settings.roomTypes.find(t => t.name === v);
+                  setR({...r, type: v, price: rt ? rt.basePrice : r.price});
+                }
               }}>
                 <SelectTrigger><SelectValue placeholder="Select Category..." /></SelectTrigger>
                 <SelectContent>
@@ -551,8 +558,17 @@ function SettingsPage() {
                       {rt.name} ({inr(rt.basePrice)})
                     </SelectItem>
                   ))}
+                  <SelectItem value="CUSTOM">+ Custom Category Name...</SelectItem>
                 </SelectContent>
               </Select>
+              {r.type === "CUSTOM" && (
+                <Input
+                  className="mt-1.5"
+                  placeholder="e.g. PARTY HALL"
+                  value={customCategory}
+                  onChange={e => setCustomCategory(e.target.value)}
+                />
+              )}
             </div>
 
             <div className="space-y-2">

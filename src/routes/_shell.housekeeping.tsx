@@ -6,9 +6,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { EmptyState, KpiCard, PageHeader, Panel, Pill, StatusBadge } from "@/components/pms/bits";
 import { usePms } from "@/lib/pms-store";
 import { cn } from "@/lib/utils";
-import { toast } from "sonner";
 import { Sparkles, BrushCleaning, CheckCheck, Wrench, ClipboardCheck, ArrowRight, ShieldCheck } from "lucide-react";
-import type { Room } from "@/lib/pms-data";
+import { formatFloor, type Room } from "@/lib/pms-data";
 
 export const Route = createFileRoute("/_shell/housekeeping")({
   head: () => ({
@@ -132,7 +131,7 @@ function Housekeeping() {
                       <StatusBadge status={r.status} size="sm" />
                     </div>
                     <div className="mt-1 text-xs text-muted-foreground">
-                      Floor {r.floor || "1"} · {rType}
+                      {formatFloor(r.floor)} · {rType}
                     </div>
 
                     <div className="mt-4 rounded-xl border border-border bg-secondary/30 p-3 text-xs">

@@ -21,7 +21,7 @@ import {
 import { EmptyState, PageHeader, Panel, Pill, RoomCard, StatusBadge, StatusLegend } from "@/components/pms/bits";
 import { RoomDrawer } from "@/components/pms/room-drawer";
 import { usePms } from "@/lib/pms-store";
-import { ROOM_STATUSES, STATUS_META, inr, type Room, type RoomStatus } from "@/lib/pms-data";
+import { ROOM_STATUSES, STATUS_META, inr, formatFloor, type Room, type RoomStatus } from "@/lib/pms-data";
 import { getSafeStatusMeta } from "@/components/pms/bits";
 import { cn } from "@/lib/utils";
 import { Search, LayoutGrid, Building2, CalendarRange, Rows3, BedDouble } from "lucide-react";
@@ -77,7 +77,7 @@ function RoomsPage() {
       <PageHeader
         eyebrow="Inventory"
         title="Rooms & Inventory"
-        subtitle="25 keys across five floors · statuses update live as staff work the floor"
+        subtitle={`${rooms.length} keys across floors · statuses update live as staff work the floor`}
         actions={<Pill tone="gold">{rooms.filter((r) => r.status === "OCCUPIED").length} occupied</Pill>}
       />
 
@@ -114,7 +114,7 @@ function RoomsPage() {
               <SelectItem value="all">All floors</SelectItem>
               {floors.map((f) => (
                 <SelectItem key={f} value={String(f)}>
-                  Floor {f}
+                  {formatFloor(f)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -165,7 +165,7 @@ function RoomsPage() {
               return (
                 <Panel
                   key={f}
-                  title={`Floor ${f}`}
+                  title={formatFloor(f)}
                   description={`${list.length} rooms · ${list.filter((r) => r.status === "OCCUPIED").length} occupied`}
                 >
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
@@ -183,7 +183,7 @@ function RoomsPage() {
           {floors.map((f) => {
             const list = rooms.filter((r) => r.floor === f);
             return (
-              <Panel key={f} title={`Floor ${f}`} description="Corridor layout — lifts and service core at centre">
+              <Panel key={f} title={formatFloor(f)} description="Corridor layout — lifts and service core at centre">
                 <div className="rounded-2xl border border-dashed border-border bg-secondary/30 p-5">
                   <div className="grid gap-3 md:grid-cols-[1fr_auto_1fr]">
                     <div className="grid gap-3 sm:grid-cols-3">
@@ -310,7 +310,7 @@ function RoomsPage() {
                   <TableRow key={r.id} className="cursor-pointer" onClick={() => setOpenRoom(r)}>
                     <TableCell className="font-semibold tabular-nums">{r.room_number || (r as any).number}</TableCell>
                     <TableCell>{r.room_name || (r as any).type || "Room"}</TableCell>
-                    <TableCell>{r.floor}</TableCell>
+                    <TableCell>{formatFloor(r.floor)}</TableCell>
                     <TableCell>
                       <StatusBadge status={r.status} size="sm" />
                     </TableCell>

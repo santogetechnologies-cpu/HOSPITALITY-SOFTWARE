@@ -1,6 +1,6 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
-import { STATUS_META, inr, type Room, type RoomStatus } from "@/lib/pms-data";
+import { STATUS_META, inr, formatFloor, type Room, type RoomStatus } from "@/lib/pms-data";
 import { BedDouble, Users, Sparkles, Wifi, Wrench, Clock } from "lucide-react";
 
 export function PageHeader({
@@ -244,7 +244,7 @@ export function RoomCard({
       </div>
       <dl className="mt-3 space-y-1 text-[11px] text-muted-foreground">
         <div className="flex items-center gap-1.5">
-          <BedDouble className="size-3" /> Floor {room.floor || "1"}
+          <BedDouble className="size-3" /> {formatFloor(room.floor)}
         </div>
         <div className="flex items-center gap-1.5">
           <Users className="size-3" /> {room.capacity || 2} guests
