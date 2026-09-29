@@ -145,20 +145,20 @@ function LoginPage() {
 
           <form onSubmit={submit} className="mt-7 space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="username">Email Address</Label>
+              <Label htmlFor="username">Email Address / Staff Username</Label>
               <Input
                 id="username"
-                type="email"
+                type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="admin@hotel.com"
+                placeholder="drbhoteladmin@drb.com or admin"
                 autoComplete="username"
                 className="h-11"
                 required
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password">Password / PIN</Label>
               <Input
                 id="password"
                 type="password"
@@ -167,7 +167,6 @@ function LoginPage() {
                 placeholder="••••••••"
                 autoComplete="current-password"
                 className="h-11"
-                required
               />
             </div>
             {error ? (
@@ -178,12 +177,83 @@ function LoginPage() {
             <Button
               type="submit"
               disabled={loading}
-              className="h-11 w-full rounded-xl bg-brass text-gold-foreground shadow-brass hover:opacity-90"
+              className="h-11 w-full rounded-xl bg-brass text-gold-foreground shadow-brass hover:opacity-90 font-semibold"
             >
               {loading ? "Signing in…" : "Sign in to PMS"}
               {!loading ? <ArrowRight className="ml-1 size-4" /> : null}
             </Button>
           </form>
+
+          {/* Quick Staff Sign-In Pills */}
+          <div className="mt-6 border-t border-border pt-4">
+            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2.5">
+              Quick Role Sign-In
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={async () => {
+                  setUsername("drbhoteladmin@drb.com");
+                  setPassword("admin123");
+                  setLoading(true);
+                  const { session: s, error: authErr } = await login("drbhoteladmin@drb.com", "admin123");
+                  setLoading(false);
+                  if (s) {
+                    toast.success("Signed in as Super Admin");
+                    void navigate({ to: "/dashboard" });
+                  } else {
+                    setError(authErr);
+                  }
+                }}
+                className="flex flex-col items-center justify-center p-2.5 rounded-xl border border-border bg-secondary/40 hover:bg-gold/15 hover:border-gold/50 transition-colors text-center group"
+              >
+                <span className="text-xs font-semibold text-foreground group-hover:text-gold">Super Admin</span>
+                <span className="text-[10px] text-muted-foreground">Full Access</span>
+              </button>
+              
+              <button
+                type="button"
+                onClick={async () => {
+                  setUsername("drbgm@gmail.com");
+                  setPassword("00");
+                  setLoading(true);
+                  const { session: s, error: authErr } = await login("drbgm@gmail.com", "00");
+                  setLoading(false);
+                  if (s) {
+                    toast.success("Signed in as General Manager");
+                    void navigate({ to: "/dashboard" });
+                  } else {
+                    setError(authErr);
+                  }
+                }}
+                className="flex flex-col items-center justify-center p-2.5 rounded-xl border border-border bg-secondary/40 hover:bg-gold/15 hover:border-gold/50 transition-colors text-center group"
+              >
+                <span className="text-xs font-semibold text-foreground group-hover:text-gold">Manager</span>
+                <span className="text-[10px] text-muted-foreground">Operations</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  setUsername("drbreception@gmail.com");
+                  setPassword("00");
+                  setLoading(true);
+                  const { session: s, error: authErr } = await login("drbreception@gmail.com", "00");
+                  setLoading(false);
+                  if (s) {
+                    toast.success("Signed in as Front Desk");
+                    void navigate({ to: "/dashboard" });
+                  } else {
+                    setError(authErr);
+                  }
+                }}
+                className="flex flex-col items-center justify-center p-2.5 rounded-xl border border-border bg-secondary/40 hover:bg-gold/15 hover:border-gold/50 transition-colors text-center group"
+              >
+                <span className="text-xs font-semibold text-foreground group-hover:text-gold">Front Desk</span>
+                <span className="text-[10px] text-muted-foreground">Reception</span>
+              </button>
+            </div>
+          </div>
 
           <div className="mt-8">
             <p className="mt-4 text-center text-[11px] text-muted-foreground">
