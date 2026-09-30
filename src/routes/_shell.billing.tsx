@@ -91,7 +91,7 @@ function formatTimeAMPM(dateInput?: string | Date): string {
 }
 
 function BillingPage() {
-  const { reservations, guests, rooms, payments, discounts, session, settlePayment, updateGuestDetails } = usePms();
+  const { reservations, guests, rooms, payments, discounts, session, settlePayment, updateGuestDetails, editBillFinancials, paymentSplits } = usePms();
   const { settings } = useSettings();
 
   // Timeframe filter state
@@ -108,6 +108,31 @@ function BillingPage() {
   const [selectedResForBill, setSelectedResForBill] = React.useState<any>(null);
   const [paperSize, setPaperSize] = React.useState<PaperSize>("A4");
   const [includeGst, setIncludeGst] = React.useState(true);
+
+  // Comprehensive Edit Bill Modal State (Accessible to ALL logins)
+  const [editModalOpen, setEditModalOpen] = React.useState(false);
+  const [selectedResForEdit, setSelectedResForEdit] = React.useState<any>(null);
+  const [editBaseAmount, setEditBaseAmount] = React.useState("");
+  const [editAddlCharges, setEditAddlCharges] = React.useState("");
+  const [editDiscount, setEditDiscount] = React.useState("");
+  const [editAdvancePaid, setEditAdvancePaid] = React.useState("");
+  const [editLaterReceived, setEditLaterReceived] = React.useState("");
+  const [editTotalPaid, setEditTotalPaid] = React.useState("");
+  const [editPaymentMethod, setEditPaymentMethod] = React.useState<string>("CASH");
+  const [isEditSplitMode, setIsEditSplitMode] = React.useState(false);
+  const [editSplitRows, setEditSplitRows] = React.useState<SplitRow[]>([]);
+  const [editGuestName, setEditGuestName] = React.useState("");
+  const [editGuestPhone, setEditGuestPhone] = React.useState("");
+  const [editGuestEmail, setEditGuestEmail] = React.useState("");
+  const [editGuestCompany, setEditGuestCompany] = React.useState("");
+  const [editGuestGst, setEditGuestGst] = React.useState("");
+  const [editGuestAddress, setEditGuestAddress] = React.useState("");
+  const [editCheckInDate, setEditCheckInDate] = React.useState("");
+  const [editCheckInTime, setEditCheckInTime] = React.useState("12:00");
+  const [editCheckOutDate, setEditCheckOutDate] = React.useState("");
+  const [editCheckOutTime, setEditCheckOutTime] = React.useState("12:00");
+  const [editNotes, setEditNotes] = React.useState("");
+  const [savingEdit, setSavingEdit] = React.useState(false);
 
   // Stay Dates & Times Editor for Print Bill
   const [billCheckInDate, setBillCheckInDate] = React.useState("");
@@ -367,6 +392,224 @@ function BillingPage() {
       toast.error(err.message || "Failed to update dates");
     } finally {
       setSavingStayDates(false);
+    }
+  };
+
+  const handleOpenEditBill = (r: (typeof reservations)[0]) => {
+    setSelectedResForEdit(r);
+    const guest = getGuest(r.guest_id);
+    const p = getPayment(r.id);
+    const fin = getReservationFinancials(r);
+
+    // Guest Info
+    setEditGuestName(guest?.name || (r as any).customer_name || "");
+    setEditGuestPhone(guest?.phone || (r as any).customer_phone || (r as any).phone || "");
+    setEditGuestEmail(guest?.email || (r as any).email || "");
+    setEditGuestCompany((r as any).company_name || (guest as any)?.company_name || "");
+    setEditGuestGst((r as any).gst_number || guest?.gst_number || "");
+    setEditGuestAddress((r as any).address || guest?.address || "");
+
+    // Stay Dates
+    const startStr = r.start_time || `${r.booking_date || todayStr}T12:00:00`;
+    const sDate = new Date(startStr);
+    let endStr = r.end_time;
+    if (!endStr) {
+      if (!isNaN(sDate.getTime())) {
+        endStr = new Date(sDate.getTime() + 24 * 60 * 60 * 1000).toISOString();
+      } else {
+        endStr = startStr;
+      }
+    }
+    const eDate = new Date(endStr);
+
+    setEditCheckInDate(startStr.split("T")[0] || todayStr);
+    const sH = !isNaN(sDate.getTime()) ? String(sDate.getHours()).padStart(2, "0") : "12";
+    const sM = !isNaN(sDate.getTime()) ? String(sDate.getMinutes()).padStart(2, "0") : "00";
+    setEditCheckInTime(`${sH}:${sM}`);
+
+    setEditCheckOutDate(endStr.split("T")[0] || todayStr);
+    const eH = !isNaN(eDate.getTime()) ? String(eDate.getHours()).padStart(2, "0") : sH;
+    const eM = !isNaN(eDate.getTime()) ? String(eDate.getMinutes()).padStart(2, "0") : sM;
+    setEditCheckOutTime(`${eH}:${eM}`);
+
+    setEditNotes(r.notes || "");
+
+    // Financials
+    setEditBaseAmount(String(Number(r.base_amount) || fin.taxableValue || 0));
+    setEditAddlCharges(String(Number(r.additional_charges) || 0));
+    setEditDiscount(String(fin.approvedDiscount || 0));
+
+    // Payments & Inflows
+    const totalPaid = fin.paid || Number(p?.paid_amount) || 0;
+    setEditTotalPaid(String(totalPaid));
+    setEditAdvancePaid(String(totalPaid));
+    setEditLaterReceived("0");
+
+    // Splits
+    const existingSplits = paymentSplits.filter(
+      (s) => s.reservation_id === r.id || (p && s.payment_id === p.id)
+    );
+
+    if (existingSplits.length > 0) {
+      setIsEditSplitMode(true);
+      setEditSplitRows(
+        existingSplits.map((s) => ({
+          id: s.id || crypto.randomUUID(),
+          method: s.method,
+          amount: Number(s.amount) || 0,
+          reference_note: s.reference_note || "",
+        }))
+      );
+      setEditPaymentMethod("Split");
+    } else {
+      const isSplitStr = p?.payment_method && String(p.payment_method).startsWith("Split");
+      setIsEditSplitMode(Boolean(isSplitStr));
+      const rawMethod = (p?.payment_method as any) || "CASH";
+      const validMethods = ["CASH", "UPI", "CARD", "COMPANY", "BANK_TRANSFER", "OTHER"];
+      setEditPaymentMethod(validMethods.includes(rawMethod) ? rawMethod : "CASH");
+      setEditSplitRows([
+        {
+          id: crypto.randomUUID(),
+          method: (validMethods.includes(rawMethod) ? rawMethod : "CASH") as any,
+          amount: totalPaid,
+          reference_note: "",
+        },
+      ]);
+    }
+
+    setEditModalOpen(true);
+  };
+
+  const handleSplitPreset = (preset: "50_50_CASH_UPI" | "50_50_CARD_UPI" | "100_CASH" | "100_UPI" | "100_CARD" | "100_BANK") => {
+    const baseAmt = parseFloat(editBaseAmount) || 0;
+    const addlAmt = parseFloat(editAddlCharges) || 0;
+    const discAmt = parseFloat(editDiscount) || 0;
+    const targetAmt = Math.max(0, baseAmt + addlAmt - discAmt);
+
+    setIsEditSplitMode(true);
+    if (preset === "50_50_CASH_UPI") {
+      const half = Math.round(targetAmt / 2);
+      const other = targetAmt - half;
+      setEditSplitRows([
+        { id: crypto.randomUUID(), method: "CASH", amount: half, reference_note: "Cash payment" },
+        { id: crypto.randomUUID(), method: "UPI", amount: other, reference_note: "UPI / QR" },
+      ]);
+      setEditTotalPaid(String(targetAmt));
+      setEditAdvancePaid(String(half));
+      setEditLaterReceived(String(other));
+    } else if (preset === "50_50_CARD_UPI") {
+      const half = Math.round(targetAmt / 2);
+      const other = targetAmt - half;
+      setEditSplitRows([
+        { id: crypto.randomUUID(), method: "CARD", amount: half, reference_note: "Card POS" },
+        { id: crypto.randomUUID(), method: "UPI", amount: other, reference_note: "UPI / QR" },
+      ]);
+      setEditTotalPaid(String(targetAmt));
+      setEditAdvancePaid(String(half));
+      setEditLaterReceived(String(other));
+    } else if (preset === "100_CASH") {
+      setEditSplitRows([
+        { id: crypto.randomUUID(), method: "CASH", amount: targetAmt, reference_note: "Full cash payment" },
+      ]);
+      setEditTotalPaid(String(targetAmt));
+      setEditAdvancePaid(String(targetAmt));
+      setEditLaterReceived("0");
+    } else if (preset === "100_UPI") {
+      setEditSplitRows([
+        { id: crypto.randomUUID(), method: "UPI", amount: targetAmt, reference_note: "Full UPI transfer" },
+      ]);
+      setEditTotalPaid(String(targetAmt));
+      setEditAdvancePaid(String(targetAmt));
+      setEditLaterReceived("0");
+    } else if (preset === "100_CARD") {
+      setEditSplitRows([
+        { id: crypto.randomUUID(), method: "CARD", amount: targetAmt, reference_note: "Full POS card" },
+      ]);
+      setEditTotalPaid(String(targetAmt));
+      setEditAdvancePaid(String(targetAmt));
+      setEditLaterReceived("0");
+    } else if (preset === "100_BANK") {
+      setEditSplitRows([
+        { id: crypto.randomUUID(), method: "BANK_TRANSFER", amount: targetAmt, reference_note: "NEFT / RTGS" },
+      ]);
+      setEditTotalPaid(String(targetAmt));
+      setEditAdvancePaid(String(targetAmt));
+      setEditLaterReceived("0");
+    }
+  };
+
+  const handleSaveEditBill = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedResForEdit) return;
+
+    if (!editGuestName.trim()) {
+      return toast.error("Guest name cannot be empty");
+    }
+
+    const baseAmt = parseFloat(editBaseAmount);
+    if (isNaN(baseAmt) || baseAmt < 0) {
+      return toast.error("Please enter a valid base amount");
+    }
+
+    const addlCharges = parseFloat(editAddlCharges) || 0;
+    const discAmt = parseFloat(editDiscount) || 0;
+
+    let finalPaid = parseFloat(editTotalPaid) || 0;
+    let finalSplits: any[] | undefined = undefined;
+    let finalMethod = editPaymentMethod;
+
+    if (isEditSplitMode) {
+      const activeSplits = editSplitRows.filter((s) => (Number(s.amount) || 0) > 0);
+      const splitSum = activeSplits.reduce((acc, s) => acc + (Number(s.amount) || 0), 0);
+      finalPaid = splitSum;
+      finalSplits = activeSplits.map((s) => ({
+        id: s.id,
+        method: s.method,
+        amount: Number(s.amount) || 0,
+        reference_note: s.reference_note?.trim() || null,
+      }));
+      finalMethod =
+        activeSplits.length > 1
+          ? `Split (${activeSplits.map((s) => s.method).join("+")})`
+          : activeSplits[0]?.method || "CASH";
+    }
+
+    setSavingEdit(true);
+    try {
+      const newStartIso = new Date(`${editCheckInDate}T${editCheckInTime}:00`).toISOString();
+      const newEndIso = new Date(`${editCheckOutDate}T${editCheckOutTime}:00`).toISOString();
+
+      const res = await editBillFinancials({
+        reservationId: selectedResForEdit.id,
+        baseAmount: baseAmt,
+        additionalCharges: addlCharges,
+        discountAmount: discAmt,
+        paidAmount: finalPaid,
+        paymentMethod: finalMethod,
+        splits: finalSplits,
+        guestId: selectedResForEdit.guest_id,
+        guestName: editGuestName.trim(),
+        phone: editGuestPhone.trim(),
+        email: editGuestEmail.trim(),
+        companyName: editGuestCompany.trim(),
+        gstNumber: editGuestGst.trim().toUpperCase(),
+        address: editGuestAddress.trim(),
+        startTime: newStartIso,
+        endTime: newEndIso,
+        notes: editNotes.trim(),
+      });
+
+      if (res.success) {
+        toast.success("Bill and financial records updated successfully!");
+        setEditModalOpen(false);
+        setSelectedResForEdit(null);
+      } else {
+        toast.error(res.error || "Failed to update bill financials");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save bill changes");
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -827,6 +1070,16 @@ function BillingPage() {
 
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 rounded-lg text-xs border-blue-500/40 text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 font-semibold"
+                          onClick={() => handleOpenEditBill(r)}
+                          title="Edit Payment Mode, Advance, Later Received, Splits, Tariff & Guest details (All Logins)"
+                        >
+                          <Edit3 className="mr-1 size-3.5" /> Edit Bill
+                        </Button>
+
                         {fin.balance > 0 && (
                           <Button
                             size="sm"
@@ -964,6 +1217,554 @@ function BillingPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Comprehensive Edit Bill & Financial Records Modal (Universal Access - All Logins) */}
+      <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
+        <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto">
+          <DialogHeader>
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
+              <div>
+                <DialogTitle className="text-xl flex items-center gap-2">
+                  <Edit3 className="size-5 text-gold" />
+                  <span>Edit Bill & Financial Records</span>
+                  {selectedResForEdit && (
+                    <span className="font-mono text-sm px-2 py-0.5 rounded-lg bg-gold/15 text-gold border border-gold/30">
+                      #{getSequentialInvoiceNumber(selectedResForEdit, reservations, settings)}
+                    </span>
+                  )}
+                </DialogTitle>
+                <DialogDescription className="text-xs pt-1">
+                  Adjust payment mode, advance received, later settlement, split payments, base tariff, additional services, discounts, and customer GST info.
+                </DialogDescription>
+              </div>
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                <CheckCircle2 className="size-3.5" /> All Logins Authorized
+              </div>
+            </div>
+          </DialogHeader>
+
+          {selectedResForEdit && (() => {
+            const guest = getGuest(selectedResForEdit.guest_id);
+            const room = getRoom(selectedResForEdit.room_id);
+            const isPartyHall = selectedResForEdit.resource_type === "PARTY_HALL";
+            const invoiceNum = getSequentialInvoiceNumber(selectedResForEdit, reservations, settings);
+
+            // Live Computed Values
+            const baseAmtNum = Math.max(0, parseFloat(editBaseAmount) || 0);
+            const addlAmtNum = Math.max(0, parseFloat(editAddlCharges) || 0);
+            const discAmtNum = Math.max(0, parseFloat(editDiscount) || 0);
+            const liveGrossTotal = Math.max(0, baseAmtNum + addlAmtNum - discAmtNum);
+            
+            const gstRate = isPartyHall ? 0.18 : 0.05;
+            const liveTaxable = Math.round(liveGrossTotal / (1 + gstRate));
+            const liveTotalGst = Math.max(0, liveGrossTotal - liveTaxable);
+
+            const liveSplitSum = editSplitRows.reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
+            const livePaid = isEditSplitMode ? liveSplitSum : (parseFloat(editTotalPaid) || 0);
+            const liveBalance = Math.max(0, liveGrossTotal - livePaid);
+            const isFullyPaid = livePaid >= liveGrossTotal && liveGrossTotal > 0;
+
+            return (
+              <form onSubmit={handleSaveEditBill} className="space-y-6 pt-1">
+                {/* Banner / Info Strip */}
+                <div className="rounded-xl bg-secondary/40 border border-border/80 p-3 flex flex-wrap items-center justify-between gap-3 text-xs">
+                  <div className="flex items-center gap-2">
+                    {isPartyHall ? <PartyPopper className="size-4 text-gold" /> : <BedDouble className="size-4 text-gold" />}
+                    <span className="font-semibold text-foreground">
+                      {isPartyHall ? `Party Hall · ${selectedResForEdit.event_type || "Event"}` : `Room ${room?.room_number || "—"} (${room?.room_name || "Standard"})`}
+                    </span>
+                    <span className="text-muted-foreground font-mono">({selectedResForEdit.id.slice(0, 8)})</span>
+                  </div>
+                  <div className="flex items-center gap-2 font-mono text-[11px]">
+                    <span className="text-muted-foreground">Original Total:</span>
+                    <span className="font-bold text-foreground">{inr(Number(selectedResForEdit.base_amount) || 0)}</span>
+                  </div>
+                </div>
+
+                {/* Grid of Edit Sections */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Left Column: Payment Mode, Advance, Later & Splits */}
+                  <div className="space-y-4 rounded-xl border border-border/80 bg-card/60 p-4">
+                    <div className="flex items-center justify-between border-b border-border/60 pb-2.5">
+                      <div className="flex items-center gap-2">
+                        <CreditCard className="size-4 text-gold" />
+                        <h3 className="text-sm font-bold text-foreground">Payment & Inflow Details</h3>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={isEditSplitMode ? "default" : "outline"}
+                        className={`h-7 text-xs ${isEditSplitMode ? "bg-brass text-gold-foreground" : "text-muted-foreground border-border"}`}
+                        onClick={() => {
+                          const next = !isEditSplitMode;
+                          setIsEditSplitMode(next);
+                          if (next && (!editSplitRows.length || editSplitRows.every(s => !s.amount))) {
+                            setEditSplitRows([
+                              { id: crypto.randomUUID(), method: (editPaymentMethod as any) || "CASH", amount: parseFloat(editTotalPaid) || liveGrossTotal, reference_note: "" }
+                            ]);
+                          }
+                        }}
+                      >
+                        {isEditSplitMode ? "Split Mode: ON" : "Enable Split Mode"}
+                      </Button>
+                    </div>
+
+                    {isEditSplitMode ? (
+                      <div className="space-y-3">
+                        {/* Quick Split Presets */}
+                        <div className="space-y-1.5">
+                          <Label className="text-[11px] text-muted-foreground">Quick Split Presets:</Label>
+                          <div className="flex flex-wrap gap-1.5">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-6 text-[10px] px-2 rounded-md hover:bg-gold/10 hover:text-gold"
+                              onClick={() => handleSplitPreset("50_50_CASH_UPI")}
+                            >
+                              50% Cash + 50% UPI
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-6 text-[10px] px-2 rounded-md hover:bg-gold/10 hover:text-gold"
+                              onClick={() => handleSplitPreset("50_50_CARD_UPI")}
+                            >
+                              50% Card + 50% UPI
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-6 text-[10px] px-2 rounded-md hover:bg-emerald-500/10 hover:text-emerald-600"
+                              onClick={() => handleSplitPreset("100_CASH")}
+                            >
+                              100% Cash
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-6 text-[10px] px-2 rounded-md hover:bg-emerald-500/10 hover:text-emerald-600"
+                              onClick={() => handleSplitPreset("100_UPI")}
+                            >
+                              100% UPI
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-6 text-[10px] px-2 rounded-md hover:bg-emerald-500/10 hover:text-emerald-600"
+                              onClick={() => handleSplitPreset("100_CARD")}
+                            >
+                              100% Card
+                            </Button>
+                          </div>
+                        </div>
+
+                        <SplitPaymentInput
+                          totalAmount={liveGrossTotal}
+                          splits={editSplitRows}
+                          onChange={(newSplits) => {
+                            setEditSplitRows(newSplits);
+                            const sum = newSplits.reduce((acc, s) => acc + (Number(s.amount) || 0), 0);
+                            setEditTotalPaid(String(sum));
+                          }}
+                        />
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-semibold">Payment Mode *</Label>
+                          <Select
+                            value={editPaymentMethod}
+                            onValueChange={(v) => setEditPaymentMethod(v)}
+                          >
+                            <SelectTrigger className="h-9">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="CASH">💵 Cash</SelectItem>
+                              <SelectItem value="UPI">📱 UPI / QR (GPay, PhonePe, Paytm)</SelectItem>
+                              <SelectItem value="CARD">💳 Credit / Debit Card (POS)</SelectItem>
+                              <SelectItem value="COMPANY">🏢 Company / Corporate (B2B Bill)</SelectItem>
+                              <SelectItem value="BANK_TRANSFER">🏦 Bank Transfer / NEFT</SelectItem>
+                              <SelectItem value="OTHER">🔖 Other / Ledger</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between">
+                              <Label className="text-[11px] font-semibold">Advance Received (₹)</Label>
+                              <button
+                                type="button"
+                                className="text-[10px] text-gold hover:underline"
+                                onClick={() => {
+                                  const half = Math.round(liveGrossTotal / 2);
+                                  setEditAdvancePaid(String(half));
+                                  setEditLaterReceived(String(liveGrossTotal - half));
+                                  setEditTotalPaid(String(liveGrossTotal));
+                                }}
+                              >
+                                Set 50%
+                              </button>
+                            </div>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="any"
+                              value={editAdvancePaid}
+                              onChange={(e) => {
+                                const adv = e.target.value;
+                                setEditAdvancePaid(adv);
+                                const tot = (parseFloat(adv) || 0) + (parseFloat(editLaterReceived) || 0);
+                                setEditTotalPaid(String(tot));
+                              }}
+                              placeholder="0.00"
+                              className="h-8 text-xs font-mono font-semibold"
+                            />
+                          </div>
+
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between">
+                              <Label className="text-[11px] font-semibold">Later Received (₹)</Label>
+                              <button
+                                type="button"
+                                className="text-[10px] text-gold hover:underline"
+                                onClick={() => {
+                                  const adv = parseFloat(editAdvancePaid) || 0;
+                                  const rem = Math.max(0, liveGrossTotal - adv);
+                                  setEditLaterReceived(String(rem));
+                                  setEditTotalPaid(String(adv + rem));
+                                }}
+                              >
+                                Fill Balance
+                              </button>
+                            </div>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="any"
+                              value={editLaterReceived}
+                              onChange={(e) => {
+                                const lat = e.target.value;
+                                setEditLaterReceived(lat);
+                                const tot = (parseFloat(editAdvancePaid) || 0) + (parseFloat(lat) || 0);
+                                setEditTotalPaid(String(tot));
+                              }}
+                              placeholder="0.00"
+                              className="h-8 text-xs font-mono font-semibold"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-1 pt-1">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-xs font-semibold">Total Amount Received / Collected (₹) *</Label>
+                            <button
+                              type="button"
+                              className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold hover:underline"
+                              onClick={() => {
+                                setEditTotalPaid(String(liveGrossTotal));
+                                setEditAdvancePaid(String(liveGrossTotal));
+                                setEditLaterReceived("0");
+                              }}
+                            >
+                              Mark 100% Fully Paid
+                            </button>
+                          </div>
+                          <Input
+                            type="number"
+                            min="0"
+                            step="any"
+                            value={editTotalPaid}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setEditTotalPaid(val);
+                              setEditAdvancePaid(val);
+                              setEditLaterReceived("0");
+                            }}
+                            placeholder="0.00"
+                            className="h-9 text-sm font-mono font-bold text-emerald-600 dark:text-emerald-400"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Right Column: Tariff & Financial Charges */}
+                  <div className="space-y-4 rounded-xl border border-border/80 bg-card/60 p-4">
+                    <div className="flex items-center gap-2 border-b border-border/60 pb-2.5">
+                      <Receipt className="size-4 text-gold" />
+                      <h3 className="text-sm font-bold text-foreground">Tariff & Charges (GST {isPartyHall ? "18%" : "5%"})</h3>
+                    </div>
+
+                    <div className="space-y-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs font-semibold">Base Tariff / Accommodation Amount (₹) *</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="any"
+                          required
+                          value={editBaseAmount}
+                          onChange={(e) => setEditBaseAmount(e.target.value)}
+                          placeholder="e.g. 2000"
+                          className="h-9 text-xs font-mono font-semibold"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <Label className="text-xs font-semibold">Additional Services / Extra Charges (₹)</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="any"
+                          value={editAddlCharges}
+                          onChange={(e) => setEditAddlCharges(e.target.value)}
+                          placeholder="e.g. Food, extra bed, laundry (0.00)"
+                          className="h-9 text-xs font-mono font-semibold"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-xs font-semibold text-amber-600 dark:text-amber-400">
+                            Direct Bill Discount / Concession (₹)
+                          </Label>
+                          {parseFloat(editDiscount) > 0 && (
+                            <button
+                              type="button"
+                              className="text-[10px] text-muted-foreground hover:underline"
+                              onClick={() => setEditDiscount("0")}
+                            >
+                              Remove Discount
+                            </button>
+                          )}
+                        </div>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="any"
+                          value={editDiscount}
+                          onChange={(e) => setEditDiscount(e.target.value)}
+                          placeholder="0.00"
+                          className="h-9 text-xs font-mono font-semibold text-amber-600 dark:text-amber-400"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section 3: Guest & Billing GST Details */}
+                <div className="space-y-3 rounded-xl border border-blue-500/30 bg-card/60 p-4 text-xs">
+                  <div className="flex items-center gap-2 border-b border-border/60 pb-2 text-blue-600 dark:text-blue-400 font-bold">
+                    <UserCheck className="size-4" /> Guest & Company Billing Information
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
+                    <div className="space-y-1">
+                      <Label className="text-[11px]">Guest Full Name *</Label>
+                      <Input
+                        type="text"
+                        required
+                        value={editGuestName}
+                        onChange={(e) => setEditGuestName(e.target.value)}
+                        placeholder="e.g. John Doe"
+                        className="h-8 text-xs"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label className="text-[11px]">Mobile / Phone Number</Label>
+                      <Input
+                        type="text"
+                        value={editGuestPhone}
+                        onChange={(e) => setEditGuestPhone(e.target.value)}
+                        placeholder="e.g. 9876543210"
+                        className="h-8 text-xs"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label className="text-[11px]">Email Address</Label>
+                      <Input
+                        type="email"
+                        value={editGuestEmail}
+                        onChange={(e) => setEditGuestEmail(e.target.value)}
+                        placeholder="guest@example.com"
+                        className="h-8 text-xs"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                        Company Name (Optional)
+                      </Label>
+                      <Input
+                        type="text"
+                        value={editGuestCompany}
+                        onChange={(e) => setEditGuestCompany(e.target.value)}
+                        placeholder="e.g. Acme Corp Pvt Ltd"
+                        className="h-8 text-xs font-semibold"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                        Recipient GSTIN (15 Digits)
+                      </Label>
+                      <Input
+                        type="text"
+                        maxLength={15}
+                        value={editGuestGst}
+                        onChange={(e) => setEditGuestGst(e.target.value.toUpperCase())}
+                        placeholder="e.g. 33AAAAA0000A1Z5"
+                        className="h-8 text-xs font-mono font-bold uppercase"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label className="text-[11px]">Billing / Residential Address</Label>
+                      <Input
+                        type="text"
+                        value={editGuestAddress}
+                        onChange={(e) => setEditGuestAddress(e.target.value)}
+                        placeholder="Address, City, State"
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section 4: Stay Schedule & Folio Remarks */}
+                <div className="space-y-3 rounded-xl border border-border/80 bg-card/60 p-4 text-xs">
+                  <div className="flex items-center gap-2 border-b border-border/60 pb-2 text-foreground font-bold">
+                    <CalendarDays className="size-4 text-gold" /> Stay Schedule & Remarks
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
+                    <div className="space-y-1">
+                      <Label className="text-[11px]">Check-In Date</Label>
+                      <Input
+                        type="date"
+                        value={editCheckInDate}
+                        onChange={(e) => setEditCheckInDate(e.target.value)}
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[11px]">Check-In Time</Label>
+                      <Input
+                        type="time"
+                        value={editCheckInTime}
+                        onChange={(e) => setEditCheckInTime(e.target.value)}
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[11px]">Check-Out Date</Label>
+                      <Input
+                        type="date"
+                        value={editCheckOutDate}
+                        onChange={(e) => setEditCheckOutDate(e.target.value)}
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[11px]">Check-Out Time</Label>
+                      <Input
+                        type="time"
+                        value={editCheckOutTime}
+                        onChange={(e) => setEditCheckOutTime(e.target.value)}
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1 pt-1">
+                    <Label className="text-[11px]">Internal Billing Remark / Folio Note</Label>
+                    <Input
+                      type="text"
+                      value={editNotes}
+                      onChange={(e) => setEditNotes(e.target.value)}
+                      placeholder="e.g. Split payment negotiated at desk, late arrival"
+                      className="h-8 text-xs"
+                    />
+                  </div>
+                </div>
+
+                {/* Live Real-Time Financial Summary Panel */}
+                <div className="rounded-xl border-2 border-gold/40 bg-gold/5 p-4 space-y-3">
+                  <div className="flex items-center justify-between text-xs font-bold text-foreground">
+                    <span className="uppercase tracking-wider">Live Calculated Financial Preview</span>
+                    {isFullyPaid ? (
+                      <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold">
+                        ✓ FULLY SETTLED (NO BALANCE)
+                      </span>
+                    ) : liveBalance > 0 ? (
+                      <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 text-[10px] font-bold">
+                        OPEN BALANCE: {inr(liveBalance)}
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-700 dark:text-blue-300 text-[10px] font-bold">
+                        OVERPAID
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center text-xs">
+                    <div className="p-2 rounded-lg bg-background/80 border border-border/60">
+                      <div className="text-[10px] text-muted-foreground uppercase font-medium">Taxable Base</div>
+                      <div className="font-mono font-bold text-foreground text-sm">{inr(liveTaxable)}</div>
+                    </div>
+                    <div className="p-2 rounded-lg bg-background/80 border border-border/60">
+                      <div className="text-[10px] text-muted-foreground uppercase font-medium">GST ({isPartyHall ? "18%" : "5%"})</div>
+                      <div className="font-mono font-bold text-muted-foreground text-sm">{inr(liveTotalGst)}</div>
+                    </div>
+                    <div className="p-2 rounded-lg bg-background/80 border border-border/60">
+                      <div className="text-[10px] text-muted-foreground uppercase font-medium">Grand Total</div>
+                      <div className="font-mono font-bold text-foreground text-sm">{inr(liveGrossTotal)}</div>
+                    </div>
+                    <div className="p-2 rounded-lg bg-background/80 border border-border/60">
+                      <div className="text-[10px] text-muted-foreground uppercase font-medium">Total Paid</div>
+                      <div className="font-mono font-bold text-emerald-600 dark:text-emerald-400 text-sm">{inr(livePaid)}</div>
+                    </div>
+                    <div className="p-2 rounded-lg bg-background/80 border border-border/60">
+                      <div className="text-[10px] text-muted-foreground uppercase font-medium">Balance Due</div>
+                      <div className={`font-mono font-bold text-sm ${liveBalance > 0 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}>
+                        {inr(liveBalance)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer Buttons */}
+                <DialogFooter className="flex justify-between items-center sm:justify-between pt-2 border-t border-border">
+                  <div className="text-xs text-muted-foreground">
+                    Modifying Invoice #{invoiceNum}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button variant="ghost" type="button" onClick={() => setEditModalOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      disabled={savingEdit}
+                      className="bg-brass text-gold-foreground hover:opacity-90 font-bold shadow-brass"
+                    >
+                      {savingEdit ? "Saving Changes..." : "Save All Changes & Update Bill"}
+                    </Button>
+                  </div>
+                </DialogFooter>
+              </form>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
       {/* Exact Standard HOTEL DRB Tax Invoice Modal */}
       <Dialog open={printModalOpen} onOpenChange={setPrintModalOpen}>
         <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto">
@@ -1048,6 +1849,18 @@ function BillingPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs rounded-lg border-emerald-500/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 font-semibold"
+                      onClick={() => {
+                        handleOpenEditBill(selectedResForBill);
+                      }}
+                    >
+                      <Edit3 className="size-3.5 mr-1" />
+                      Edit Bill & Financials
+                    </Button>
                     <Button
                       type="button"
                       size="sm"

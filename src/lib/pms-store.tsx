@@ -192,6 +192,30 @@ type Ctx = State & {
   }) => Promise<{ success: boolean; error?: string }>;
   
   // Finance Mutators
+  editBillFinancials: (params: {
+    reservationId: string;
+    baseAmount?: number;
+    additionalCharges?: number;
+    discountAmount?: number;
+    paidAmount?: number;
+    paymentMethod?: string;
+    splits?: Array<{
+      id?: string;
+      method: "CASH" | "CARD" | "UPI" | "COMPANY" | "BANK_TRANSFER" | "OTHER";
+      amount: number;
+      reference_note?: string;
+    }>;
+    guestId?: string;
+    guestName?: string;
+    phone?: string;
+    email?: string;
+    companyName?: string;
+    gstNumber?: string;
+    address?: string;
+    startTime?: string;
+    endTime?: string;
+    notes?: string;
+  }) => Promise<{ success: boolean; error?: string }>;
   settlePayment: (paymentId: string, amount: number, method?: "CASH" | "UPI" | "CARD" | "COMPANY" | "BANK_TRANSFER" | "OTHER" | string, splits?: any[]) => Promise<{ success: boolean; error?: string }>;
   freezePayment: (paymentId: string) => Promise<{ success: boolean; error?: string }>;
   requestDiscount: (reservationId: string, amount: number, reason: string) => Promise<{ success: boolean; error?: string }>;
@@ -1581,6 +1605,162 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             return { success: false, error: "Session token expired and was reset. Please try again." };
           }
           return { success: false, error: err.message || "Failed to adjust stay" };
+        }
+      },
+
+      editBillFinancials: async (params) => {
+        try {
+          const res = state.reservations.find(
+            r => r.id === params.reservationId || (r.id && params.reservationId && r.id.toLowerCase() === params.reservationId.toLowerCase())
+          );
+          if (!res) {
+            return { success: false, error: "Reservation record not found" };
+          }
+
+          // 1. Update Reservation details (Tariff, Extra charges, Company/GST, Stay times, Notes)
+          const resUpdates: any = {};
+          if (params.baseAmount !== undefined) resUpdates.base_amount = Number(params.baseAmount) || 0;
+          if (params.additionalCharges !== undefined) resUpdates.additional_charges = Number(params.additionalCharges) || 0;
+          if (params.companyName !== undefined) resUpdates.company_name = params.companyName.trim() || null;
+          if (params.gstNumber !== undefined) resUpdates.gst_number = params.gstNumber.trim().toUpperCase() || null;
+          if (params.address !== undefined) resUpdates.address = params.address.trim() || null;
+          if (params.startTime !== undefined) resUpdates.start_time = params.startTime;
+          if (params.endTime !== undefined) resUpdates.end_time = params.endTime;
+          if (params.notes !== undefined) resUpdates.notes = params.notes;
+
+          if (Object.keys(resUpdates).length > 0) {
+            const { error: rErr } = await withAuthRetry(() => supabase.from('reservations').update(resUpdates).eq('id', res.id));
+            if (rErr) throw rErr;
+          }
+
+          // 2. Update Guest profile if applicable
+          const targetGuestId = params.guestId || res.guest_id;
+          if (targetGuestId) {
+            const gUpdates: any = {};
+            if (params.guestName !== undefined && params.guestName.trim()) gUpdates.name = params.guestName.trim();
+            if (params.phone !== undefined) gUpdates.phone = params.phone.trim();
+            if (params.email !== undefined) gUpdates.email = params.email.trim();
+            if (params.companyName !== undefined) gUpdates.company_name = params.companyName.trim() || null;
+            if (params.gstNumber !== undefined) gUpdates.gst_number = params.gstNumber.trim().toUpperCase() || null;
+            if (params.address !== undefined) gUpdates.address = params.address.trim() || null;
+
+            if (Object.keys(gUpdates).length > 0) {
+              await withAuthRetry(() => supabase.from('guests').update(gUpdates).eq('id', targetGuestId));
+            }
+          }
+
+          // 3. Update or apply Direct Bill Discount / Concession
+          if (params.discountAmount !== undefined) {
+            const discAmt = Number(params.discountAmount) || 0;
+            const existingApproved = state.discounts.find(
+              d => (d.reservation_id === res.id || d.reservation_id?.toLowerCase() === res.id.toLowerCase()) && d.status === 'APPROVED'
+            );
+            const existingPending = state.discounts.find(
+              d => (d.reservation_id === res.id || d.reservation_id?.toLowerCase() === res.id.toLowerCase()) && d.status === 'PENDING'
+            );
+            const existingDisc = existingApproved || existingPending;
+
+            if (discAmt > 0) {
+              if (existingDisc) {
+                await withAuthRetry(() => supabase.from('discounts').update({
+                  requested_amount: discAmt,
+                  status: 'APPROVED',
+                  approved_by: state.session?.name || state.session?.username || 'Staff',
+                  reason: 'Direct bill discount / financial adjustment'
+                }).eq('id', existingDisc.id));
+              } else {
+                await withAuthRetry(() => supabase.from('discounts').insert({
+                  id: crypto.randomUUID(),
+                  reservation_id: res.id,
+                  requested_amount: discAmt,
+                  status: 'APPROVED',
+                  reason: 'Direct bill discount / financial adjustment',
+                  requested_by: state.session?.name || state.session?.username || 'Staff',
+                  approved_by: state.session?.name || state.session?.username || 'Staff'
+                }));
+              }
+            } else if (existingDisc) {
+              await withAuthRetry(() => supabase.from('discounts').delete().eq('id', existingDisc.id));
+            }
+          }
+
+          // 4. Update Payment & Split payments
+          let payment = state.payments.find(
+            p => p.reservation_id === res.id || p.reservation_id?.toLowerCase() === res.id.toLowerCase()
+          );
+          let targetPayId = payment?.id;
+
+          const activeSplits = params.splits?.filter(s => (Number(s.amount) || 0) > 0) || [];
+          const hasSplits = activeSplits.length > 0;
+
+          let finalMethod = params.paymentMethod || payment?.payment_method || 'CASH';
+          if (hasSplits) {
+            finalMethod = activeSplits.length > 1
+              ? `Split (${activeSplits.map(s => s.method).join('+')})`
+              : (activeSplits[0]?.method || 'CASH');
+          }
+
+          const effectiveBase = params.baseAmount !== undefined ? Number(params.baseAmount) : (Number(res.base_amount) || 0);
+          const effectiveAddl = params.additionalCharges !== undefined ? Number(params.additionalCharges) : (Number(res.additional_charges) || 0);
+          const effectiveDisc = params.discountAmount !== undefined ? Number(params.discountAmount) : 0;
+          const effectiveGrandTotal = Math.max(0, effectiveBase + effectiveAddl - effectiveDisc);
+
+          const paidAmt = params.paidAmount !== undefined
+            ? Number(params.paidAmount)
+            : (hasSplits ? activeSplits.reduce((acc, s) => acc + (Number(s.amount) || 0), 0) : (Number(payment?.paid_amount) || 0));
+
+          const newStatus = (paidAmt >= effectiveGrandTotal && effectiveGrandTotal > 0) || (effectiveGrandTotal === 0 && effectiveDisc > 0)
+            ? 'COMPLETED'
+            : (paidAmt > 0 ? 'PARTIAL' : 'PENDING');
+
+          if (!payment) {
+            targetPayId = crypto.randomUUID();
+            const { error: pErr } = await withAuthRetry(() => supabase.from('payments').insert({
+              id: targetPayId,
+              reservation_id: res.id,
+              total_amount: effectiveGrandTotal,
+              paid_amount: paidAmt,
+              status: newStatus,
+              payment_method: finalMethod
+            }));
+            if (pErr) throw pErr;
+          } else {
+            const { error: pErr } = await withAuthRetry(() => supabase.from('payments').update({
+              total_amount: effectiveGrandTotal,
+              paid_amount: paidAmt,
+              status: newStatus,
+              payment_method: finalMethod
+            }).eq('id', payment.id));
+            if (pErr) throw pErr;
+          }
+
+          // 5. Update payment splits in DB
+          if (params.splits !== undefined && targetPayId) {
+            await withAuthRetry(() => supabase.from('payment_splits').delete().eq('payment_id', targetPayId));
+            await withAuthRetry(() => supabase.from('payment_splits').delete().eq('reservation_id', res.id));
+
+            if (activeSplits.length > 0) {
+              const splitInserts = activeSplits.map((s: any) => ({
+                id: crypto.randomUUID(),
+                payment_id: targetPayId,
+                reservation_id: res.id,
+                method: s.method || 'CASH',
+                amount: Number(s.amount) || 0,
+                reference_note: s.reference_note || null,
+              }));
+              await withAuthRetry(() => supabase.from('payment_splits').insert(splitInserts));
+            }
+          }
+
+          await fetchData();
+          return { success: true };
+        } catch (err: any) {
+          console.error("Edit bill financials error:", err);
+          if (isJwtExpiredError(err)) {
+            await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+            return { success: false, error: "Session token expired. Please try again." };
+          }
+          return { success: false, error: err.message || "Failed to update bill financials" };
         }
       },
 
