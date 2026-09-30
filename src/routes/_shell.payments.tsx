@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
 import { usePms } from "@/lib/pms-store";
 import { inr } from "@/lib/pms-data";
 import { SplitPaymentInput, type SplitRow } from "@/components/pms/split-payment-input";
@@ -68,7 +69,7 @@ function downloadCSV(csvContent: string, filename: string) {
 }
 
 function PaymentsDashboard() {
-  const { payments, expenses, reservations, guests, rooms, discounts, settlePayment, session } = usePms();
+  const { payments, paymentSplits, expenses, reservations, guests, rooms, discounts, settlePayment, session } = usePms();
   const { settings } = useSettings();
 
   // Timeframe filter state
@@ -85,7 +86,7 @@ function PaymentsDashboard() {
   const [collectModalOpen, setCollectModalOpen] = React.useState(false);
   const [selectedPaymentForCollect, setSelectedPaymentForCollect] = React.useState<any>(null);
   const [collectAmount, setCollectAmount] = React.useState("");
-  const [collectMethod, setCollectMethod] = React.useState<"CASH" | "UPI" | "CARD" | "BANK_TRANSFER" | "OTHER">("CASH");
+  const [collectMethod, setCollectMethod] = React.useState<"CASH" | "UPI" | "CARD" | "COMPANY" | "BANK_TRANSFER" | "OTHER">("CASH");
   const [useSplit, setUseSplit] = React.useState(false);
   const [splits, setSplits] = React.useState<SplitRow[]>([]);
   const [settling, setSettling] = React.useState(false);
@@ -141,7 +142,7 @@ function PaymentsDashboard() {
       .reduce((sum, d) => sum + (Number(d.requested_amount) || 0), 0);
   };
 
-  // Processed Transaction Ledger
+  // Processed Transaction Ledger with Split & Company Intelligence
   const transactions = React.useMemo(() => {
     const list: any[] = [];
     const processedResIds = new Set<string>();
@@ -168,10 +169,22 @@ function PaymentsDashboard() {
       if (statusFilter === "partial" && !fin.isPartial) return;
       if (statusFilter === "pending" && (fin.isPaid || fin.isPartial)) return;
 
-      // Normalize channel
+      // Extract split payments
+      const txSplits = paymentSplits.filter(
+        (s) => s.reservation_id === res.id || (p && s.payment_id === p.id)
+      );
       const rawMethod = (p?.payment_method || "CASH").toUpperCase();
-      let channel: "UPI" | "CARD" | "CASH" | "COMPANY" | "BANK_TRANSFER" | "OTHER" = "CASH";
-      if (rawMethod.includes("COMPANY") || rawMethod.includes("CORP")) {
+      const isSplit = txSplits.length > 1 || rawMethod.includes("SPLIT");
+
+      const guest = getGuest(res.guest_id);
+      const room = getRoom(res.room_id);
+      const companyName = (res as any)?.company_name || (guest as any)?.company_name || "";
+
+      // Normalize channel
+      let channel: "UPI" | "CARD" | "CASH" | "COMPANY" | "BANK_TRANSFER" | "SPLIT" | "OTHER" = "CASH";
+      if (isSplit) {
+        channel = "SPLIT";
+      } else if (rawMethod.includes("COMPANY") || rawMethod.includes("CORP") || (Boolean(companyName) && (rawMethod.includes("OTHER") || rawMethod.includes("COMPANY")))) {
         channel = "COMPANY";
       } else if (rawMethod.includes("UPI") || rawMethod.includes("GPAY") || rawMethod.includes("PHONEPE") || rawMethod.includes("PAYTM") || rawMethod.includes("QR")) {
         channel = "UPI";
@@ -181,21 +194,37 @@ function PaymentsDashboard() {
         channel = "BANK_TRANSFER";
       } else if (rawMethod.includes("CASH")) {
         channel = "CASH";
+      } else if (Boolean(companyName)) {
+        channel = "COMPANY";
       } else {
         channel = "OTHER";
       }
 
-      if (channelFilter !== "all" && channel !== channelFilter) return;
-
-      const guest = getGuest(res.guest_id);
-      const room = getRoom(res.room_id);
+      // Filter matching (split-aware)
+      if (channelFilter !== "all") {
+        if (channelFilter === "SPLIT" && !isSplit) return;
+        if (channelFilter === "COMPANY" && channel !== "COMPANY" && !Boolean(companyName) && !txSplits.some((s) => (s.method || "").toUpperCase().includes("COMPANY"))) return;
+        if (channelFilter === "UPI" && channel !== "UPI" && !txSplits.some((s) => {
+          const m = (s.method || "").toUpperCase();
+          return m.includes("UPI") || m.includes("GPAY") || m.includes("PHONEPE") || m.includes("PAYTM");
+        })) return;
+        if (channelFilter === "CARD" && channel !== "CARD" && !txSplits.some((s) => {
+          const m = (s.method || "").toUpperCase();
+          return m.includes("CARD") || m.includes("POS");
+        })) return;
+        if (channelFilter === "CASH" && channel !== "CASH" && !txSplits.some((s) => (s.method || "").toUpperCase().includes("CASH"))) return;
+        if (channelFilter === "BANK_TRANSFER" && channel !== "BANK_TRANSFER" && !txSplits.some((s) => {
+          const m = (s.method || "").toUpperCase();
+          return m.includes("BANK") || m.includes("TRANSFER");
+        })) return;
+        if (channelFilter === "OTHER" && channel !== "OTHER" && !txSplits.some((s) => (s.method || "").toUpperCase().includes("OTHER"))) return;
+      }
 
       const searchLower = searchQuery.toLowerCase().trim();
       const invoiceNum = getSequentialInvoiceNumber(res, reservations, settings);
       const rawResId = String(res.id || "").toLowerCase();
       const rawPayId = String(p?.id || "").toLowerCase();
       const guestGstin = (res as any)?.gst_number || guest?.gst_number || "";
-      const companyName = (res as any)?.company_name || (guest as any)?.company_name || "";
       const guestAddress = (res as any)?.address || (guest as any)?.address || "";
 
       if (
@@ -241,6 +270,8 @@ function PaymentsDashboard() {
         balance: fin.balance,
         channel,
         channelRaw: p?.payment_method || "CASH",
+        isSplit,
+        splits: txSplits,
         isPaid: fin.isPaid,
         isPartial: fin.isPartial,
         status: fin.isTransferred ? "SETTLED (GROUP TRANSFER)" : fin.isComplimentary ? "COMPLIMENTARY (100% OFF)" : fin.isPaid ? "SETTLED" : fin.isPartial ? "PARTIAL / ADVANCE" : "PENDING",
@@ -265,9 +296,16 @@ function PaymentsDashboard() {
       const isPaid = balance === 0 && grandTotal > 0;
       const isPartial = !isPaid && (p.status === "PARTIAL" || paid > 0);
 
+      const pSplits = paymentSplits.filter(
+        (s) => (p.reservation_id && s.reservation_id === p.reservation_id) || s.payment_id === p.id
+      );
       const rawMethod = (p.payment_method || "CASH").toUpperCase();
-      let channel: "UPI" | "CARD" | "CASH" | "COMPANY" | "BANK_TRANSFER" | "OTHER" = "CASH";
-      if (rawMethod.includes("COMPANY") || rawMethod.includes("CORP")) {
+      const isSplit = pSplits.length > 1 || rawMethod.includes("SPLIT");
+
+      let channel: "UPI" | "CARD" | "CASH" | "COMPANY" | "BANK_TRANSFER" | "SPLIT" | "OTHER" = "CASH";
+      if (isSplit) {
+        channel = "SPLIT";
+      } else if (rawMethod.includes("COMPANY") || rawMethod.includes("CORP")) {
         channel = "COMPANY";
       } else if (rawMethod.includes("UPI") || rawMethod.includes("GPAY") || rawMethod.includes("PHONEPE") || rawMethod.includes("PAYTM") || rawMethod.includes("QR")) {
         channel = "UPI";
@@ -281,7 +319,16 @@ function PaymentsDashboard() {
         channel = "OTHER";
       }
 
-      if (channelFilter !== "all" && channel !== channelFilter) return;
+      if (channelFilter !== "all") {
+        if (channelFilter === "SPLIT" && !isSplit) return;
+        if (channelFilter === "COMPANY" && channel !== "COMPANY" && !pSplits.some((s) => (s.method || "").toUpperCase().includes("COMPANY"))) return;
+        if (channelFilter === "UPI" && channel !== "UPI" && !pSplits.some((s) => (s.method || "").toUpperCase().includes("UPI"))) return;
+        if (channelFilter === "CARD" && channel !== "CARD" && !pSplits.some((s) => (s.method || "").toUpperCase().includes("CARD"))) return;
+        if (channelFilter === "CASH" && channel !== "CASH" && !pSplits.some((s) => (s.method || "").toUpperCase().includes("CASH"))) return;
+        if (channelFilter === "BANK_TRANSFER" && channel !== "BANK_TRANSFER" && !pSplits.some((s) => (s.method || "").toUpperCase().includes("BANK") || (s.method || "").toUpperCase().includes("TRANSFER"))) return;
+        if (channelFilter === "OTHER" && channel !== "OTHER" && !pSplits.some((s) => (s.method || "").toUpperCase().includes("OTHER"))) return;
+      }
+
       if (statusFilter === "settled" && !isPaid) return;
       if (statusFilter === "partial" && !isPartial) return;
       if (statusFilter === "pending" && (isPaid || isPartial)) return;
@@ -295,6 +342,7 @@ function PaymentsDashboard() {
         guestName: "Direct Payment",
         guestPhone: "—",
         guestGstin: "",
+        companyName: "",
         resourceType: "ROOM",
         resourceLabel: "Direct Payment Receipt",
         taxableBase,
@@ -306,6 +354,8 @@ function PaymentsDashboard() {
         balance,
         channel,
         channelRaw: p.payment_method || "CASH",
+        isSplit,
+        splits: pSplits,
         isPaid,
         isPartial,
         status: isPaid ? "SETTLED" : isPartial ? "PARTIAL / ADVANCE" : "PENDING",
@@ -313,9 +363,9 @@ function PaymentsDashboard() {
     });
 
     return list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [reservations, payments, discounts, rooms, guests, startDate, endDate, resourceFilter, channelFilter, statusFilter, searchQuery, todayStr, timeframe]);
+  }, [reservations, payments, paymentSplits, discounts, rooms, guests, startDate, endDate, resourceFilter, channelFilter, statusFilter, searchQuery, todayStr, timeframe]);
 
-  // Aggregate Financial & Inflow Metrics
+  // Aggregate Financial & Inflow Metrics with Exact Split-Attribution
   const metrics = React.useMemo(() => {
     let grossRevenue = 0;
     let grossBilledValue = 0;
@@ -328,12 +378,13 @@ function PaymentsDashboard() {
     let totalInflowCollected = 0;
     let totalOutstanding = 0;
 
-    // Channel breakdown
+    // Channel breakdown (split-aware)
     let upiTotal = 0, upiCount = 0;
     let cardTotal = 0, cardCount = 0;
     let cashTotal = 0, cashCount = 0;
     let companyTotal = 0, companyCount = 0;
     let bankTotal = 0, bankCount = 0;
+    let splitTotal = 0, splitCount = 0;
     let otherTotal = 0, otherCount = 0;
 
     // Resource breakdown
@@ -354,24 +405,61 @@ function PaymentsDashboard() {
       totalInflowCollected += tx.paid;
       totalOutstanding += tx.balance;
 
-      if (tx.channel === "UPI") {
-        upiTotal += tx.paid;
-        upiCount++;
-      } else if (tx.channel === "CARD") {
-        cardTotal += tx.paid;
-        cardCount++;
-      } else if (tx.channel === "CASH") {
-        cashTotal += tx.paid;
-        cashCount++;
-      } else if (tx.channel === "COMPANY") {
-        companyTotal += tx.paid;
-        companyCount++;
-      } else if (tx.channel === "BANK_TRANSFER") {
-        bankTotal += tx.paid;
-        bankCount++;
+      // Realize split-aware channel totals
+      if (tx.splits && tx.splits.length > 0) {
+        splitTotal += tx.paid;
+        splitCount++;
+
+        const totalSplitsAllocated = tx.splits.reduce((sum: number, s: any) => sum + (Number(s.amount) || 0), 0);
+
+        tx.splits.forEach((s: any) => {
+          const rawSplitAmt = Number(s.amount) || 0;
+          const sAmt = totalSplitsAllocated > 0 && tx.paid !== totalSplitsAllocated && tx.paid > 0
+            ? (rawSplitAmt / totalSplitsAllocated) * tx.paid
+            : rawSplitAmt;
+
+          const sMethod = (s.method || "CASH").toUpperCase();
+          if (sMethod.includes("COMPANY") || sMethod.includes("CORP")) {
+            companyTotal += sAmt;
+            companyCount++;
+          } else if (sMethod.includes("UPI") || sMethod.includes("GPAY") || sMethod.includes("PHONEPE") || sMethod.includes("PAYTM") || sMethod.includes("QR")) {
+            upiTotal += sAmt;
+            upiCount++;
+          } else if (sMethod.includes("CARD") || sMethod.includes("POS") || sMethod.includes("DEBIT") || sMethod.includes("CREDIT")) {
+            cardTotal += sAmt;
+            cardCount++;
+          } else if (sMethod.includes("BANK") || sMethod.includes("TRANSFER") || sMethod.includes("NEFT") || sMethod.includes("RTGS") || sMethod.includes("IMPS")) {
+            bankTotal += sAmt;
+            bankCount++;
+          } else if (sMethod.includes("CASH")) {
+            cashTotal += sAmt;
+            cashCount++;
+          } else {
+            otherTotal += sAmt;
+            otherCount++;
+          }
+        });
       } else {
-        otherTotal += tx.paid;
-        otherCount++;
+        // Single payment mode
+        if (tx.channel === "UPI") {
+          upiTotal += tx.paid;
+          upiCount++;
+        } else if (tx.channel === "CARD") {
+          cardTotal += tx.paid;
+          cardCount++;
+        } else if (tx.channel === "CASH") {
+          cashTotal += tx.paid;
+          cashCount++;
+        } else if (tx.channel === "COMPANY") {
+          companyTotal += tx.paid;
+          companyCount++;
+        } else if (tx.channel === "BANK_TRANSFER") {
+          bankTotal += tx.paid;
+          bankCount++;
+        } else {
+          otherTotal += tx.paid;
+          otherCount++;
+        }
       }
 
       if (tx.resourceType === "ROOM") {
@@ -415,6 +503,7 @@ function PaymentsDashboard() {
       cash: { total: cashTotal, count: cashCount, pct: totalInflowCollected > 0 ? (cashTotal / totalInflowCollected) * 100 : 0 },
       company: { total: companyTotal, count: companyCount, pct: totalInflowCollected > 0 ? (companyTotal / totalInflowCollected) * 100 : 0 },
       bank: { total: bankTotal, count: bankCount, pct: totalInflowCollected > 0 ? (bankTotal / totalInflowCollected) * 100 : 0 },
+      split: { total: splitTotal, count: splitCount, pct: totalInflowCollected > 0 ? (splitTotal / totalInflowCollected) * 100 : 0 },
       other: { total: otherTotal, count: otherCount, pct: totalInflowCollected > 0 ? (otherTotal / totalInflowCollected) * 100 : 0 },
       rooms: { taxable: roomsTaxable, gst: roomsGst, total: roomsTotal, inflow: roomsInflow, pct: totalInflowCollected > 0 ? (roomsInflow / totalInflowCollected) * 100 : 0 },
       party: { taxable: partyTaxable, gst: partyGst, total: partyTotal, inflow: partyInflow, pct: totalInflowCollected > 0 ? (partyInflow / totalInflowCollected) * 100 : 0 },
@@ -427,6 +516,7 @@ function PaymentsDashboard() {
       "Invoice Number",
       "Date",
       "Guest Name",
+      "Company Name (B2B)",
       "Phone",
       "Guest GSTIN",
       "Resource Type",
@@ -440,30 +530,39 @@ function PaymentsDashboard() {
       "Net Payable Total (INR)",
       "Amount Paid (INR)",
       "Balance Due (INR)",
-      "Payment Channel",
+      "Payment Channel & Split Details",
       "Settlement Status"
     ];
 
-    const rows = transactions.map((tx) => [
-      `"${tx.invoiceNum}"`,
-      `"${tx.date}"`,
-      `"${tx.guestName.replace(/"/g, '""')}"`,
-      `"${tx.guestPhone}"`,
-      `"${tx.guestGstin || "—"}"`,
-      `"${tx.resourceType}"`,
-      `"${tx.resourceLabel.replace(/"/g, '""')}"`,
-      (tx.originalGross || tx.grandTotal).toFixed(2),
-      (tx.approvedDiscount || 0).toFixed(2),
-      tx.taxableBase.toFixed(2),
-      tx.cgst.toFixed(2),
-      tx.sgst.toFixed(2),
-      tx.totalGst.toFixed(2),
-      tx.grandTotal.toFixed(2),
-      tx.paid.toFixed(2),
-      tx.balance.toFixed(2),
-      `"${tx.channel}"`,
-      `"${tx.status}"`
-    ]);
+    const rows = transactions.map((tx) => {
+      const channelExportStr = tx.isSplit && tx.splits && tx.splits.length > 0
+        ? `Split (${tx.splits.map((s: any) => `${s.method}: Rs.${s.amount}`).join(" + ")})`
+        : tx.channel === "COMPANY" && tx.companyName
+        ? `Company (${tx.companyName})`
+        : tx.channel;
+
+      return [
+        `"${tx.invoiceNum}"`,
+        `"${tx.date}"`,
+        `"${tx.guestName.replace(/"/g, '""')}"`,
+        `"${(tx.companyName || "").replace(/"/g, '""')}"`,
+        `"${tx.guestPhone}"`,
+        `"${tx.guestGstin || "—"}"`,
+        `"${tx.resourceType}"`,
+        `"${tx.resourceLabel.replace(/"/g, '""')}"`,
+        (tx.originalGross || tx.grandTotal).toFixed(2),
+        (tx.approvedDiscount || 0).toFixed(2),
+        tx.taxableBase.toFixed(2),
+        tx.cgst.toFixed(2),
+        tx.sgst.toFixed(2),
+        tx.totalGst.toFixed(2),
+        tx.grandTotal.toFixed(2),
+        tx.paid.toFixed(2),
+        tx.balance.toFixed(2),
+        `"${channelExportStr.replace(/"/g, '""')}"`,
+        `"${tx.status}"`
+      ];
+    });
 
     const csvString = [headers.join(","), ...rows.map((r) => r.join(","))].join("\r\n");
     downloadCSV(csvString, `HOTEL_DRB_Audit_Ledger_${todayStr}.csv`);
@@ -812,84 +911,124 @@ function PaymentsDashboard() {
           </div>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           {/* UPI Card */}
-          <div className="rounded-2xl border border-border bg-card p-5 shadow-sm space-y-3 hover:border-gold/50 transition-colors">
+          <div className="rounded-2xl border border-border bg-card p-4 shadow-2xs space-y-2.5 hover:border-gold/50 transition-colors">
             <div className="flex items-center justify-between">
-              <div className="size-10 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center font-bold">
-                <QrCode className="size-5" />
+              <div className="size-9 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center font-bold">
+                <QrCode className="size-4.5" />
               </div>
-              <span className="text-xs font-mono font-bold text-purple-600 bg-purple-500/10 px-2 py-0.5 rounded-full">
+              <span className="text-[11px] font-mono font-bold text-purple-600 bg-purple-500/10 px-2 py-0.5 rounded-full">
                 {metrics.upi.pct.toFixed(1)}%
               </span>
             </div>
             <div>
-              <div className="text-2xl font-bold text-foreground font-mono">{inr(metrics.upi.total)}</div>
-              <div className="text-xs font-semibold text-muted-foreground mt-0.5">UPI / QR (GPay, PhonePe, Paytm)</div>
+              <div className="text-xl font-bold text-foreground font-mono">{inr(metrics.upi.total)}</div>
+              <div className="text-xs font-semibold text-muted-foreground mt-0.5">UPI / QR (GPay, PhonePe)</div>
             </div>
-            <div className="pt-1 border-t border-border/60 text-xs text-muted-foreground flex justify-between">
+            <div className="pt-1 border-t border-border/60 text-[11px] text-muted-foreground flex justify-between">
               <span>Transactions:</span>
               <span className="font-semibold text-foreground">{metrics.upi.count} txns</span>
             </div>
           </div>
 
           {/* Card POS Card */}
-          <div className="rounded-2xl border border-border bg-card p-5 shadow-sm space-y-3 hover:border-gold/50 transition-colors">
+          <div className="rounded-2xl border border-border bg-card p-4 shadow-2xs space-y-2.5 hover:border-gold/50 transition-colors">
             <div className="flex items-center justify-between">
-              <div className="size-10 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center font-bold">
-                <CreditCard className="size-5" />
+              <div className="size-9 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center font-bold">
+                <CreditCard className="size-4.5" />
               </div>
-              <span className="text-xs font-mono font-bold text-blue-600 bg-blue-500/10 px-2 py-0.5 rounded-full">
+              <span className="text-[11px] font-mono font-bold text-blue-600 bg-blue-500/10 px-2 py-0.5 rounded-full">
                 {metrics.card.pct.toFixed(1)}%
               </span>
             </div>
             <div>
-              <div className="text-2xl font-bold text-foreground font-mono">{inr(metrics.card.total)}</div>
-              <div className="text-xs font-semibold text-muted-foreground mt-0.5">Card Swipes (POS Terminal)</div>
+              <div className="text-xl font-bold text-foreground font-mono">{inr(metrics.card.total)}</div>
+              <div className="text-xs font-semibold text-muted-foreground mt-0.5">Card Swipes (POS)</div>
             </div>
-            <div className="pt-1 border-t border-border/60 text-xs text-muted-foreground flex justify-between">
+            <div className="pt-1 border-t border-border/60 text-[11px] text-muted-foreground flex justify-between">
               <span>Transactions:</span>
               <span className="font-semibold text-foreground">{metrics.card.count} txns</span>
             </div>
           </div>
 
           {/* Cash in Drawer Card */}
-          <div className="rounded-2xl border border-border bg-card p-5 shadow-sm space-y-3 hover:border-gold/50 transition-colors">
+          <div className="rounded-2xl border border-border bg-card p-4 shadow-2xs space-y-2.5 hover:border-gold/50 transition-colors">
             <div className="flex items-center justify-between">
-              <div className="size-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-bold">
-                <Banknote className="size-5" />
+              <div className="size-9 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-bold">
+                <Banknote className="size-4.5" />
               </div>
-              <span className="text-xs font-mono font-bold text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+              <span className="text-[11px] font-mono font-bold text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded-full">
                 {metrics.cash.pct.toFixed(1)}%
               </span>
             </div>
             <div>
-              <div className="text-2xl font-bold text-foreground font-mono">{inr(metrics.cash.total)}</div>
-              <div className="text-xs font-semibold text-muted-foreground mt-0.5">Cash in Drawer / Hand</div>
+              <div className="text-xl font-bold text-foreground font-mono">{inr(metrics.cash.total)}</div>
+              <div className="text-xs font-semibold text-muted-foreground mt-0.5">Cash Counter / Drawer</div>
             </div>
-            <div className="pt-1 border-t border-border/60 text-xs text-muted-foreground flex justify-between">
+            <div className="pt-1 border-t border-border/60 text-[11px] text-muted-foreground flex justify-between">
               <span>Transactions:</span>
               <span className="font-semibold text-foreground">{metrics.cash.count} txns</span>
             </div>
           </div>
 
-          {/* Bank Transfer Card */}
-          <div className="rounded-2xl border border-border bg-card p-5 shadow-sm space-y-3 hover:border-gold/50 transition-colors">
+          {/* Company / Corporate B2B Card */}
+          <div className="rounded-2xl border border-border bg-card p-4 shadow-2xs space-y-2.5 hover:border-gold/50 transition-colors">
             <div className="flex items-center justify-between">
-              <div className="size-10 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center font-bold">
-                <Landmark className="size-5" />
+              <div className="size-9 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center font-bold">
+                <Building2 className="size-4.5" />
               </div>
-              <span className="text-xs font-mono font-bold text-amber-600 bg-amber-500/10 px-2 py-0.5 rounded-full">
+              <span className="text-[11px] font-mono font-bold text-amber-600 bg-amber-500/10 px-2 py-0.5 rounded-full">
+                {metrics.company.pct.toFixed(1)}%
+              </span>
+            </div>
+            <div>
+              <div className="text-xl font-bold text-foreground font-mono">{inr(metrics.company.total)}</div>
+              <div className="text-xs font-semibold text-muted-foreground mt-0.5">Company / B2B Direct</div>
+            </div>
+            <div className="pt-1 border-t border-border/60 text-[11px] text-muted-foreground flex justify-between">
+              <span>Transactions:</span>
+              <span className="font-semibold text-foreground">{metrics.company.count} txns</span>
+            </div>
+          </div>
+
+          {/* Bank Transfer Card */}
+          <div className="rounded-2xl border border-border bg-card p-4 shadow-2xs space-y-2.5 hover:border-gold/50 transition-colors">
+            <div className="flex items-center justify-between">
+              <div className="size-9 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center font-bold">
+                <Landmark className="size-4.5" />
+              </div>
+              <span className="text-[11px] font-mono font-bold text-indigo-600 bg-indigo-500/10 px-2 py-0.5 rounded-full">
                 {metrics.bank.pct.toFixed(1)}%
               </span>
             </div>
             <div>
-              <div className="text-2xl font-bold text-foreground font-mono">{inr(metrics.bank.total)}</div>
-              <div className="text-xs font-semibold text-muted-foreground mt-0.5">Bank Transfer / NEFT / RTGS</div>
+              <div className="text-xl font-bold text-foreground font-mono">{inr(metrics.bank.total)}</div>
+              <div className="text-xs font-semibold text-muted-foreground mt-0.5">Bank NEFT / RTGS</div>
             </div>
-            <div className="pt-1 border-t border-border/60 text-xs text-muted-foreground flex justify-between">
+            <div className="pt-1 border-t border-border/60 text-[11px] text-muted-foreground flex justify-between">
               <span>Transactions:</span>
               <span className="font-semibold text-foreground">{metrics.bank.count} txns</span>
+            </div>
+          </div>
+
+          {/* Multi-Method Split Payments Card */}
+          <div className="rounded-2xl border border-border bg-card p-4 shadow-2xs space-y-2.5 hover:border-gold/50 transition-colors">
+            <div className="flex items-center justify-between">
+              <div className="size-9 rounded-xl bg-pink-500/10 text-pink-600 flex items-center justify-center font-bold">
+                <Layers className="size-4.5" />
+              </div>
+              <span className="text-[11px] font-mono font-bold text-pink-600 bg-pink-500/10 px-2 py-0.5 rounded-full">
+                {metrics.split.pct.toFixed(1)}%
+              </span>
+            </div>
+            <div>
+              <div className="text-xl font-bold text-foreground font-mono">{inr(metrics.split.total)}</div>
+              <div className="text-xs font-semibold text-muted-foreground mt-0.5">Split Inflows (Multi-Mode)</div>
+            </div>
+            <div className="pt-1 border-t border-border/60 text-[11px] text-muted-foreground flex justify-between">
+              <span>Transactions:</span>
+              <span className="font-semibold text-foreground">{metrics.split.count} txns</span>
             </div>
           </div>
         </div>
@@ -993,16 +1132,18 @@ function PaymentsDashboard() {
 
           <div className="flex flex-wrap items-center gap-2">
             <Select value={channelFilter} onValueChange={setChannelFilter}>
-              <SelectTrigger className="w-[170px]">
+              <SelectTrigger className="w-[190px]">
                 <SelectValue placeholder="Payment Method" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Payment Modes</SelectItem>
                 <SelectItem value="CASH">💵 Cash Counter</SelectItem>
-                <SelectItem value="UPI">📱 UPI / QR (GPay/PhonePe)</SelectItem>
+                <SelectItem value="UPI">📱 UPI / QR (GPay, PhonePe)</SelectItem>
                 <SelectItem value="CARD">💳 Card Swipes (POS)</SelectItem>
                 <SelectItem value="COMPANY">🏢 Company / Corporate (B2B)</SelectItem>
                 <SelectItem value="BANK_TRANSFER">🏦 Bank Transfer / NEFT</SelectItem>
+                <SelectItem value="SPLIT">🔀 Multi-Method Split Payments</SelectItem>
+                <SelectItem value="OTHER">🔖 Other Modes</SelectItem>
               </SelectContent>
             </Select>
 
@@ -1059,7 +1200,7 @@ function PaymentsDashboard() {
                     {tx.invoiceNum}
                   </TableCell>
 
-                  <TableCell className="text-xs font-medium">
+                  <TableCell className="text-xs font-medium whitespace-nowrap">
                     {tx.date}
                   </TableCell>
 
@@ -1067,14 +1208,14 @@ function PaymentsDashboard() {
                     <div className="flex items-center gap-1.5 font-semibold text-sm text-foreground flex-wrap">
                       <span>{tx.guestName}</span>
                       {tx.guestGstin && (
-                        <span className="font-mono text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-300 px-1 py-0.5 rounded">
+                        <span className="font-mono text-[10px] font-bold text-amber-800 dark:text-amber-300 bg-amber-500/15 border border-amber-500/30 px-1 py-0.5 rounded">
                           GST: {tx.guestGstin}
                         </span>
                       )}
                     </div>
                     {tx.companyName && (
-                      <div className="text-xs font-medium text-gold flex items-center gap-1 mt-0.5">
-                        <Building2 className="size-3" />
+                      <div className="text-xs font-medium text-brass flex items-center gap-1 mt-0.5">
+                        <Building2 className="size-3 text-brass" />
                         <span>{tx.companyName}</span>
                       </div>
                     )}
@@ -1129,10 +1270,46 @@ function PaymentsDashboard() {
                     {tx.balance > 0 ? inr(tx.balance) : "₹0 (Cleared)"}
                   </TableCell>
 
+                  {/* Channel Cell with Rich Split & Company Breakdowns */}
                   <TableCell>
-                    <Pill tone={tx.channel === "UPI" ? "info" : tx.channel === "CARD" ? "gold" : tx.channel === "COMPANY" ? "gold" : tx.channel === "CASH" ? "success" : "default"}>
-                      {tx.channel}
-                    </Pill>
+                    {tx.isSplit && tx.splits && tx.splits.length > 0 ? (
+                      <div className="space-y-1">
+                        <Badge variant="outline" className="bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-300 text-[10px] font-semibold flex items-center gap-1 w-fit">
+                          <Layers className="size-3" /> Split ({tx.splits.length} modes)
+                        </Badge>
+                        <div className="flex flex-wrap gap-1 text-[10px] font-mono">
+                          {tx.splits.map((s: any, idx: number) => (
+                            <span key={s.id || idx} className="bg-muted/70 px-1 py-0.5 rounded border border-border text-muted-foreground">
+                              <strong className="text-foreground">{s.method}</strong>: {inr(s.amount)}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ) : tx.channel === "COMPANY" || tx.companyName ? (
+                      <Badge className="bg-amber-500/15 text-amber-800 dark:text-amber-300 border-amber-500/30 text-[11px] font-medium flex items-center gap-1">
+                        <Building2 className="size-3" /> Company
+                      </Badge>
+                    ) : tx.channel === "UPI" ? (
+                      <Badge variant="outline" className="bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-300/40 text-[11px] font-medium flex items-center gap-1">
+                        <QrCode className="size-3" /> UPI / QR
+                      </Badge>
+                    ) : tx.channel === "CARD" ? (
+                      <Badge variant="outline" className="bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-300/40 text-[11px] font-medium flex items-center gap-1">
+                        <CreditCard className="size-3" /> Card POS
+                      </Badge>
+                    ) : tx.channel === "BANK_TRANSFER" ? (
+                      <Badge variant="outline" className="bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border-indigo-300/40 text-[11px] font-medium flex items-center gap-1">
+                        <Landmark className="size-3" /> Bank Transfer
+                      </Badge>
+                    ) : tx.channel === "CASH" ? (
+                      <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-300/40 text-[11px] font-medium flex items-center gap-1">
+                        <Banknote className="size-3" /> Cash
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="bg-muted text-muted-foreground text-[11px]">
+                        {tx.channelRaw || "OTHER"}
+                      </Badge>
+                    )}
                   </TableCell>
 
                   <TableCell>
