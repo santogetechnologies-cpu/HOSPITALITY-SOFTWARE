@@ -297,6 +297,7 @@ type Ctx = State & {
 
   // Room Mutators
   addRoom: (number: string, type: string, floor: string, price: number) => Promise<{ success: boolean; error?: string }>;
+  updateRoom: (id: string, updates: Partial<Room>) => Promise<{ success: boolean; error?: string }>;
 
   // Staff Mutators
   addStaff: (name: string, role: string, phone: string, email: string, pass: string) => Promise<{ success: boolean; error?: string }>;
@@ -502,12 +503,20 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         if (found) {
           // If the room exists and was not explicitly deactivated
           if (found.is_active !== false) {
+            const canonBasePrice = canon.price;
+            const currentPrice = Number(found.price);
+
+            // Sync base rate to Supabase if it was stored with GST or differs from canonical base price
+            if (currentPrice !== canonBasePrice) {
+              void supabase.from('rooms').update({ price: canonBasePrice }).eq('id', found.id);
+            }
+
             const updated = {
               ...found,
               room_number: canon.room_number,
               room_name: found.room_name || canon.room_name,
               floor: found.floor || canon.floor,
-              price: found.price !== undefined ? Number(found.price) : canon.price,
+              price: canonBasePrice,
               capacity: found.capacity || canon.capacity,
               is_active: true,
             };
@@ -2723,6 +2732,36 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         } catch (err: any) {
           console.error("Room insert exception:", err);
           return { success: false, error: err.message || "Failed to create room" };
+        }
+      },
+
+      updateRoom: async (id: string, updates: Partial<Room>) => {
+        try {
+          setState(s => ({
+            ...s,
+            rooms: s.rooms.map(r => r.id === id ? { ...r, ...updates } : r)
+          }));
+
+          const dbPayload: any = {};
+          if (updates.room_number !== undefined) dbPayload.room_number = updates.room_number;
+          if (updates.room_name !== undefined) dbPayload.room_name = updates.room_name;
+          if (updates.floor !== undefined) dbPayload.floor = updates.floor;
+          if (updates.price !== undefined) dbPayload.price = Number(updates.price);
+          if (updates.capacity !== undefined) dbPayload.capacity = Number(updates.capacity);
+          if (updates.status !== undefined) dbPayload.status = updates.status;
+          if (updates.is_active !== undefined) dbPayload.is_active = updates.is_active;
+
+          const { error } = await supabase.from('rooms').update(dbPayload).eq('id', id);
+          if (error) {
+            console.error("Error updating room:", error);
+            await fetchData();
+            return { success: false, error: error.message };
+          }
+          await fetchData();
+          return { success: true };
+        } catch (err: any) {
+          console.error("Room update exception:", err);
+          return { success: false, error: err.message || "Failed to update room" };
         }
       }
     };

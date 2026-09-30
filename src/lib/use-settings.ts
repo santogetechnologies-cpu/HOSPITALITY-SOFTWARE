@@ -83,6 +83,26 @@ export function useSettings() {
           if (parsed.roomTypes && !parsed.roomTypes.some((t: any) => t.name?.toUpperCase() === "PARTY HALL")) {
             parsed.roomTypes.push({ id: "rt7", name: "PARTY HALL", basePrice: 4000 });
           }
+          const CANONICAL_CATEGORY_RATES: Record<string, number> = {
+            "double bed non ac": 700,
+            "double bed non ac standard": 1000,
+            "3 bed non ac": 1300,
+            "double bed standard ac": 1600,
+            "double bed deluxe ac": 2200,
+            "dlx ac": 2200,
+            "suite room": 3200,
+            "suite ac": 3200,
+            "party hall": 4000,
+          };
+          if (Array.isArray(parsed.roomTypes)) {
+            parsed.roomTypes = parsed.roomTypes.map((rt: any) => {
+              const lower = (rt.name || "").trim().toLowerCase();
+              if (CANONICAL_CATEGORY_RATES[lower] !== undefined) {
+                return { ...rt, basePrice: CANONICAL_CATEGORY_RATES[lower] };
+              }
+              return rt;
+            });
+          }
           return { ...DEFAULT_SETTINGS, ...parsed };
         } catch (e) {
           console.error("Failed to parse settings", e);
