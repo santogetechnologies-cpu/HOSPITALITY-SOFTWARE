@@ -33,7 +33,11 @@ import {
   CreditCard,
   Banknote,
   Trash2,
-  Info
+  Info,
+  Pencil,
+  Percent,
+  Mail,
+  FileText
 } from "lucide-react";
 
 export const Route = createFileRoute("/_shell/group-bookings")({
@@ -52,6 +56,8 @@ export function GroupBookingsPage() {
     reservations,
     guests,
     payments,
+    discounts,
+    paymentSplits,
     groupBookings,
     addGroupBooking,
     groupExistingReservations,
@@ -59,9 +65,11 @@ export function GroupBookingsPage() {
     checkInAllGroupRooms,
     checkOutGroupRoom,
     settleGroupMaster,
+    updateGroupBooking,
     updateGroupBookingPayer,
     closeGroupBooking,
-    deleteGroupBooking
+    deleteGroupBooking,
+    editBillFinancials,
   } = usePms();
 
   // Dialog states
@@ -79,6 +87,44 @@ export function GroupBookingsPage() {
   const [masterPayerRes, setMasterPayerRes] = React.useState<Reservation | null>(null);
   const [masterSettlementSplits, setMasterSettlementSplits] = React.useState<SplitRow[]>([]);
   const [submitting, setSubmitting] = React.useState(false);
+
+  // Group Booking Edit State (Accessible to all logins)
+  const [editGroupModalOpen, setEditGroupModalOpen] = React.useState(false);
+  const [selectedGroupForEdit, setSelectedGroupForEdit] = React.useState<GroupBooking | null>(null);
+  const [editGroupName, setEditGroupName] = React.useState("");
+  const [editContactName, setEditContactName] = React.useState("");
+  const [editContactPhone, setEditContactPhone] = React.useState("");
+  const [editContactEmail, setEditContactEmail] = React.useState("");
+  const [editGroupPayerType, setEditGroupPayerType] = React.useState<"LAST_ROOM" | "CUSTOM_ROOM">("LAST_ROOM");
+  const [editGroupCustomPayerRoomId, setEditGroupCustomPayerRoomId] = React.useState<string>("");
+  const [editGroupStatus, setEditGroupStatus] = React.useState<"ACTIVE" | "COMPLETED">("ACTIVE");
+  const [editGroupNotes, setEditGroupNotes] = React.useState("");
+  const [savingGroupEdit, setSavingGroupEdit] = React.useState(false);
+
+  // Comprehensive Room Folio Edit State (Accessible to all logins)
+  const [editFolioModalOpen, setEditFolioModalOpen] = React.useState(false);
+  const [selectedResForFolioEdit, setSelectedResForFolioEdit] = React.useState<Reservation | null>(null);
+  const [editBaseAmount, setEditBaseAmount] = React.useState("");
+  const [editAddlCharges, setEditAddlCharges] = React.useState("");
+  const [editDiscount, setEditDiscount] = React.useState("");
+  const [editAdvancePaid, setEditAdvancePaid] = React.useState("");
+  const [editLaterReceived, setEditLaterReceived] = React.useState("");
+  const [editTotalPaid, setEditTotalPaid] = React.useState("");
+  const [editPaymentMethod, setEditPaymentMethod] = React.useState<string>("CASH");
+  const [isEditSplitMode, setIsEditSplitMode] = React.useState(false);
+  const [editSplitRows, setEditSplitRows] = React.useState<SplitRow[]>([]);
+  const [editGuestName, setEditGuestName] = React.useState("");
+  const [editGuestPhone, setEditGuestPhone] = React.useState("");
+  const [editGuestEmail, setEditGuestEmail] = React.useState("");
+  const [editGuestCompany, setEditGuestCompany] = React.useState("");
+  const [editGuestGst, setEditGuestGst] = React.useState("");
+  const [editGuestAddress, setEditGuestAddress] = React.useState("");
+  const [editCheckInDate, setEditCheckInDate] = React.useState("");
+  const [editCheckInTime, setEditCheckInTime] = React.useState("12:00");
+  const [editCheckOutDate, setEditCheckOutDate] = React.useState("");
+  const [editCheckOutTime, setEditCheckOutTime] = React.useState("12:00");
+  const [editFolioNotes, setEditFolioNotes] = React.useState("");
+  const [savingFolioEdit, setSavingFolioEdit] = React.useState(false);
 
   // New Group Booking Form State
   const todayStr = new Date().toISOString().split("T")[0];
@@ -455,6 +501,205 @@ export function GroupBookingsPage() {
     }
   };
 
+  // Handlers: Edit Group Details (Accessible to all logins)
+  const handleOpenEditGroup = (grp: GroupBooking) => {
+    setSelectedGroupForEdit(grp);
+    setEditGroupName(grp.name || "");
+    setEditContactName(grp.contact_name || "");
+    setEditContactPhone(grp.contact_phone || "");
+    setEditContactEmail(grp.contact_email || "");
+    setEditGroupPayerType(grp.payer_type || "LAST_ROOM");
+    setEditGroupCustomPayerRoomId(grp.custom_payer_room_id || "");
+    setEditGroupStatus(grp.status as "ACTIVE" | "COMPLETED");
+    setEditGroupNotes(grp.notes || "");
+    setEditGroupModalOpen(true);
+  };
+
+  const handleSaveGroupEdit = async () => {
+    if (!selectedGroupForEdit || savingGroupEdit) return;
+    if (!editGroupName.trim()) {
+      toast.error("Group name cannot be blank.");
+      return;
+    }
+    setSavingGroupEdit(true);
+    try {
+      const res = await updateGroupBooking(selectedGroupForEdit.id, {
+        name: editGroupName.trim(),
+        contactName: editContactName.trim(),
+        contactPhone: editContactPhone.trim(),
+        contactEmail: editContactEmail.trim(),
+        payerType: editGroupPayerType,
+        customPayerRoomId: editGroupPayerType === "CUSTOM_ROOM" ? editGroupCustomPayerRoomId : undefined,
+        status: editGroupStatus,
+        notes: editGroupNotes.trim(),
+      });
+      if (res.success) {
+        toast.success(`Group "${editGroupName}" updated successfully!`);
+        setEditGroupModalOpen(false);
+      } else {
+        toast.error(res.error || "Failed to update group details");
+      }
+    } finally {
+      setSavingGroupEdit(false);
+    }
+  };
+
+  // Handlers: Edit Room Folio Financials & Stay (Accessible to all logins)
+  const handleOpenEditFolio = (r: Reservation) => {
+    setSelectedResForFolioEdit(r);
+    const g = getGuest(r.guest_id);
+    const p = payments.find((pay) => pay.reservation_id === r.id);
+    const d = discounts.find((disc) => disc.reservation_id === r.id && disc.status === "APPROVED");
+    const rm = getRoom(r.room_id);
+
+    let roomBase = 0;
+    if (Number(r.base_amount) > 0) {
+      const isInclusive = rm && (r.base_amount === rm.total_bill || r.base_amount > Number(rm.price));
+      roomBase = isInclusive ? Number(r.base_amount) : Math.round(Number(r.base_amount) * 1.05);
+    } else if (Number(p?.total_amount) > 0) {
+      roomBase = Number(p.total_amount);
+    } else {
+      const rmPrice = Number(rm?.price) || 1000;
+      roomBase = Math.round(rmPrice * nights * 1.05);
+    }
+
+    setEditGuestName(g?.name || (r as any).customer_name || "");
+    setEditGuestPhone(g?.phone || (r as any).customer_phone || (r as any).phone || "");
+    setEditGuestEmail(g?.email || (r as any).email || "");
+    setEditGuestCompany((r as any).company_name || (g as any)?.company_name || "");
+    setEditGuestGst((r as any).gst_number || g?.gst_number || "");
+    setEditGuestAddress((r as any).address || g?.address || "");
+
+    const startStr = r.start_time || `${r.booking_date || todayStr}T12:00:00`;
+    const sDate = new Date(startStr);
+    let endStr = r.end_time;
+    if (!endStr) {
+      if (!isNaN(sDate.getTime())) {
+        endStr = new Date(sDate.getTime() + 24 * 60 * 60 * 1000).toISOString();
+      } else {
+        endStr = startStr;
+      }
+    }
+    const eDate = new Date(endStr);
+
+    setEditCheckInDate(startStr.split("T")[0] || todayStr);
+    const sH = !isNaN(sDate.getTime()) ? String(sDate.getHours()).padStart(2, "0") : "12";
+    const sM = !isNaN(sDate.getTime()) ? String(sDate.getMinutes()).padStart(2, "0") : "00";
+    setEditCheckInTime(`${sH}:${sM}`);
+
+    setEditCheckOutDate(endStr.split("T")[0] || todayStr);
+    const eH = !isNaN(eDate.getTime()) ? String(eDate.getHours()).padStart(2, "0") : sH;
+    const eM = !isNaN(eDate.getTime()) ? String(eDate.getMinutes()).padStart(2, "0") : sM;
+    setEditCheckOutTime(`${eH}:${eM}`);
+
+    setEditFolioNotes(r.notes || "");
+
+    setEditBaseAmount(String(Number(r.base_amount) || roomBase || 0));
+    setEditAddlCharges(String(Number(r.additional_charges) || 0));
+    setEditDiscount(String(d ? Number(d.discount_amount) || 0 : 0));
+
+    const totalPaid = Number(p?.paid_amount) || 0;
+    setEditTotalPaid(String(totalPaid));
+    setEditAdvancePaid(String(totalPaid));
+    setEditLaterReceived("0");
+
+    const existingSplits = paymentSplits.filter(
+      (s) => s.reservation_id === r.id || (p && s.payment_id === p.id)
+    );
+
+    if (existingSplits.length > 1) {
+      setIsEditSplitMode(true);
+      setEditSplitRows(
+        existingSplits.map((s) => ({
+          id: s.id || crypto.randomUUID(),
+          method: (s.method as any) || "CASH",
+          amount: Number(s.amount) || 0,
+          reference_note: s.reference_note || "",
+        }))
+      );
+      setEditPaymentMethod("OTHER");
+    } else {
+      setIsEditSplitMode(false);
+      const m = p?.payment_method || "CASH";
+      setEditPaymentMethod(m);
+      setEditSplitRows([
+        { id: "1", method: (m as any) || "CASH", amount: totalPaid, reference_note: "" }
+      ]);
+    }
+
+    setEditFolioModalOpen(true);
+  };
+
+  const handleSaveEditFolio = async () => {
+    if (!selectedResForFolioEdit || savingFolioEdit) return;
+    if (!editGuestName.trim()) {
+      toast.error("Guest full name cannot be blank.");
+      return;
+    }
+
+    const base = Math.max(0, Number(editBaseAmount) || 0);
+    const addl = Math.max(0, Number(editAddlCharges) || 0);
+    const disc = Math.max(0, Number(editDiscount) || 0);
+    const adv = Math.max(0, Number(editAdvancePaid) || 0);
+    const lat = Math.max(0, Number(editLaterReceived) || 0);
+    const computedPaid = isEditSplitMode
+      ? editSplitRows.reduce((sum, s) => sum + (Number(s.amount) || 0), 0)
+      : adv + lat;
+
+    setSavingFolioEdit(true);
+    try {
+      const res = await editBillFinancials({
+        reservationId: selectedResForFolioEdit.id,
+        baseAmount: base,
+        additionalCharges: addl,
+        discountAmount: disc,
+        advancePaid: adv,
+        laterReceived: lat,
+        totalPaid: computedPaid,
+        paymentMethod: isEditSplitMode
+          ? `Split (${editSplitRows.map((s) => s.method).join("+")})`
+          : editPaymentMethod,
+        splits: isEditSplitMode ? editSplitRows : undefined,
+        guestDetails: {
+          name: editGuestName.trim(),
+          phone: editGuestPhone.trim(),
+          email: editGuestEmail.trim(),
+          company_name: editGuestCompany.trim(),
+          gst_number: editGuestGst.trim().toUpperCase(),
+          address: editGuestAddress.trim(),
+        },
+        stayDates: {
+          checkInDate: editCheckInDate,
+          checkInTime: editCheckInTime,
+          checkOutDate: editCheckOutDate,
+          checkOutTime: editCheckOutTime,
+        },
+        notes: editFolioNotes.trim(),
+      });
+
+      if (res.success) {
+        toast.success("Room folio & financial records updated successfully!");
+        setEditFolioModalOpen(false);
+      } else {
+        toast.error(res.error || "Failed to update folio financials");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update folio");
+    } finally {
+      setSavingFolioEdit(false);
+    }
+  };
+
+  // Computed totals for Folio Edit Modal
+  const folioGross = Math.round(((Number(editBaseAmount) || 0) * 1.05) + (Number(editAddlCharges) || 0));
+  const folioGrandTotal = Math.max(0, folioGross - (Number(editDiscount) || 0));
+  const folioTaxable = Math.round(folioGrandTotal / 1.05);
+  const folioGst = folioGrandTotal - folioTaxable;
+  const folioPaid = isEditSplitMode
+    ? editSplitRows.reduce((sum, s) => sum + (Number(s.amount) || 0), 0)
+    : (Number(editAdvancePaid) || 0) + (Number(editLaterReceived) || 0);
+  const folioBalance = Math.max(0, folioGrandTotal - folioPaid);
+
   return (
     <div className="space-y-6 pb-12">
       <PageHeader
@@ -617,6 +862,15 @@ export function GroupBookingsPage() {
                     <Button
                       size="sm"
                       variant="outline"
+                      onClick={() => handleOpenEditGroup(grp)}
+                      className="rounded-xl border-border text-xs font-medium text-foreground hover:bg-muted shadow-2xs"
+                    >
+                      <Pencil className="size-3.5 mr-1 text-brass" /> Edit Group
+                    </Button>
+
+                    <Button
+                      size="sm"
+                      variant="outline"
                       onClick={() => {
                         setSelectedGroup(grp);
                         setPrintModalOpen(true);
@@ -751,47 +1005,59 @@ export function GroupBookingsPage() {
                               )}
                             </TableCell>
                             <TableCell className="text-right">
-                              {!isCompleted && (
-                                <div className="flex items-center justify-end gap-1.5">
-                                  {isConfirmed && (
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={async () => {
-                                        const res = await checkInGroupRoom(r.id);
-                                        if (res.success) toast.success(`Room ${rm?.room_number} checked in!`);
-                                        else toast.error(res.error || "Check-in failed");
-                                      }}
-                                      className="h-7 text-xs font-medium bg-card hover:bg-muted"
-                                    >
-                                      <DoorOpen className="size-3 mr-1 text-brass" /> Check-In
-                                    </Button>
-                                  )}
+                              <div className="flex items-center justify-end gap-1.5">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleOpenEditFolio(r)}
+                                  className="h-7 text-xs font-medium border-border hover:bg-muted"
+                                  title="Edit Room Folio, Financials & Payment Mode"
+                                >
+                                  <Pencil className="size-3 mr-1 text-brass" /> Edit
+                                </Button>
 
-                                  {isOccupied && (
-                                    <Button
-                                      size="sm"
-                                      variant={isLastActive || isCustomPayer ? "default" : "outline"}
-                                      onClick={() => initiateRoomCheckout(r, grp)}
-                                      className={`h-7 text-xs font-medium ${
-                                        isLastActive || isCustomPayer
-                                          ? "bg-brass text-gold-foreground hover:opacity-90"
-                                          : "border-border text-foreground hover:bg-muted"
-                                      }`}
-                                    >
-                                      {isLastActive || isCustomPayer ? (
-                                        <>
-                                          <Receipt className="size-3 mr-1" /> Settle & Checkout
-                                        </>
-                                      ) : (
-                                        <>
-                                          <ArrowRightLeft className="size-3 mr-1 text-brass" /> Transfer & Checkout
-                                        </>
-                                      )}
-                                    </Button>
-                                  )}
-                                </div>
-                              )}
+                                {!isCompleted && (
+                                  <>
+                                    {isConfirmed && (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={async () => {
+                                          const res = await checkInGroupRoom(r.id);
+                                          if (res.success) toast.success(`Room ${rm?.room_number} checked in!`);
+                                          else toast.error(res.error || "Check-in failed");
+                                        }}
+                                        className="h-7 text-xs font-medium bg-card hover:bg-muted"
+                                      >
+                                        <DoorOpen className="size-3 mr-1 text-brass" /> Check-In
+                                      </Button>
+                                    )}
+
+                                    {isOccupied && (
+                                      <Button
+                                        size="sm"
+                                        variant={isLastActive || isCustomPayer ? "default" : "outline"}
+                                        onClick={() => initiateRoomCheckout(r, grp)}
+                                        className={`h-7 text-xs font-medium ${
+                                          isLastActive || isCustomPayer
+                                            ? "bg-brass text-gold-foreground hover:opacity-90"
+                                            : "border-border text-foreground hover:bg-muted"
+                                        }`}
+                                      >
+                                        {isLastActive || isCustomPayer ? (
+                                          <>
+                                            <Receipt className="size-3 mr-1" /> Settle & Checkout
+                                          </>
+                                        ) : (
+                                          <>
+                                            <ArrowRightLeft className="size-3 mr-1 text-brass" /> Transfer & Checkout
+                                          </>
+                                        )}
+                                      </Button>
+                                    )}
+                                  </>
+                                )}
+                              </div>
                             </TableCell>
                           </TableRow>
                         );
@@ -1532,6 +1798,565 @@ export function GroupBookingsPage() {
                   className="bg-brass text-gold-foreground hover:opacity-90"
                 >
                   <Printer className="size-3.5 mr-1" /> Print Official Statement
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Group Booking Modal */}
+      <Dialog open={editGroupModalOpen} onOpenChange={setEditGroupModalOpen}>
+        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="size-5 text-brass" /> Edit Group Booking
+            </DialogTitle>
+            <DialogDescription>
+              Update group metadata, contact details, master payer strategy, and status.
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedGroupForEdit && (
+            <div className="space-y-4 pt-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label className="text-xs font-medium">Group Name *</Label>
+                  <Input
+                    value={editGroupName}
+                    onChange={(e) => setEditGroupName(e.target.value)}
+                    placeholder="e.g. Acme Corp Conference"
+                    className="h-9"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Contact Person *</Label>
+                  <Input
+                    value={editContactName}
+                    onChange={(e) => setEditContactName(e.target.value)}
+                    placeholder="Contact name"
+                    className="h-9"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Contact Phone</Label>
+                  <Input
+                    value={editContactPhone}
+                    onChange={(e) => setEditContactPhone(e.target.value)}
+                    placeholder="Phone number"
+                    className="h-9"
+                  />
+                </div>
+
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label className="text-xs font-medium">Contact Email</Label>
+                  <Input
+                    value={editContactEmail}
+                    onChange={(e) => setEditContactEmail(e.target.value)}
+                    placeholder="Email address"
+                    className="h-9"
+                  />
+                </div>
+              </div>
+
+              {/* Master Billing Strategy */}
+              <div className="space-y-2.5 rounded-xl border border-border bg-muted/20 p-3.5">
+                <Label className="text-xs font-semibold flex items-center gap-1.5">
+                  <Receipt className="size-3.5 text-brass" /> Master Payer Rule
+                </Label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <label
+                    onClick={() => setEditGroupPayerType("LAST_ROOM")}
+                    className={`flex items-start gap-2.5 p-2.5 rounded-lg border text-xs cursor-pointer transition-colors ${
+                      editGroupPayerType === "LAST_ROOM"
+                        ? "border-brass bg-brass/10 font-medium"
+                        : "border-border bg-card hover:bg-muted/50"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="editGroupPayer"
+                      checked={editGroupPayerType === "LAST_ROOM"}
+                      onChange={() => setEditGroupPayerType("LAST_ROOM")}
+                      className="mt-0.5"
+                    />
+                    <div>
+                      <div className="font-semibold text-foreground">Last Departing Room</div>
+                      <div className="text-[11px] text-muted-foreground">Departing rooms transfer bills sequentially to the last remaining room.</div>
+                    </div>
+                  </label>
+
+                  <label
+                    onClick={() => setEditGroupPayerType("CUSTOM_ROOM")}
+                    className={`flex items-start gap-2.5 p-2.5 rounded-lg border text-xs cursor-pointer transition-colors ${
+                      editGroupPayerType === "CUSTOM_ROOM"
+                        ? "border-brass bg-brass/10 font-medium"
+                        : "border-border bg-card hover:bg-muted/50"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="editGroupPayer"
+                      checked={editGroupPayerType === "CUSTOM_ROOM"}
+                      onChange={() => setEditGroupPayerType("CUSTOM_ROOM")}
+                      className="mt-0.5"
+                    />
+                    <div>
+                      <div className="font-semibold text-foreground">Designated Base Room</div>
+                      <div className="text-[11px] text-muted-foreground">All rooms transfer outstanding bills to one specific leader room.</div>
+                    </div>
+                  </label>
+                </div>
+
+                {editGroupPayerType === "CUSTOM_ROOM" && (
+                  <div className="pt-2 space-y-1">
+                    <Label className="text-xs">Select Designated Master Room</Label>
+                    <Select
+                      value={editGroupCustomPayerRoomId}
+                      onValueChange={(val) => setEditGroupCustomPayerRoomId(val)}
+                    >
+                      <SelectTrigger className="h-9 text-xs">
+                        <SelectValue placeholder="Choose Master Room" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {getGroupReservations(selectedGroupForEdit.id).map((r) => {
+                          const rm = getRoom(r.room_id);
+                          return (
+                            <SelectItem key={r.room_id} value={r.room_id}>
+                              Room {rm?.room_number || r.room_id} ({rm?.room_name || "Room"})
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
+
+              {/* Status & Notes */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Group Status</Label>
+                  <Select
+                    value={editGroupStatus}
+                    onValueChange={(val: "ACTIVE" | "COMPLETED") => setEditGroupStatus(val)}
+                  >
+                    <SelectTrigger className="h-9 text-xs">
+                      <SelectValue placeholder="Select Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ACTIVE">Active (Ongoing Stay)</SelectItem>
+                      <SelectItem value="COMPLETED">Completed (Settled / Archived)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label className="text-xs font-medium">Group Notes / Special Instructions</Label>
+                  <Input
+                    value={editGroupNotes}
+                    onChange={(e) => setEditGroupNotes(e.target.value)}
+                    placeholder="e.g. VIP guest, company billed, early breakfast requested"
+                    className="h-9"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-4 border-t border-border">
+                <Button
+                  variant="outline"
+                  onClick={() => setEditGroupModalOpen(false)}
+                  disabled={savingGroupEdit}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSaveGroupEdit}
+                  disabled={savingGroupEdit}
+                  className="bg-brass text-gold-foreground hover:opacity-90 font-medium"
+                >
+                  {savingGroupEdit ? "Saving Changes..." : "Save Group Details"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Comprehensive Room Folio Edit Modal (Accessible to all logins) */}
+      <Dialog open={editFolioModalOpen} onOpenChange={setEditFolioModalOpen}>
+        <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <Pencil className="size-4 text-brass" /> Edit Room Folio & Financial Records
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Directly adjust tariff, payment modes, multi-method splits, advances, later received, and guest/company details.
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedResForFolioEdit && (
+            <div className="space-y-5 pt-2">
+              {/* Guest & Billing Information */}
+              <div className="rounded-xl border border-border bg-card/60 p-3.5 space-y-3">
+                <div className="flex items-center gap-2 text-xs font-semibold text-foreground border-b border-border/60 pb-2">
+                  <Users className="size-3.5 text-brass" /> Guest & Company Information
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-[11px] font-medium text-muted-foreground">Guest Full Name *</Label>
+                    <Input
+                      value={editGuestName}
+                      onChange={(e) => setEditGuestName(e.target.value)}
+                      placeholder="Primary guest name"
+                      className="h-8 text-xs"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-[11px] font-medium text-muted-foreground">Phone Number</Label>
+                    <Input
+                      value={editGuestPhone}
+                      onChange={(e) => setEditGuestPhone(e.target.value)}
+                      placeholder="+91..."
+                      className="h-8 text-xs"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-[11px] font-medium text-muted-foreground">Email Address</Label>
+                    <Input
+                      value={editGuestEmail}
+                      onChange={(e) => setEditGuestEmail(e.target.value)}
+                      placeholder="guest@example.com"
+                      className="h-8 text-xs"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-[11px] font-medium text-muted-foreground">Company Name (B2B)</Label>
+                    <Input
+                      value={editGuestCompany}
+                      onChange={(e) => setEditGuestCompany(e.target.value)}
+                      placeholder="Corporate bill to"
+                      className="h-8 text-xs"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-[11px] font-medium text-muted-foreground">GSTIN (15 Digits)</Label>
+                    <Input
+                      value={editGuestGst}
+                      onChange={(e) => setEditGuestGst(e.target.value.toUpperCase())}
+                      placeholder="33AAAAA0000A1Z5"
+                      className="h-8 text-xs uppercase font-mono"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-[11px] font-medium text-muted-foreground">Billing Address</Label>
+                    <Input
+                      value={editGuestAddress}
+                      onChange={(e) => setEditGuestAddress(e.target.value)}
+                      placeholder="Street, City, State"
+                      className="h-8 text-xs"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Stay Dates & Check-In / Check-Out Times */}
+              <div className="rounded-xl border border-border bg-card/60 p-3.5 space-y-3">
+                <div className="flex items-center gap-2 text-xs font-semibold text-foreground border-b border-border/60 pb-2">
+                  <Calendar className="size-3.5 text-brass" /> Stay Schedule & 24-Hour Cycle
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                  <div className="space-y-1">
+                    <Label className="text-[11px] font-medium text-muted-foreground">Arrival Date</Label>
+                    <Input
+                      type="date"
+                      value={editCheckInDate}
+                      onChange={(e) => setEditCheckInDate(e.target.value)}
+                      className="h-8 text-xs"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-[11px] font-medium text-muted-foreground">Arrival Time</Label>
+                    <Input
+                      type="time"
+                      value={editCheckInTime}
+                      onChange={(e) => setEditCheckInTime(e.target.value)}
+                      className="h-8 text-xs"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-[11px] font-medium text-muted-foreground">Departure Date</Label>
+                    <Input
+                      type="date"
+                      value={editCheckOutDate}
+                      onChange={(e) => setEditCheckOutDate(e.target.value)}
+                      className="h-8 text-xs"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-[11px] font-medium text-muted-foreground">Departure Time</Label>
+                    <Input
+                      type="time"
+                      value={editCheckOutTime}
+                      onChange={(e) => setEditCheckOutTime(e.target.value)}
+                      className="h-8 text-xs"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Financial Breakdown & Split Payments */}
+              <div className="rounded-xl border border-border bg-card/60 p-3.5 space-y-3">
+                <div className="flex items-center justify-between border-b border-border/60 pb-2">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
+                    <Receipt className="size-3.5 text-brass" /> Tariff, Inflows & Payment Breakdown
+                  </div>
+                  <Button
+                    type="button"
+                    variant={isEditSplitMode ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => {
+                      const next = !isEditSplitMode;
+                      setIsEditSplitMode(next);
+                      if (next && editSplitRows.length === 0) {
+                        const total = (Number(editAdvancePaid) || 0) + (Number(editLaterReceived) || 0) || folioGrandTotal;
+                        const half = Math.round(total / 2);
+                        setEditSplitRows([
+                          { id: "1", method: "CASH", amount: half, reference_note: "Cash portion" },
+                          { id: "2", method: "UPI", amount: total - half, reference_note: "UPI portion" }
+                        ]);
+                      }
+                    }}
+                    className={`h-7 text-[11px] px-2.5 rounded-lg ${isEditSplitMode ? "bg-brass text-gold-foreground" : "border-border"}`}
+                  >
+                    <CreditCard className="size-3 mr-1" /> {isEditSplitMode ? "Split Payment Mode (Active)" : "Enable Split Payment"}
+                  </Button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-[11px] font-medium text-muted-foreground">Base Stay Tariff (Taxable ₹)</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={editBaseAmount}
+                      onChange={(e) => setEditBaseAmount(e.target.value)}
+                      className="h-8 text-xs font-mono font-medium"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-[11px] font-medium text-muted-foreground">Additional Charges (₹)</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={editAddlCharges}
+                      onChange={(e) => setEditAddlCharges(e.target.value)}
+                      className="h-8 text-xs font-mono"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-[11px] font-medium text-muted-foreground">Approved Discount (₹)</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={editDiscount}
+                      onChange={(e) => setEditDiscount(e.target.value)}
+                      className="h-8 text-xs font-mono text-emerald-600 dark:text-emerald-400 font-medium"
+                    />
+                  </div>
+                </div>
+
+                {/* Split Payment Editor or Single Payment Mode */}
+                {isEditSplitMode ? (
+                  <div className="space-y-2 pt-1">
+                    <div className="flex flex-wrap items-center justify-between gap-1.5 text-xs">
+                      <span className="font-semibold text-muted-foreground">Multi-Method Split Breakdown:</span>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 text-[10px] px-1.5 text-brass hover:bg-brass/10"
+                          onClick={() => {
+                            const tot = folioGrandTotal;
+                            const half = Math.round(tot / 2);
+                            setEditSplitRows([
+                              { id: "1", method: "CASH", amount: half, reference_note: "50% Cash" },
+                              { id: "2", method: "UPI", amount: tot - half, reference_note: "50% UPI" }
+                            ]);
+                          }}
+                        >
+                          50% Cash + 50% UPI
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 text-[10px] px-1.5 text-brass hover:bg-brass/10"
+                          onClick={() => {
+                            const tot = folioGrandTotal;
+                            const half = Math.round(tot / 2);
+                            setEditSplitRows([
+                              { id: "1", method: "CARD", amount: half, reference_note: "50% Card" },
+                              { id: "2", method: "UPI", amount: tot - half, reference_note: "50% UPI" }
+                            ]);
+                          }}
+                        >
+                          50% Card + 50% UPI
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 text-[10px] px-1.5 text-brass hover:bg-brass/10"
+                          onClick={() => {
+                            setEditSplitRows([
+                              { id: "1", method: "CASH", amount: folioGrandTotal, reference_note: "100% Cash" }
+                            ]);
+                          }}
+                        >
+                          100% Cash
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 text-[10px] px-1.5 text-brass hover:bg-brass/10"
+                          onClick={() => {
+                            setEditSplitRows([
+                              { id: "1", method: "UPI", amount: folioGrandTotal, reference_note: "100% UPI" }
+                            ]);
+                          }}
+                        >
+                          100% UPI
+                        </Button>
+                      </div>
+                    </div>
+
+                    <SplitPaymentInput
+                      value={editSplitRows}
+                      onChange={setEditSplitRows}
+                      totalAmount={folioGrandTotal}
+                    />
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                    <div className="space-y-1">
+                      <Label className="text-[11px] font-medium text-muted-foreground">Payment Mode</Label>
+                      <Select
+                        value={editPaymentMethod}
+                        onValueChange={(val) => setEditPaymentMethod(val)}
+                      >
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue placeholder="Select method" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="CASH">Cash</SelectItem>
+                          <SelectItem value="UPI">UPI / QR Code</SelectItem>
+                          <SelectItem value="CARD">Card / POS</SelectItem>
+                          <SelectItem value="COMPANY">Company / Bill to Company</SelectItem>
+                          <SelectItem value="BANK_TRANSFER">Bank Transfer / NEFT</SelectItem>
+                          <SelectItem value="OTHER">Other / Voucher</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label className="text-[11px] font-medium text-muted-foreground">Advance Received (₹)</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={editAdvancePaid}
+                        onChange={(e) => setEditAdvancePaid(e.target.value)}
+                        className="h-8 text-xs font-mono text-emerald-600 dark:text-emerald-400 font-medium"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label className="text-[11px] font-medium text-muted-foreground">Later / Settlement Paid (₹)</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={editLaterReceived}
+                        onChange={(e) => setEditLaterReceived(e.target.value)}
+                        className="h-8 text-xs font-mono font-medium"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Real-time Calculation Summary Box */}
+                <div className="mt-3 rounded-xl border border-border/80 bg-muted/40 p-3 text-xs space-y-1.5 font-mono">
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Taxable Value (Base):</span>
+                    <span>{inr(folioTaxable)}</span>
+                  </div>
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>GST (5% SGST+CGST):</span>
+                    <span>{inr(folioGst)}</span>
+                  </div>
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Gross Total:</span>
+                    <span>{inr(folioGross)}</span>
+                  </div>
+                  <div className="flex justify-between font-bold text-foreground border-t border-border/60 pt-1">
+                    <span>Grand Effective Total:</span>
+                    <span>{inr(folioGrandTotal)}</span>
+                  </div>
+                  <div className="flex justify-between text-emerald-600 dark:text-emerald-400 font-semibold">
+                    <span>Total Paid (Inflows):</span>
+                    <span>{inr(folioPaid)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm font-bold border-t border-border/60 pt-1">
+                    <span className="text-foreground">Remaining Balance:</span>
+                    <span className={folioBalance === 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}>
+                      {folioBalance === 0 ? "Fully Paid (₹0)" : inr(folioBalance)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Folio Internal Notes */}
+              <div className="space-y-1">
+                <Label className="text-[11px] font-medium text-muted-foreground">Folio Internal Notes / Remarks</Label>
+                <Input
+                  value={editFolioNotes}
+                  onChange={(e) => setEditFolioNotes(e.target.value)}
+                  placeholder="e.g. advance paid via GooglePay, 50% cash settled at counter"
+                  className="h-8 text-xs"
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+                <Button
+                  variant="outline"
+                  onClick={() => setEditFolioModalOpen(false)}
+                  disabled={savingFolioEdit}
+                  className="text-xs"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSaveEditFolio}
+                  disabled={savingFolioEdit}
+                  className="bg-brass text-gold-foreground hover:opacity-90 font-medium text-xs shadow-sm"
+                >
+                  {savingFolioEdit ? "Saving Folio..." : "Save Folio Financials"}
                 </Button>
               </div>
             </div>

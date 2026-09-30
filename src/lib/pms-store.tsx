@@ -25,6 +25,24 @@ export type Role = "SUPER_ADMIN" | "GM" | "FRONT_DESK" | "PENDING";
 
 export type Session = { username: string; name: string; role: Role; roleLabel: string };
 
+/**
+ * Normalizes payment methods to adhere to Postgres check constraint:
+ * CHECK (payment_method IN ('CASH', 'UPI', 'CARD', 'BANK_TRANSFER', 'OTHER'))
+ */
+export function toDbPaymentMethod(method?: string): "CASH" | "UPI" | "CARD" | "BANK_TRANSFER" | "OTHER" {
+  if (!method) return "CASH";
+  const m = String(method).trim().toUpperCase();
+  if (m === "CASH") return "CASH";
+  if (m === "UPI" || m.includes("UPI") || m.includes("GPAY") || m.includes("PHONEPE") || m.includes("PAYTM")) return "UPI";
+  if (m === "CARD" || m.includes("CARD") || m.includes("POS") || m.includes("CREDIT") || m.includes("DEBIT")) return "CARD";
+  if (m === "BANK_TRANSFER" || m.includes("BANK") || m.includes("TRANSFER") || m.includes("NEFT") || m.includes("RTGS")) return "BANK_TRANSFER";
+  return "OTHER";
+}
+
+export function toDbSplitMethod(method?: string): "CASH" | "UPI" | "CARD" | "BANK_TRANSFER" | "OTHER" {
+  return toDbPaymentMethod(method);
+}
+
 export type PosOrder = {
   id: string;
   target: string;
@@ -271,6 +289,16 @@ type Ctx = State & {
     paidAmount: number;
     splits: any[];
     notes?: string;
+  }) => Promise<{ success: boolean; error?: string }>;
+  updateGroupBooking: (groupId: string, data: {
+    name?: string;
+    contactName?: string;
+    contactPhone?: string;
+    contactEmail?: string;
+    payerType?: "LAST_ROOM" | "CUSTOM_ROOM";
+    customPayerRoomId?: string;
+    notes?: string;
+    status?: "ACTIVE" | "COMPLETED" | "CANCELLED";
   }) => Promise<{ success: boolean; error?: string }>;
   updateGroupBookingPayer: (groupId: string, payerType: "LAST_ROOM" | "CUSTOM_ROOM", customPayerRoomId?: string) => Promise<{ success: boolean; error?: string }>;
   closeGroupBooking: (groupId: string) => Promise<{ success: boolean; error?: string }>;
@@ -1067,7 +1095,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             total_amount: totalAmt,
             paid_amount: paidAmt,
             status: payStatus,
-            payment_method: method
+            payment_method: toDbPaymentMethod(method)
           }));
           if (pErr) throw pErr;
 
@@ -1076,7 +1104,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
               id: crypto.randomUUID(),
               payment_id: payId,
               reservation_id: resId,
-              method: s.method || 'CASH',
+              method: toDbSplitMethod(s.method),
               amount: Number(s.amount) || 0,
               reference_note: s.reference_note || null,
             }));
@@ -1403,7 +1431,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             total_amount: b.baseAmount,
             paid_amount: b.advance,
             status: b.advance >= b.baseAmount && b.baseAmount > 0 ? 'COMPLETED' : b.advance > 0 ? 'PARTIAL' : 'PENDING',
-            payment_method: method
+            payment_method: toDbPaymentMethod(method)
           }));
           if (pErr) throw pErr;
 
@@ -1412,7 +1440,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
               id: crypto.randomUUID(),
               payment_id: payId,
               reservation_id: resId,
-              method: s.method || 'CASH',
+              method: toDbSplitMethod(s.method),
               amount: Number(s.amount) || 0,
               reference_note: s.reference_note || null,
             }));
@@ -1506,7 +1534,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             const newPaid = currentPaid + collected;
             const status = newPaid >= newTotal && newTotal > 0 ? "COMPLETED" : newPaid > 0 ? "PARTIAL" : "PENDING";
             const payUpdates: any = { total_amount: newTotal, paid_amount: newPaid, status };
-            if (collected > 0) payUpdates.payment_method = method;
+            if (collected > 0) payUpdates.payment_method = toDbPaymentMethod(method);
             const { error: pErr } = await withAuthRetry(() => supabase.from('payments').update(payUpdates).eq('id', payment.id));
             if (pErr) throw pErr;
           } else {
@@ -1516,7 +1544,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
               total_amount: newBase,
               paid_amount: collected,
               status,
-              payment_method: method
+              payment_method: toDbPaymentMethod(method)
             }));
             if (pErr) throw pErr;
           }
@@ -1581,7 +1609,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             const newTotal = params.newTotalAmount;
             const status = newPaid >= newTotal && newTotal > 0 ? "COMPLETED" : newPaid > 0 ? "PARTIAL" : "PENDING";
             const payUpdates: any = { total_amount: newTotal, paid_amount: newPaid, status };
-            if (extraCollected > 0) payUpdates.payment_method = method;
+            if (extraCollected > 0) payUpdates.payment_method = toDbPaymentMethod(method);
             const { error: pErr } = await withAuthRetry(() => supabase.from('payments').update(payUpdates).eq('id', payment.id));
             if (pErr) throw pErr;
           } else {
@@ -1591,7 +1619,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
               total_amount: params.newTotalAmount,
               paid_amount: extraCollected,
               status,
-              payment_method: method
+              payment_method: toDbPaymentMethod(method)
             }));
             if (pErr) throw pErr;
           }
@@ -1721,7 +1749,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
               total_amount: effectiveGrandTotal,
               paid_amount: paidAmt,
               status: newStatus,
-              payment_method: finalMethod
+              payment_method: toDbPaymentMethod(finalMethod)
             }));
             if (pErr) throw pErr;
           } else {
@@ -1729,7 +1757,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
               total_amount: effectiveGrandTotal,
               paid_amount: paidAmt,
               status: newStatus,
-              payment_method: finalMethod
+              payment_method: toDbPaymentMethod(finalMethod)
             }).eq('id', payment.id));
             if (pErr) throw pErr;
           }
@@ -1744,7 +1772,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
                 id: crypto.randomUUID(),
                 payment_id: targetPayId,
                 reservation_id: res.id,
-                method: s.method || 'CASH',
+                method: toDbSplitMethod(s.method),
                 amount: Number(s.amount) || 0,
                 reference_note: s.reference_note || null,
               }));
@@ -1790,7 +1818,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
                 total_amount: totalAmt,
                 paid_amount: paidAmt,
                 status,
-                payment_method: methodStr
+                payment_method: toDbPaymentMethod(methodStr)
               }));
               if (error) throw error;
             } else {
@@ -1803,7 +1831,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             const { error } = await withAuthRetry(() => supabase.from('payments').update({ 
               paid_amount: newPaid, 
               status,
-              payment_method: methodStr
+              payment_method: toDbPaymentMethod(methodStr)
             }).eq('id', payment.id));
             if (error) throw error;
           }
@@ -1813,7 +1841,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
               id: crypto.randomUUID(),
               payment_id: targetPayId,
               reservation_id: targetResId,
-              method: s.method || 'CASH',
+              method: toDbSplitMethod(s.method),
               amount: Number(s.amount) || 0,
               reference_note: s.reference_note || null,
             }));
@@ -2081,7 +2109,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
               total_amount: totalAmt,
               paid_amount: thisRoomAdvance,
               status: payStatus,
-              payment_method: payMethod
+              payment_method: toDbPaymentMethod(payMethod)
             }));
             if (pErr) throw pErr;
 
@@ -2091,7 +2119,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
                 id: crypto.randomUUID(),
                 payment_id: payId,
                 reservation_id: resId,
-                method: s.method || 'CASH',
+                method: toDbSplitMethod(s.method),
                 amount: Number(s.amount) || 0,
                 reference_note: s.reference_note || null,
               }));
@@ -2240,7 +2268,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
           if (pay) {
             await withAuthRetry(() => supabase.from('payments').update({
               status: 'COMPLETED',
-              payment_method: 'Transferred to Group Master'
+              payment_method: 'OTHER'
             }).eq('id', pay.id));
           }
 
@@ -2294,7 +2322,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
               total_amount: totalAmount,
               paid_amount: paidAmount,
               status: paidAmount >= totalAmount ? 'COMPLETED' : 'PARTIAL',
-              payment_method: methodSummary,
+              payment_method: toDbPaymentMethod(methodSummary),
             }).eq('id', payment.id));
           } else {
             payId = crypto.randomUUID();
@@ -2304,7 +2332,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
               total_amount: totalAmount,
               paid_amount: paidAmount,
               status: paidAmount >= totalAmount ? 'COMPLETED' : 'PARTIAL',
-              payment_method: methodSummary,
+              payment_method: toDbPaymentMethod(methodSummary),
             }));
           }
 
@@ -2313,7 +2341,7 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
               id: crypto.randomUUID(),
               payment_id: payId,
               reservation_id: payerReservationId,
-              method: s.method,
+              method: toDbSplitMethod(s.method),
               amount: Number(s.amount) || 0,
               reference_note: s.reference_note || null,
             }));
@@ -2350,6 +2378,31 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
         } catch (err: any) {
           console.error("settleGroupMaster error:", err);
           return { success: false, error: err.message || "Failed to settle group master bill" };
+        }
+      },
+
+      updateGroupBooking: async (groupId, data) => {
+        try {
+          const updates: any = {};
+          if (data.name !== undefined && data.name.trim()) updates.name = data.name.trim();
+          if (data.contactName !== undefined) updates.contact_name = data.contactName.trim() || null;
+          if (data.contactPhone !== undefined) updates.contact_phone = data.contactPhone.trim() || null;
+          if (data.contactEmail !== undefined) updates.contact_email = data.contactEmail.trim() || null;
+          if (data.payerType !== undefined) updates.payer_type = data.payerType;
+          if (data.customPayerRoomId !== undefined) updates.custom_payer_room_id = data.customPayerRoomId || null;
+          if (data.notes !== undefined) updates.notes = data.notes.trim() || null;
+          if (data.status !== undefined) updates.status = data.status;
+
+          if (Object.keys(updates).length > 0) {
+            const { error } = await withAuthRetry(() => supabase.from('group_bookings').update(updates).eq('id', groupId));
+            if (error) throw error;
+          }
+
+          await fetchData();
+          return { success: true };
+        } catch (err: any) {
+          console.error("updateGroupBooking error:", err);
+          return { success: false, error: err.message || "Failed to update group booking" };
         }
       },
 
