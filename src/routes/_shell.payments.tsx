@@ -1273,16 +1273,99 @@ function PaymentsDashboard() {
                   {/* Channel Cell with Rich Split & Company Breakdowns */}
                   <TableCell>
                     {tx.isSplit && tx.splits && tx.splits.length > 0 ? (
-                      <div className="space-y-1">
-                        <Badge variant="outline" className="bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-300 text-[10px] font-semibold flex items-center gap-1 w-fit">
-                          <Layers className="size-3" /> Split ({tx.splits.length} modes)
+                      <div className="space-y-1.5 py-0.5">
+                        <Badge
+                          variant="outline"
+                          className="bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-400/60 text-[10.5px] font-bold flex items-center gap-1 w-fit shadow-2xs py-0.5 px-2"
+                        >
+                          <Layers className="size-3 text-purple-600 dark:text-purple-400" />
+                          <span>Split ({tx.splits.length} modes)</span>
                         </Badge>
-                        <div className="flex flex-wrap gap-1 text-[10px] font-mono">
-                          {tx.splits.map((s: any, idx: number) => (
-                            <span key={s.id || idx} className="bg-muted/70 px-1 py-0.5 rounded border border-border text-muted-foreground">
-                              <strong className="text-foreground">{s.method}</strong>: {inr(s.amount)}
-                            </span>
-                          ))}
+                        <div className="flex flex-wrap items-center gap-1 text-[10px]">
+                          {tx.splits.map((s: any, idx: number) => {
+                            const sm = (s.method || "CASH").toUpperCase();
+                            const amt = Number(s.amount) || 0;
+                            if (sm.includes("CASH")) {
+                              return (
+                                <span
+                                  key={s.id || idx}
+                                  className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.5 font-mono font-medium text-emerald-700 dark:text-emerald-300 shadow-2xs"
+                                >
+                                  <Banknote className="size-2.5" />
+                                  <span>CASH: {inr(amt)}</span>
+                                </span>
+                              );
+                            }
+                            if (
+                              sm.includes("UPI") ||
+                              sm.includes("GPAY") ||
+                              sm.includes("PHONEPE") ||
+                              sm.includes("PAYTM") ||
+                              sm.includes("QR")
+                            ) {
+                              return (
+                                <span
+                                  key={s.id || idx}
+                                  className="inline-flex items-center gap-1 rounded-md bg-purple-500/15 border border-purple-500/30 px-1.5 py-0.5 font-mono font-medium text-purple-700 dark:text-purple-300 shadow-2xs"
+                                >
+                                  <QrCode className="size-2.5" />
+                                  <span>UPI: {inr(amt)}</span>
+                                </span>
+                              );
+                            }
+                            if (
+                              sm.includes("CARD") ||
+                              sm.includes("POS") ||
+                              sm.includes("DEBIT") ||
+                              sm.includes("CREDIT")
+                            ) {
+                              return (
+                                <span
+                                  key={s.id || idx}
+                                  className="inline-flex items-center gap-1 rounded-md bg-blue-500/15 border border-blue-500/30 px-1.5 py-0.5 font-mono font-medium text-blue-700 dark:text-blue-300 shadow-2xs"
+                                >
+                                  <CreditCard className="size-2.5" />
+                                  <span>CARD: {inr(amt)}</span>
+                                </span>
+                              );
+                            }
+                            if (sm.includes("COMPANY") || sm.includes("CORP")) {
+                              return (
+                                <span
+                                  key={s.id || idx}
+                                  className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.5 font-mono font-medium text-amber-800 dark:text-amber-300 shadow-2xs"
+                                >
+                                  <Building2 className="size-2.5" />
+                                  <span>COMPANY: {inr(amt)}</span>
+                                </span>
+                              );
+                            }
+                            if (
+                              sm.includes("BANK") ||
+                              sm.includes("TRANSFER") ||
+                              sm.includes("NEFT") ||
+                              sm.includes("RTGS") ||
+                              sm.includes("IMPS")
+                            ) {
+                              return (
+                                <span
+                                  key={s.id || idx}
+                                  className="inline-flex items-center gap-1 rounded-md bg-indigo-500/15 border border-indigo-500/30 px-1.5 py-0.5 font-mono font-medium text-indigo-700 dark:text-indigo-300 shadow-2xs"
+                                >
+                                  <Landmark className="size-2.5" />
+                                  <span>BANK: {inr(amt)}</span>
+                                </span>
+                              );
+                            }
+                            return (
+                              <span
+                                key={s.id || idx}
+                                className="inline-flex items-center gap-1 rounded-md bg-secondary border border-border px-1.5 py-0.5 font-mono font-medium text-muted-foreground shadow-2xs"
+                              >
+                                <span>{sm}: {inr(amt)}</span>
+                              </span>
+                            );
+                          })}
                         </div>
                       </div>
                     ) : tx.channel === "COMPANY" || tx.companyName ? (

@@ -34,7 +34,9 @@ import {
   Percent,
   UserCheck,
   Edit3,
+  Layers,
 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 export const Route = createFileRoute("/_shell/billing")({
   head: () => ({
@@ -976,6 +978,12 @@ function BillingPage() {
                 const fin = getReservationFinancials(r);
                 const invoiceNum = getSequentialInvoiceNumber(r, reservations, settings);
 
+                const rSplits = paymentSplits.filter(
+                  (s) => s.reservation_id === r.id || (fin.payment && s.payment_id === fin.payment.id)
+                );
+                const rawMethod = (fin.payment?.payment_method || "").toUpperCase();
+                const isSplit = rSplits.length > 1 || rawMethod.includes("SPLIT");
+
                 return (
                   <TableRow key={r.id} className="hover:bg-accent/40">
                     <TableCell className="font-mono text-xs font-bold text-gold">
@@ -1045,9 +1053,35 @@ function BillingPage() {
 
                     <TableCell>
                       <div className="font-bold text-emerald-600">{inr(fin.paid)}</div>
-                      <div className="text-[10px] text-muted-foreground">
-                        {fin.payment?.payment_method ? `(${fin.payment.payment_method})` : "Unsettled"}
-                      </div>
+                      {isSplit && rSplits.length > 0 ? (
+                        <div className="mt-1 space-y-1">
+                          <Badge
+                            variant="outline"
+                            className="bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-400/60 text-[9.5px] font-bold flex items-center gap-1 w-fit shadow-2xs py-0.5 px-1.5"
+                          >
+                            <Layers className="size-2.5 text-purple-600 dark:text-purple-400" />
+                            <span>Split ({rSplits.length})</span>
+                          </Badge>
+                          <div className="flex flex-wrap items-center gap-1 text-[9.5px]">
+                            {rSplits.map((s: any, idx: number) => {
+                              const sm = (s.method || "CASH").toUpperCase();
+                              const amt = Number(s.amount) || 0;
+                              return (
+                                <span
+                                  key={s.id || idx}
+                                  className="inline-flex items-center gap-0.5 rounded px-1 py-0.2 bg-secondary/80 border border-border text-[9px] font-mono text-foreground"
+                                >
+                                  <strong>{sm}</strong>: {inr(amt)}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-[10px] text-muted-foreground">
+                          {fin.payment?.payment_method ? `(${fin.payment.payment_method})` : "Unsettled"}
+                        </div>
+                      )}
                     </TableCell>
 
                     <TableCell className={fin.balance > 0 ? "font-bold text-amber-600" : "text-muted-foreground text-xs"}>

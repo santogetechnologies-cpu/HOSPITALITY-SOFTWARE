@@ -6,7 +6,9 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { usePms } from '@/lib/pms-store'
 import { inr } from '@/lib/pms-data'
-import { Banknote, Search, CreditCard, CheckCircle2, Clock, ShieldAlert } from 'lucide-react'
+import { Banknote, Search, CreditCard, CheckCircle2, Clock, ShieldAlert, Layers, QrCode, Building2, Landmark } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 
@@ -15,7 +17,7 @@ export const Route = createFileRoute('/_shell/payment-history')({
 })
 
 function PaymentHistoryPage() {
-  const { payments, reservations, guests, rooms, discounts, deletePayment, session } = usePms();
+  const { payments, paymentSplits, reservations, guests, rooms, discounts, deletePayment, session } = usePms();
   const isAdmin = session?.role === "SUPER_ADMIN" || session?.role === "GM" || !session;
   const [q, setQ] = React.useState("");
   const [filter, setFilter] = React.useState<string>("all");
@@ -188,6 +190,12 @@ function PaymentHistoryPage() {
               const isSettled = isComplimentary || (balance === 0 && total > 0) || p.status === 'COMPLETED';
               const folioId = String(p.id || 'FOLIO').slice(0, 10).toUpperCase();
 
+              const rawSplits = paymentSplits.filter(
+                (s) => (p.reservation_id && s.reservation_id === p.reservation_id) || s.payment_id === p.id
+              );
+              const rawMethod = (p.payment_method || "CASH").toUpperCase();
+              const isSplit = rawSplits.length > 1 || rawMethod.includes("SPLIT");
+
               return (
                 <TableRow key={p.id}>
                   <TableCell className="font-mono text-xs font-semibold text-gold">
@@ -218,7 +226,107 @@ function PaymentHistoryPage() {
                   <TableCell className={balance > 0 ? "font-semibold text-warning" : "text-muted-foreground"}>
                     {balance > 0 ? inr(balance) : "₹0.00"}
                   </TableCell>
-                  <TableCell className="text-xs font-medium">{p.payment_method || "CASH / UPI"}</TableCell>
+                  <TableCell>
+                    {isSplit && rawSplits.length > 0 ? (
+                      <div className="space-y-1.5 py-0.5">
+                        <Badge
+                          variant="outline"
+                          className="bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-400/60 text-[10.5px] font-bold flex items-center gap-1 w-fit shadow-2xs py-0.5 px-2"
+                        >
+                          <Layers className="size-3 text-purple-600 dark:text-purple-400" />
+                          <span>Split ({rawSplits.length} modes)</span>
+                        </Badge>
+                        <div className="flex flex-wrap items-center gap-1 text-[10px]">
+                          {rawSplits.map((s: any, idx: number) => {
+                            const sm = (s.method || "CASH").toUpperCase();
+                            const amt = Number(s.amount) || 0;
+                            if (sm.includes("CASH")) {
+                              return (
+                                <span
+                                  key={s.id || idx}
+                                  className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.5 font-mono font-medium text-emerald-700 dark:text-emerald-300 shadow-2xs"
+                                >
+                                  <Banknote className="size-2.5" />
+                                  <span>CASH: {inr(amt)}</span>
+                                </span>
+                              );
+                            }
+                            if (
+                              sm.includes("UPI") ||
+                              sm.includes("GPAY") ||
+                              sm.includes("PHONEPE") ||
+                              sm.includes("PAYTM") ||
+                              sm.includes("QR")
+                            ) {
+                              return (
+                                <span
+                                  key={s.id || idx}
+                                  className="inline-flex items-center gap-1 rounded-md bg-purple-500/15 border border-purple-500/30 px-1.5 py-0.5 font-mono font-medium text-purple-700 dark:text-purple-300 shadow-2xs"
+                                >
+                                  <QrCode className="size-2.5" />
+                                  <span>UPI: {inr(amt)}</span>
+                                </span>
+                              );
+                            }
+                            if (
+                              sm.includes("CARD") ||
+                              sm.includes("POS") ||
+                              sm.includes("DEBIT") ||
+                              sm.includes("CREDIT")
+                            ) {
+                              return (
+                                <span
+                                  key={s.id || idx}
+                                  className="inline-flex items-center gap-1 rounded-md bg-blue-500/15 border border-blue-500/30 px-1.5 py-0.5 font-mono font-medium text-blue-700 dark:text-blue-300 shadow-2xs"
+                                >
+                                  <CreditCard className="size-2.5" />
+                                  <span>CARD: {inr(amt)}</span>
+                                </span>
+                              );
+                            }
+                            if (sm.includes("COMPANY") || sm.includes("CORP")) {
+                              return (
+                                <span
+                                  key={s.id || idx}
+                                  className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.5 font-mono font-medium text-amber-800 dark:text-amber-300 shadow-2xs"
+                                >
+                                  <Building2 className="size-2.5" />
+                                  <span>COMPANY: {inr(amt)}</span>
+                                </span>
+                              );
+                            }
+                            if (
+                              sm.includes("BANK") ||
+                              sm.includes("TRANSFER") ||
+                              sm.includes("NEFT") ||
+                              sm.includes("RTGS") ||
+                              sm.includes("IMPS")
+                            ) {
+                              return (
+                                <span
+                                  key={s.id || idx}
+                                  className="inline-flex items-center gap-1 rounded-md bg-indigo-500/15 border border-indigo-500/30 px-1.5 py-0.5 font-mono font-medium text-indigo-700 dark:text-indigo-300 shadow-2xs"
+                                >
+                                  <Landmark className="size-2.5" />
+                                  <span>BANK: {inr(amt)}</span>
+                                </span>
+                              );
+                            }
+                            return (
+                              <span
+                                key={s.id || idx}
+                                className="inline-flex items-center gap-1 rounded-md bg-secondary border border-border px-1.5 py-0.5 font-mono font-medium text-muted-foreground shadow-2xs"
+                              >
+                                <span>{sm}: {inr(amt)}</span>
+                              </span>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="text-xs font-medium">{p.payment_method || "CASH"}</span>
+                    )}
+                  </TableCell>
                   <TableCell>
                     <Pill tone={isComplimentary ? 'info' : isSettled ? 'success' : balance > 0 && paid > 0 ? 'warning' : p.status === 'FROZEN' ? 'info' : 'destructive'}>
                       {isComplimentary ? 'COMPLIMENTARY' : isSettled ? 'COMPLETED' : balance > 0 && paid > 0 ? 'PARTIAL' : (p.status || 'PENDING')}
