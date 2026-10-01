@@ -128,13 +128,16 @@ export function ExpensesPage() {
   // Financial Metrics
   const totalFilteredAmount = filteredExpenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
   
-  // Specifically track Salary Advance payouts
+  // Specifically track Salary Advance payouts (mutually exclusive categorization)
+  const isSalaryExp = (e: any) =>
+    e.category?.toLowerCase() === "salary advance" || e.description?.toLowerCase().includes("salary");
+
   const salaryAdvanceAmount = filteredExpenses
-    .filter((e) => e.category?.toLowerCase() === "salary advance" || e.description?.toLowerCase().includes("salary"))
+    .filter(isSalaryExp)
     .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
 
   const operationalAmount = filteredExpenses
-    .filter((e) => e.category?.toLowerCase() === "operational" || e.category?.toLowerCase() === "maintenance")
+    .filter((e) => !isSalaryExp(e) && (e.category?.toLowerCase() === "operational" || e.category?.toLowerCase() === "maintenance" || e.category?.toLowerCase() === "f&b supplies" || !e.category))
     .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
 
   const handleCleanDuplicates = async () => {

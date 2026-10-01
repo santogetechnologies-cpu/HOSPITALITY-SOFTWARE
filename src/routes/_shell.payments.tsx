@@ -478,7 +478,9 @@ function PaymentsDashboard() {
     // Operational expenses in timeframe
     const totalExpenses = expenses
       .filter((e) => {
-        const d = new Date(e.date || todayStr);
+        const rawDate = e.created_at || e.date;
+        const d = rawDate ? new Date(rawDate) : null;
+        if (!d || isNaN(d.getTime())) return false;
         return d >= startDate && d <= endDate;
       })
       .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
