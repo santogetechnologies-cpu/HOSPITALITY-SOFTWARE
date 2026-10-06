@@ -39,6 +39,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { OfficialGstEInvoice } from "@/components/pms/official-gst-einvoice";
 
 export const Route = createFileRoute("/_shell/billing")({
   head: () => ({
@@ -124,6 +125,7 @@ function BillingPage() {
   const [selectedResForBill, setSelectedResForBill] = React.useState<any>(null);
   const [paperSize, setPaperSize] = React.useState<PaperSize>("A4");
   const [includeGst, setIncludeGst] = React.useState(true);
+  const [invoiceLayout, setInvoiceLayout] = React.useState<"STANDARD" | "GOVT_EINVOICE">("STANDARD");
 
   // Comprehensive Edit Bill Modal State (Accessible to ALL logins)
   const [editModalOpen, setEditModalOpen] = React.useState(false);
@@ -2000,18 +2002,35 @@ function BillingPage() {
 
             return (
               <div className="space-y-6 pt-2">
-                {/* Stay Date & Guest Details Toolbar */}
+                {/* Stay Date & Guest Details Toolbar & Layout Switcher */}
                 <div className="rounded-xl border border-border bg-secondary/30 p-3 flex flex-wrap items-center justify-between gap-3 text-xs">
-                  <div className="flex items-center gap-2">
-                    <Clock className="size-4 text-gold" />
-                    <div>
-                      <span className="font-semibold text-foreground">Stay Dates & Times:</span>{" "}
-                      <span className="text-muted-foreground font-medium">
-                        {checkInFormatted} → {checkOutFormatted} ({nightsCount} Night{nightsCount !== 1 ? "s" : ""})
-                      </span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex items-center bg-background/80 p-0.5 rounded-lg border border-border">
+                      <button
+                        type="button"
+                        onClick={() => setInvoiceLayout("STANDARD")}
+                        className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-all ${
+                          invoiceLayout === "STANDARD"
+                            ? "bg-brass text-gold-foreground shadow-xs"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        Standard Hotel Folio
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setInvoiceLayout("GOVT_EINVOICE")}
+                        className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-all flex items-center gap-1 ${
+                          invoiceLayout === "GOVT_EINVOICE"
+                            ? "bg-amber-500 text-neutral-950 font-bold shadow-xs"
+                            : "text-amber-400 hover:text-amber-300"
+                        }`}
+                      >
+                        <QrCode className="size-3" /> Official GST e-Invoice (NIC-IRP)
+                      </button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <Button
                       type="button"
                       size="sm"
@@ -2189,20 +2208,45 @@ function BillingPage() {
                     </div>
                   </div>
                 )}
-                {/* Live Bill Preview Box with Exact HOTEL DRB Format */}
+                {/* Live Bill Preview Box with Switchable Layouts */}
                 <div className="overflow-x-auto bg-muted/40 p-4 rounded-xl border border-border flex justify-center">
-                  <div
-                    id="printable-bill"
-                    className="w-full max-w-[760px] bg-white text-black p-8 rounded-lg shadow-sm border border-neutral-300 font-sans text-sm space-y-6"
-                  >
-                    {/* Header */}
-                    <div className="text-center space-y-1 border-b-2 border-neutral-900 pb-4">
-                      <h1 className="text-2xl font-black tracking-wide text-neutral-900">{hotelInfo.name}</h1>
-                      <h3 className="text-sm font-bold tracking-wider text-neutral-800">{hotelInfo.city}</h3>
-                      <p className="text-xs text-neutral-700 font-medium">{hotelInfo.address}</p>
-                      <p className="text-xs text-neutral-800 font-semibold">
-                        Phone: {hotelInfo.phone} | Mobile: {hotelInfo.mobile}
-                      </p>
+                  {invoiceLayout === "GOVT_EINVOICE" ? (
+                    <div id="printable-bill" className="w-full flex justify-center">
+                      <OfficialGstEInvoice
+                        invoiceNo={invoiceNum}
+                        billDate={invoiceDateStr}
+                        rawDate={selectedResForBill.start_time || selectedResForBill.booking_date}
+                        guestName={guest?.name || (selectedResForBill as any).customer_name || "Guest"}
+                        companyName={(selectedResForBill as any).company_name || (guest as any)?.company_name}
+                        guestGst={(selectedResForBill as any).gst_number || guest?.gst_number}
+                        guestAddress={(selectedResForBill as any).address || guest?.address}
+                        roomName={room?.room_name || (fin.isPartyHall ? "Party Hall" : "STD AC")}
+                        roomNumber={room?.room_number || (fin.isPartyHall ? "Banquet" : "101")}
+                        isPartyHall={fin.isPartyHall}
+                        eventType={selectedResForBill.event_type}
+                        nights={nightsCount}
+                        taxableValue={fin.taxableValue}
+                        cgst={fin.cgst}
+                        sgst={fin.sgst}
+                        igst={0}
+                        grandTotal={fin.grandTotal}
+                        paymentMode={paymentModeStr}
+                        hotelProfile={settings.hotelProfile}
+                      />
+                    </div>
+                  ) : (
+                    <div
+                      id="printable-bill"
+                      className="w-full max-w-[760px] bg-white text-black p-8 rounded-lg shadow-sm border border-neutral-300 font-sans text-sm space-y-6"
+                    >
+                      {/* Header */}
+                      <div className="text-center space-y-1 border-b-2 border-neutral-900 pb-4">
+                        <h1 className="text-2xl font-black tracking-wide text-neutral-900">{hotelInfo.name}</h1>
+                        <h3 className="text-sm font-bold tracking-wider text-neutral-800">{hotelInfo.city}</h3>
+                        <p className="text-xs text-neutral-700 font-medium">{hotelInfo.address}</p>
+                        <p className="text-xs text-neutral-800 font-semibold">
+                          Phone: {hotelInfo.phone} | Mobile: {hotelInfo.mobile}
+                        </p>
                       <div className="text-xs font-bold text-neutral-900 pt-1">
                         GSTIN: {hotelInfo.gstin}
                       </div>
@@ -2508,6 +2552,7 @@ function BillingPage() {
                       </div>
                     </div>
                   </div>
+                  )}
                 </div>
 
                 <DialogFooter className="flex justify-between items-center sm:justify-between">
