@@ -41,20 +41,38 @@ function NotFoundComponent() {
 function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   console.error(error);
   const router = useRouter();
+
+  const isChunkError =
+    error?.message?.includes("Failed to fetch dynamically imported module") ||
+    error?.message?.includes("error loading dynamically imported module") ||
+    error?.message?.includes("Importing a module script failed");
+
   useEffect(() => {
     reportLovableError(error, { boundary: "tanstack_root_error_component" });
-  }, [error]);
+
+    if (isChunkError && typeof window !== "undefined") {
+      const storageKey = "pms_chunk_reload_timestamp";
+      const lastReload = sessionStorage.getItem(storageKey);
+      const now = Date.now();
+      if (!lastReload || now - parseInt(lastReload, 10) > 10000) {
+        sessionStorage.setItem(storageKey, String(now));
+        window.location.reload();
+      }
+    }
+  }, [error, isChunkError]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
         <h1 className="text-xl font-semibold tracking-tight text-foreground">
-          This screen didn't load
+          {isChunkError ? "New Version Available" : "This screen didn't load"}
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Something went wrong. Try again or return to the dashboard.
+          {isChunkError
+            ? "A newer version of the application was published. Please refresh to load the latest updates."
+            : "Something went wrong. Try again or return to the dashboard."}
         </p>
-        {error?.message && (
+        {error?.message && !isChunkError && (
           <p className="mt-3 rounded-lg bg-destructive/10 p-2 font-mono text-xs text-destructive">
             {error.message}
           </p>
@@ -62,12 +80,16 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button
             onClick={() => {
-              router.invalidate();
-              reset();
+              if (isChunkError) {
+                window.location.reload();
+              } else {
+                router.invalidate();
+                reset();
+              }
             }}
             className="inline-flex items-center justify-center rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
-            Try again
+            {isChunkError ? "Refresh Page" : "Try again"}
           </button>
           <a
             href="/"
@@ -131,6 +153,24 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+
+  useEffect(() => {
+    const handlePreloadError = () => {
+      if (typeof window === "undefined") return;
+      const storageKey = "pms_preload_reload_timestamp";
+      const lastReload = sessionStorage.getItem(storageKey);
+      const now = Date.now();
+      if (!lastReload || now - parseInt(lastReload, 10) > 10000) {
+        sessionStorage.setItem(storageKey, String(now));
+        window.location.reload();
+      }
+    };
+
+    window.addEventListener("vite:preloadError", handlePreloadError);
+    return () => {
+      window.removeEventListener("vite:preloadError", handlePreloadError);
+    };
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>
