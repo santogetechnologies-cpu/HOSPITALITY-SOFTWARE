@@ -15,6 +15,7 @@ import { useSettings } from "@/lib/use-settings";
 import { getReservationFinancials } from "@/lib/financials";
 import { getSequentialInvoiceNumber } from "@/lib/invoice-utils";
 import { OfficialGstEInvoice } from "@/components/pms/official-gst-einvoice";
+import { printElementById } from "@/lib/print-utils";
 import { toast } from "sonner";
 import {
   Printer,
@@ -453,7 +454,7 @@ export function GstReportsPage() {
   };
 
   const handlePrintStatement = () => {
-    window.print();
+    printElementById("statement-ledger-print-box", `GST_Sales_Statement_Hotel_DRB_${fromDate}_to_${toDate}`);
   };
 
   // Open single bill modal
@@ -469,11 +470,7 @@ export function GstReportsPage() {
       return;
     }
     toast.info(`Preparing separate GST e-Invoices for all ${statementRows.length} bills...`);
-    setIsBatchPrinting(true);
-    setTimeout(() => {
-      window.print();
-      setIsBatchPrinting(false);
-    }, 400);
+    printElementById("batch-invoices-print-container", `HOTEL_DRB_ALL_GST_INVOICES_${fromDate}_to_${toDate}`);
   };
 
   const selectedBill = selectedBillIndex !== null ? statementRows[selectedBillIndex] : null;
@@ -741,7 +738,7 @@ export function GstReportsPage() {
 
       {/* VIEW MODE 1: TABULAR STATEMENT (with Action to view e-Invoice on each row) */}
       {viewMode === "TABLE" && (
-        <div className="rounded-2xl border border-border bg-card p-6 shadow-xs print:p-0 print:border-none print:shadow-none font-sans">
+        <div id="statement-ledger-print-box" className="rounded-2xl border border-border bg-card p-6 shadow-xs print:p-0 print:border-none print:shadow-none font-sans">
           {/* Statement Header */}
           <div className="text-center space-y-1 border-b border-border pb-4 mb-4">
             <h2 className="text-xl sm:text-2xl font-black tracking-tight text-foreground">
@@ -1046,7 +1043,7 @@ export function GstReportsPage() {
               </DialogHeader>
 
               {/* Render Official GST e-Invoice */}
-              <div className="py-2 flex justify-center bg-muted/20 p-2 sm:p-4 rounded-xl border border-border">
+              <div id="einvoice-single-print-box" className="py-2 flex justify-center bg-muted/20 p-2 sm:p-4 rounded-xl border border-border">
                 <OfficialGstEInvoice
                   invoiceNo={selectedBill.invoiceNo}
                   billDate={selectedBill.billDate}
@@ -1103,7 +1100,7 @@ export function GstReportsPage() {
                   </Button>
                   <Button
                     size="sm"
-                    onClick={() => window.print()}
+                    onClick={() => printElementById("einvoice-single-print-box", `GST_Invoice_${selectedBill.invoiceNo}_Hotel_DRB`)}
                     className="bg-brass text-gold-foreground font-bold rounded-xl text-xs h-8"
                   >
                     <Printer className="size-3.5 mr-1.5" /> Print This Invoice
@@ -1157,13 +1154,13 @@ export function GstReportsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* MULTI-PAGE PRINT CONTAINER (Active during print when batch printing all separate invoices) */}
-      <div className="hidden print:block font-sans">
+      {/* MULTI-PAGE PRINT CONTAINER (Used by printElementById when batch printing all separate invoices) */}
+      <div id="batch-invoices-print-container" style={{ display: "none" }} className="font-sans">
         {statementRows.map((r, i) => (
           <div
             key={`print-${r.id || i}`}
-            style={{ pageBreakAfter: i === statementRows.length - 1 ? "auto" : "always", breakAfter: i === statementRows.length - 1 ? "auto" : "page" }}
-            className="w-full pb-6 pt-2"
+            style={{ pageBreakAfter: i === statementRows.length - 1 ? "auto" : "always", breakAfter: i === statementRows.length - 1 ? "auto" : "page", marginBottom: "20px" }}
+            className="w-full pb-6 pt-2 page-break"
           >
             <OfficialGstEInvoice
               invoiceNo={r.invoiceNo}

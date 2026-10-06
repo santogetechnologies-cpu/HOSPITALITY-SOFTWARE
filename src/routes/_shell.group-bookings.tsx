@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { usePms } from "@/lib/pms-store";
 import { inr, type GroupBooking, type Reservation, type Room } from "@/lib/pms-data";
 import { SplitPaymentInput, type SplitRow } from "@/components/pms/split-payment-input";
+import { printElementById } from "@/lib/print-utils";
 import { toast } from "sonner";
 import {
   Users,
@@ -1794,8 +1795,8 @@ export function GroupBookingsPage() {
                 </Button>
                 <Button
                   size="sm"
-                  onClick={() => window.print()}
-                  className="bg-brass text-gold-foreground hover:opacity-90"
+                  onClick={() => printElementById("printableGroupBill", `Group_Master_Statement_${selectedGroup.name || "Booking"}_HOTEL_DRB`)}
+                  className="bg-brass text-gold-foreground hover:opacity-90 font-bold"
                 >
                   <Printer className="size-3.5 mr-1" /> Print Official Statement
                 </Button>
