@@ -32,6 +32,7 @@ import {
   DollarSign,
   Download,
   FileSpreadsheet,
+  FileJson,
   Calculator,
   ShieldCheck,
   Building2,
@@ -58,6 +59,18 @@ type Timeframe = "1D" | "1W" | "1M" | "ALL" | "CUSTOM";
 
 function downloadCSV(csvContent: string, filename: string) {
   const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.setAttribute("href", url);
+  link.setAttribute("download", filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+function downloadJSON(data: object, filename: string) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.setAttribute("href", url);
@@ -589,25 +602,139 @@ function PaymentsDashboard() {
       "Cess Amount"
     ];
 
-    const rows = transactions.map((tx) => [
-      `"${tx.guestGstin || "Unregistered"}"`,
-      `"${tx.guestName.replace(/"/g, '""')}"`,
-      `"${tx.invoiceNum}"`,
-      `"${tx.date}"`,
-      tx.grandTotal.toFixed(2),
-      `"33-Tamil Nadu"`,
-      `"N"`,
-      `"5%"`,
-      tx.guestGstin ? `"B2B Regular"` : `"Regular"`,
-      `""`,
-      `"5.00"`,
-      tx.taxableBase.toFixed(2),
-      `"0.00"`
-    ]);
+    const rows = transactions.map((tx) => {
+      // Sanitize name: strip chars that break VBA file I/O (/ \ : * ? " < > |)
+      const safeName = tx.guestName.replace(/[/\\:*?"<>|]/g, "").replace(/"/g, '""');
+      // GST portal expects blank cell for B2C — NOT the word "Unregistered"
+      const gstin = tx.guestGstin ? `"${tx.guestGstin}"` : `""`;
+      return [
+        gstin,
+        `"${safeName}"`,
+        `"${tx.invoiceNum}"`,
+        `"${tx.date}"`,
+        tx.grandTotal.toFixed(2),
+        `"33-Tamil Nadu"`,
+        `"N"`,
+        `"5%"`,
+        tx.guestGstin ? `"B2B Regular"` : `"Regular"`,
+        `""`,
+        `"5.00"`,
+        tx.taxableBase.toFixed(2),
+        `"0.00"`
+      ];
+    });
 
     const csvString = [headers.join(","), ...rows.map((r) => r.join(","))].join("\r\n");
     downloadCSV(csvString, `HOTEL_DRB_GSTR1_Return_${todayStr}.csv`);
     toast.success("GSTR-1 Monthly Tax Return format exported successfully!");
+  };
+
+  // Export 3: GSTR-1 JSON — direct GST portal upload (no Excel/VBA needed)
+  const handleExportGSTR1JSON = () => {
+    const hotelGstin = settings?.hotelProfile?.gstin || "33ABQPD6510M4ZI";
+    const fp = todayStr.slice(0, 7).split("-").reverse().join(""); // e.g. "102026"
+
+    // B2B invoices — buyer has a valid GSTIN
+    const b2bMap: Record<string, any[]> = {};
+    // B2CS invoices — unregistered buyers
+    const b2csItems: any[] = [];
+
+    transactions.forEach((tx) => {
+      // Sanitize name: strip chars illegal in JSON strings that break portal parsing
+      const safeName = tx.guestName.replace(/[\u0000-\u001F]/g, "").trim();
+      const gstin = (tx.guestGstin || "").trim().toUpperCase();
+
+      if (gstin && gstin.length === 15) {
+        // B2B entry
+        if (!b2bMap[gstin]) b2bMap[gstin] = [];
+        b2bMap[gstin].push({
+          inum: tx.invoiceNum,
+          idt: tx.date,           // "YYYY-MM-DD"
+          val: parseFloat(tx.grandTotal.toFixed(2)),
+          pos: "33",              // Tamil Nadu state code
+          rchrg: "N",
+          inv_typ: "R",           // Regular
+          itms: [
+            {
+              num: 1,
+              itm_det: {
+                ty: "S",
+                txval: parseFloat(tx.taxableBase.toFixed(2)),
+                rt: 5,
+                camt: parseFloat(tx.cgst.toFixed(2)),
+                samt: parseFloat(tx.sgst.toFixed(2)),
+                csamt: 0
+              }
+            }
+          ]
+        });
+      } else {
+        // B2CS — aggregate by rate & state (GSTN expects aggregated, not per-invoice)
+        b2csItems.push({
+          sply_ty: "INTRA",
+          pos: "33",
+          typ: "OE",              // Others / Exempted
+          rt: 5,
+          txval: parseFloat(tx.taxableBase.toFixed(2)),
+          camt: parseFloat(tx.cgst.toFixed(2)),
+          samt: parseFloat(tx.sgst.toFixed(2)),
+          csamt: 0
+        });
+      }
+    });
+
+    // Flatten B2B map into GSTN array format
+    const b2b = Object.entries(b2bMap).map(([ctin, inv]) => ({ ctin, inv }));
+
+    // Aggregate B2CS by rate+pos+supply type (GSTN requires one row per combination)
+    const b2csAgg = b2csItems.reduce(
+      (acc, item) => {
+        const key = `${item.rt}_${item.pos}_${item.sply_ty}`;
+        if (!acc[key]) {
+          acc[key] = { ...item, txval: 0, camt: 0, samt: 0, csamt: 0 };
+        }
+        acc[key].txval = parseFloat((acc[key].txval + item.txval).toFixed(2));
+        acc[key].camt  = parseFloat((acc[key].camt  + item.camt ).toFixed(2));
+        acc[key].samt  = parseFloat((acc[key].samt  + item.samt ).toFixed(2));
+        return acc;
+      },
+      {} as Record<string, any>
+    );
+
+    const gstrJson = {
+      gstin: hotelGstin,
+      fp,                         // filing period e.g. "102026"
+      b2b,
+      b2cs: Object.values(b2csAgg),
+      cdnr: [],
+      cdnur: [],
+      exp: [],
+      b2ba: [],
+      cdnra: [],
+      cdnura: [],
+      expa: [],
+      at: [],
+      txpd: [],
+      hsn: {
+        data: [
+          {
+            num: 1,
+            hsn_sc: "996311",   // SAC for short-stay accommodation
+            desc: "Room / Accommodation Services",
+            uqc: "OTH",
+            cnt: transactions.length,
+            txval: parseFloat(metrics.netTaxableTurnover.toFixed(2)),
+            rt: 5,
+            camt: parseFloat(metrics.totalCgst.toFixed(2)),
+            samt: parseFloat(metrics.totalSgst.toFixed(2)),
+            csamt: 0
+          }
+        ]
+      }
+    };
+
+    downloadJSON(gstrJson, `HOTEL_DRB_GSTR1_${fp}.json`);
+    toast.success("GSTR-1 JSON ready! Upload directly to GST Portal — no Excel needed.");
   };
 
   const handleOpenCollectModal = (tx: any) => {
@@ -887,15 +1014,25 @@ function PaymentsDashboard() {
 
             <div className="pt-2 border-t border-border space-y-2">
               <Button
+                variant="default"
+                size="sm"
+                id="btn-export-gstr1-json"
+                className="w-full text-xs font-semibold bg-gold/90 hover:bg-gold text-white"
+                onClick={handleExportGSTR1JSON}
+              >
+                <FileJson className="mr-1.5 size-3.5" /> Download GSTR-1 JSON (GST Portal)
+              </Button>
+              <Button
                 variant="outline"
                 size="sm"
+                id="btn-export-gstr1-csv"
                 className="w-full text-xs font-semibold border-gold/40 text-gold hover:bg-gold/10"
                 onClick={handleExportGSTR1}
               >
                 <Download className="mr-1.5 size-3.5" /> Download GSTR-1 CSV Return
               </Button>
               <p className="text-[11px] text-muted-foreground text-center">
-                *Ready for GST Portal monthly / quarterly filing upload
+                JSON: upload directly to GST Portal · CSV: for Excel records
               </p>
             </div>
           </div>
