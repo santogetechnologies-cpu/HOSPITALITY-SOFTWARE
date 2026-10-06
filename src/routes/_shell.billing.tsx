@@ -35,6 +35,8 @@ import {
   UserCheck,
   Edit3,
   Layers,
+  FileJson,
+  ShieldCheck,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
@@ -51,6 +53,18 @@ export const Route = createFileRoute("/_shell/billing")({
 
 type Timeframe = "1D" | "1W" | "1M" | "ALL" | "CUSTOM";
 type PaperSize = "A4" | "A3" | "THERMAL_80" | "THERMAL_58" | "DOT_MATRIX";
+
+function downloadJSON(data: object, filename: string) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.setAttribute("href", url);
+  link.setAttribute("download", filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
 
 function numberToWordsINR(amount: number): string {
   const rounded = Math.round(amount);
@@ -289,6 +303,97 @@ function BillingPage() {
       settlementRate,
     };
   }, [filteredReservations]);
+
+  // GSTR-1 JSON Export — direct GST portal upload, no Excel/VBA needed
+  const handleExportGSTR1JSON = () => {
+    const hotelGstin = settings?.hotelProfile?.gstin || "33ABQPD6510M4ZI";
+    const fp = todayStr.slice(0, 7).split("-").reverse().join(""); // e.g. "102026"
+
+    const b2bMap: Record<string, any[]> = {};
+    const b2csItems: any[] = [];
+
+    filteredReservations.forEach((r) => {
+      const guest = getGuest(r.guest_id);
+      const fin = getReservationFinancials(r);
+      const invoiceNum = getSequentialInvoiceNumber(r, reservations, settings);
+      const dateStr = r.booking_date || (r.start_time ? r.start_time.split("T")[0] : todayStr);
+      const gstin = ((r as any).gst_number || guest?.gst_number || "").trim().toUpperCase();
+
+      if (gstin && gstin.length === 15) {
+        if (!b2bMap[gstin]) b2bMap[gstin] = [];
+        b2bMap[gstin].push({
+          inum: invoiceNum,
+          idt: dateStr,
+          val: parseFloat(fin.grandTotal.toFixed(2)),
+          pos: "33",
+          rchrg: "N",
+          inv_typ: "R",
+          itms: [{
+            num: 1,
+            itm_det: {
+              ty: "S",
+              txval: parseFloat(fin.taxableValue.toFixed(2)),
+              rt: 5,
+              camt: parseFloat(fin.cgst.toFixed(2)),
+              samt: parseFloat(fin.sgst.toFixed(2)),
+              csamt: 0
+            }
+          }]
+        });
+      } else {
+        b2csItems.push({
+          sply_ty: "INTRA",
+          pos: "33",
+          typ: "OE",
+          rt: 5,
+          txval: parseFloat(fin.taxableValue.toFixed(2)),
+          camt: parseFloat(fin.cgst.toFixed(2)),
+          samt: parseFloat(fin.sgst.toFixed(2)),
+          csamt: 0
+        });
+      }
+    });
+
+    const b2b = Object.entries(b2bMap).map(([ctin, inv]) => ({ ctin, inv }));
+
+    const b2csAgg = b2csItems.reduce((acc, item) => {
+      const key = `${item.rt}_${item.pos}_${item.sply_ty}`;
+      if (!acc[key]) acc[key] = { ...item, txval: 0, camt: 0, samt: 0, csamt: 0 };
+      acc[key].txval = parseFloat((acc[key].txval + item.txval).toFixed(2));
+      acc[key].camt  = parseFloat((acc[key].camt  + item.camt ).toFixed(2));
+      acc[key].samt  = parseFloat((acc[key].samt  + item.samt ).toFixed(2));
+      return acc;
+    }, {} as Record<string, any>);
+
+    const totalTaxable = filteredReservations.reduce((s, r) => s + getReservationFinancials(r).taxableValue, 0);
+    const totalCgst    = filteredReservations.reduce((s, r) => s + getReservationFinancials(r).cgst, 0);
+    const totalSgst    = filteredReservations.reduce((s, r) => s + getReservationFinancials(r).sgst, 0);
+
+    const gstrJson = {
+      gstin: hotelGstin,
+      fp,
+      b2b,
+      b2cs: Object.values(b2csAgg),
+      cdnr: [], cdnur: [], exp: [], b2ba: [], cdnra: [], cdnura: [], expa: [], at: [], txpd: [],
+      hsn: {
+        data: [{
+          num: 1,
+          hsn_sc: "996311",
+          desc: "Room / Accommodation Services",
+          uqc: "OTH",
+          cnt: filteredReservations.length,
+          txval: parseFloat(totalTaxable.toFixed(2)),
+          rt: 5,
+          camt: parseFloat(totalCgst.toFixed(2)),
+          samt: parseFloat(totalSgst.toFixed(2)),
+          csamt: 0
+        }]
+      }
+    };
+
+    downloadJSON(gstrJson, `HOTEL_DRB_GSTR1_${fp}.json`);
+    toast.success("GSTR-1 JSON downloaded! Upload directly to GST Portal — no Excel needed.");
+  };
 
   const handleOpenPrintBill = (r: (typeof reservations)[0]) => {
     setSelectedResForBill(r);
@@ -912,6 +1017,30 @@ function BillingPage() {
           tone="info"
           hint="Collected vs Net Billed"
         />
+      </div>
+
+      {/* GST Portal JSON Export Card */}
+      <div className="rounded-2xl border border-gold/30 bg-gold/5 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <div className="size-9 rounded-xl bg-gold/15 text-gold flex items-center justify-center shrink-0">
+            <ShieldCheck className="size-4.5" />
+          </div>
+          <div>
+            <div className="text-xs font-bold text-foreground uppercase tracking-wider">GST Portal Filing — GSTR-1</div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">
+              Hotel GSTIN: <span className="font-mono font-semibold text-foreground">33ABQPD6510M4ZI</span> &nbsp;·&nbsp; {filteredReservations.length} invoices in selected period
+            </div>
+            <div className="text-[11px] text-muted-foreground">JSON uploads directly to GST Portal — <span className="text-gold font-semibold">no Excel or VBA macro needed</span></div>
+          </div>
+        </div>
+        <Button
+          id="btn-billing-gstr1-json"
+          size="sm"
+          className="bg-gold/90 hover:bg-gold text-white font-bold shrink-0 rounded-xl shadow-sm"
+          onClick={handleExportGSTR1JSON}
+        >
+          <FileJson className="mr-1.5 size-4" /> Download GSTR-1 JSON
+        </Button>
       </div>
 
       {/* Filter and Search Bar */}
