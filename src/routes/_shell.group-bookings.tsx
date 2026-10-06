@@ -1699,49 +1699,54 @@ export function GroupBookingsPage() {
 
           {selectedGroup && (
             <div className="space-y-4 pt-2">
-              <div id="printableGroupBill" className="rounded-xl border border-border p-6 bg-background space-y-6 text-xs text-foreground font-sans print:p-0 print:border-none">
+              <div
+                id="printableGroupBill"
+                className="rounded-xl border border-neutral-300 p-6 bg-white space-y-6 text-xs text-black font-sans print:p-0 print:border-none shadow-xs"
+                style={{ color: "#000000", backgroundColor: "#ffffff" }}
+              >
                 {/* Header */}
-                <div className="flex justify-between items-start border-b border-border pb-4">
+                <div className="flex justify-between items-start border-b-2 border-neutral-800 pb-4">
                   <div>
-                    <h2 className="text-xl font-bold text-foreground tracking-tight">Hotel DRB</h2>
-                    <p className="text-muted-foreground text-[11px]">Luxury Lodging & Banquet Facility</p>
-                    <p className="text-muted-foreground text-[11px]">GSTIN: 33AAACD1234F1Z5 • State: 33-Tamil Nadu</p>
+                    <h2 className="text-2xl font-black text-black tracking-tight">Hotel DRB</h2>
+                    <p className="text-neutral-700 text-[11px] font-medium">Luxury Lodging & Banquet Facility</p>
+                    <p className="text-neutral-800 text-[11px] font-semibold">GSTIN: 33ABQPD6510M4ZI • State: 33-Tamil Nadu</p>
+                    <p className="text-neutral-600 text-[10px]">Market Road, Marthandam, Tamil Nadu 629165</p>
                   </div>
                   <div className="text-right">
-                    <div className="text-sm font-bold text-brass uppercase">Group Master Folio</div>
-                    <div className="text-[11px] font-mono text-muted-foreground">Ref: {selectedGroup.id}</div>
-                    <div className="text-[11px] text-muted-foreground">Date: {new Date().toLocaleDateString("en-IN")}</div>
+                    <div className="text-sm font-black text-neutral-900 uppercase tracking-wider">Group Master Tax Statement</div>
+                    <div className="text-[11px] font-mono font-bold text-neutral-700">Ref: {selectedGroup.id}</div>
+                    <div className="text-[11px] text-neutral-600">Date: {new Date().toLocaleDateString("en-IN")}</div>
                   </div>
                 </div>
 
                 {/* Group Details */}
-                <div className="grid grid-cols-2 gap-4 bg-muted/20 p-3 rounded-lg">
+                <div className="grid grid-cols-2 gap-4 bg-neutral-100 p-3 rounded-lg border border-neutral-300">
                   <div>
-                    <div className="text-[11px] text-muted-foreground">Group / Master Guest</div>
-                    <div className="font-bold text-sm">{selectedGroup.name}</div>
-                    <div className="text-[11px]">Contact: {selectedGroup.contact_name}</div>
-                    {selectedGroup.contact_phone && <div className="text-[11px]">Phone: {selectedGroup.contact_phone}</div>}
+                    <div className="text-[10px] uppercase font-bold text-neutral-600">Group / Master Guest</div>
+                    <div className="font-black text-sm text-black">{selectedGroup.name}</div>
+                    <div className="text-[11px] text-neutral-800">Contact: {selectedGroup.contact_name}</div>
+                    {selectedGroup.contact_phone && <div className="text-[11px] text-neutral-800">Phone: {selectedGroup.contact_phone}</div>}
                   </div>
                   <div className="text-right">
-                    <div className="text-[11px] text-muted-foreground">Group Status</div>
-                    <div className="font-semibold">{selectedGroup.status}</div>
-                    <div className="text-[11px] text-muted-foreground">Payer Strategy: {selectedGroup.payer_type}</div>
+                    <div className="text-[10px] uppercase font-bold text-neutral-600">Group Status</div>
+                    <div className="font-bold text-black">{selectedGroup.status}</div>
+                    <div className="text-[11px] text-neutral-700">Payer Strategy: {selectedGroup.payer_type}</div>
                   </div>
                 </div>
 
                 {/* Rooms Table */}
-                <table className="w-full border-collapse text-left text-xs">
+                <table className="w-full border border-neutral-400 border-collapse text-left text-xs">
                   <thead>
-                    <tr className="border-b border-border text-muted-foreground">
-                      <th className="py-2">Room</th>
-                      <th className="py-2">Type</th>
-                      <th className="py-2">Stay Period</th>
-                      <th className="py-2 text-right">Taxable</th>
-                      <th className="py-2 text-right">GST (5%)</th>
-                      <th className="py-2 text-right">Total</th>
+                    <tr className="bg-neutral-200 border-b border-neutral-400 text-black font-bold">
+                      <th className="p-2 border-r border-neutral-400">Room</th>
+                      <th className="p-2 border-r border-neutral-400">Type</th>
+                      <th className="p-2 border-r border-neutral-400">Stay Period</th>
+                      <th className="p-2 border-r border-neutral-400 text-right">Taxable</th>
+                      <th className="p-2 border-r border-neutral-400 text-right">GST (5%)</th>
+                      <th className="p-2 text-right">Total</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-border/50">
+                  <tbody className="divide-y divide-neutral-300">
                     {getGroupReservations(selectedGroup.id).map((r) => {
                       const rm = getRoom(r.room_id);
                       const gross = Number(r.base_amount) || 1000;
@@ -1749,42 +1754,42 @@ export function GroupBookingsPage() {
                       const gst = gross - taxable;
 
                       return (
-                        <tr key={r.id}>
-                          <td className="py-2 font-mono font-bold">Room {rm?.room_number}</td>
-                          <td className="py-2 text-muted-foreground">{rm?.room_name}</td>
-                          <td className="py-2 text-muted-foreground">{r.booking_date}</td>
-                          <td className="py-2 text-right font-mono">{inr(taxable)}</td>
-                          <td className="py-2 text-right font-mono">{inr(gst)}</td>
-                          <td className="py-2 text-right font-mono font-semibold">{inr(gross)}</td>
+                        <tr key={r.id} className="border-b border-neutral-300">
+                          <td className="p-2 border-r border-neutral-400 font-mono font-bold text-black">Room {rm?.room_number}</td>
+                          <td className="p-2 border-r border-neutral-400 text-neutral-800">{rm?.room_name}</td>
+                          <td className="p-2 border-r border-neutral-400 text-neutral-700">{r.booking_date}</td>
+                          <td className="p-2 border-r border-neutral-400 text-right font-mono text-black">{inr(taxable)}</td>
+                          <td className="p-2 border-r border-neutral-400 text-right font-mono text-black">{inr(gst)}</td>
+                          <td className="p-2 text-right font-mono font-bold text-black">{inr(gross)}</td>
                         </tr>
                       );
                     })}
                   </tbody>
                   <tfoot>
-                    <tr className="border-t border-border font-bold">
-                      <td colSpan={5} className="py-2.5 text-right">Grand Total:</td>
-                      <td className="py-2.5 text-right font-mono text-sm">{inr(getGroupFinancials(selectedGroup).grandTotal)}</td>
+                    <tr className="border-t-2 border-neutral-800 bg-neutral-50 font-bold">
+                      <td colSpan={5} className="p-2 border-r border-neutral-400 text-right text-black">Grand Gross Total:</td>
+                      <td className="p-2 text-right font-mono text-sm text-black">{inr(getGroupFinancials(selectedGroup).grandTotal)}</td>
                     </tr>
-                    <tr className="text-emerald-600 dark:text-emerald-400 font-semibold">
-                      <td colSpan={5} className="py-1 text-right">Total Advance / Payments Made:</td>
-                      <td className="py-1 text-right font-mono">-{inr(getGroupFinancials(selectedGroup).totalPaid)}</td>
+                    <tr className="text-emerald-800 font-semibold bg-emerald-50/50">
+                      <td colSpan={5} className="p-1.5 border-r border-neutral-400 text-right">Total Advance / Payments Made:</td>
+                      <td className="p-1.5 text-right font-mono text-emerald-800">-{inr(getGroupFinancials(selectedGroup).totalPaid)}</td>
                     </tr>
-                    <tr className="border-t border-border text-base font-bold">
-                      <td colSpan={5} className="py-2 text-right">Net Balance Due:</td>
-                      <td className="py-2 text-right font-mono text-brass">{inr(getGroupFinancials(selectedGroup).balance)}</td>
+                    <tr className="border-t-2 border-neutral-800 text-sm font-black bg-neutral-100">
+                      <td colSpan={5} className="p-2 border-r border-neutral-400 text-right text-black">Net Balance Due:</td>
+                      <td className="p-2 text-right font-mono text-black">{inr(getGroupFinancials(selectedGroup).balance)}</td>
                     </tr>
                   </tfoot>
                 </table>
 
                 {/* Footer Signatures */}
-                <div className="flex justify-between items-end pt-8 border-t border-border/70 text-[11px] text-muted-foreground">
+                <div className="flex justify-between items-end pt-8 border-t border-neutral-400 text-[11px] text-neutral-700">
                   <div>
-                    <div className="h-10 border-b border-border/60 w-40"></div>
-                    <div className="pt-1">Guest / Group Signatory</div>
+                    <div className="h-10 border-b border-neutral-800 w-44"></div>
+                    <div className="pt-1 font-semibold text-black">Guest / Group Signatory</div>
                   </div>
                   <div className="text-right">
-                    <div className="h-10 border-b border-border/60 w-40"></div>
-                    <div className="pt-1">Hotel DRB Authorized Signatory</div>
+                    <div className="h-10 border-b border-neutral-800 w-44"></div>
+                    <div className="pt-1 font-semibold text-black">Hotel DRB Authorized Signatory</div>
                   </div>
                 </div>
               </div>
