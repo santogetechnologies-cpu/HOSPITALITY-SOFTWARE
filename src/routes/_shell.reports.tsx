@@ -22,7 +22,10 @@ import {
   Building,
   CheckCircle2,
   Search,
-  Download
+  Download,
+  FileJson,
+  ShieldCheck,
+  Upload
 } from "lucide-react";
 
 export const Route = createFileRoute("/_shell/reports")({
@@ -37,6 +40,19 @@ export const Route = createFileRoute("/_shell/reports")({
 
 function downloadCSV(csvContent: string, filename: string) {
   const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.setAttribute("href", url);
+  link.setAttribute("download", filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+function downloadJSON(jsonObject: object, filename: string) {
+  const jsonStr = JSON.stringify(jsonObject, null, 2);
+  const blob = new Blob([jsonStr], { type: "application/json;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.setAttribute("href", url);
@@ -279,6 +295,112 @@ export function GstReportsPage() {
     toast.success("GST Statement CSV exported successfully!");
   };
 
+  // Direct GST Portal GSTR-1 JSON Export
+  const handleExportGSTR1JSON = () => {
+    if (statementRows.length === 0) {
+      toast.error("No statement records to export for this period.");
+      return;
+    }
+
+    const hotelGstin = (settings.gst_number || "33ABQPJ0123M1Z5").trim();
+    // Return filing period format MMYYYY (e.g. 102026)
+    const d = new Date(fromDate || new Date());
+    const monthStr = String(d.getMonth() + 1).padStart(2, "0");
+    const yearStr = d.getFullYear();
+    const fp = `${monthStr}${yearStr}`;
+
+    const b2bMap: Record<string, any[]> = {};
+    const b2csItems: any[] = [];
+
+    statementRows.forEach((row) => {
+      const gstin = (row.gstNumber || "").trim().toUpperCase();
+      const invoiceNum = row.invoiceNo;
+      const dateStr = row.billDate; // DD-MM-YYYY format
+
+      if (gstin && gstin.length === 15) {
+        if (!b2bMap[gstin]) b2bMap[gstin] = [];
+        b2bMap[gstin].push({
+          inum: invoiceNum,
+          idt: dateStr,
+          val: parseFloat(row.grandTotal.toFixed(2)),
+          pos: "33",
+          rchrg: "N",
+          inv_typ: "R",
+          itms: [
+            {
+              num: 1,
+              itm_det: {
+                ty: "S",
+                txval: parseFloat(row.taxableValue.toFixed(2)),
+                rt: 5,
+                camt: parseFloat(row.cgst.toFixed(2)),
+                samt: parseFloat(row.sgst.toFixed(2)),
+                csamt: 0,
+              },
+            },
+          ],
+        });
+      } else {
+        b2csItems.push({
+          sply_ty: "INTRA",
+          pos: "33",
+          typ: "OE",
+          rt: 5,
+          txval: parseFloat(row.taxableValue.toFixed(2)),
+          camt: parseFloat(row.cgst.toFixed(2)),
+          samt: parseFloat(row.sgst.toFixed(2)),
+          csamt: 0,
+        });
+      }
+    });
+
+    const b2b = Object.entries(b2bMap).map(([ctin, inv]) => ({ ctin, inv }));
+
+    const b2csAgg = b2csItems.reduce((acc, item) => {
+      const key = `${item.rt}_${item.pos}_${item.sply_ty}`;
+      if (!acc[key]) acc[key] = { ...item, txval: 0, camt: 0, samt: 0, csamt: 0 };
+      acc[key].txval = parseFloat((acc[key].txval + item.txval).toFixed(2));
+      acc[key].camt = parseFloat((acc[key].camt + item.camt).toFixed(2));
+      acc[key].samt = parseFloat((acc[key].samt + item.samt).toFixed(2));
+      return acc;
+    }, {} as Record<string, any>);
+
+    const gstrJson = {
+      gstin: hotelGstin,
+      fp,
+      b2b,
+      b2cs: Object.values(b2csAgg),
+      cdnr: [],
+      cdnur: [],
+      exp: [],
+      b2ba: [],
+      cdnra: [],
+      cdnura: [],
+      expa: [],
+      at: [],
+      txpd: [],
+      hsn: {
+        data: [
+          {
+            num: 1,
+            hsn_sc: "996311",
+            desc: "Room / Accommodation Services",
+            uqc: "OTH",
+            cnt: statementRows.length,
+            txval: parseFloat(totals.totalTaxable.toFixed(2)),
+            rt: 5,
+            camt: parseFloat(totals.totalCgst.toFixed(2)),
+            samt: parseFloat(totals.totalSgst.toFixed(2)),
+            csamt: 0,
+          },
+        ],
+      },
+    };
+
+    downloadJSON(gstrJson, `GST_Sales_Statement_GSTR1_${fromDate}_to_${toDate}.json`);
+    toast.success("GST Portal JSON downloaded! Upload directly into GST Portal Returns (GSTR-1).");
+  };
+
   const handlePrint = () => {
     window.print();
   };
@@ -293,6 +415,12 @@ export function GstReportsPage() {
           subtitle="Taxable lodging turnover, CGST/SGST tax ledger, and official GST filing reports"
           actions={
             <div className="flex flex-wrap items-center gap-2">
+              <Button
+                onClick={handleExportGSTR1JSON}
+                className="rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-semibold shadow-sm transition-all"
+              >
+                <FileJson className="size-4 mr-1.5 text-amber-400" /> Download GSTR-1 JSON
+              </Button>
               <Button
                 variant="outline"
                 onClick={handleExportCSV}
@@ -309,6 +437,35 @@ export function GstReportsPage() {
             </div>
           }
         />
+      </div>
+
+      {/* GST Portal Filing Notice Card */}
+      <div className="rounded-2xl border border-amber-500/30 bg-gradient-to-r from-amber-950/30 via-card to-amber-950/20 p-4 shadow-sm print:hidden">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 shrink-0 mt-0.5">
+              <ShieldCheck className="size-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-sm text-amber-300">GST Portal Direct Filing (GSTR-1 JSON)</span>
+                <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-300 border-amber-500/30">
+                  Ready to Upload
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5 max-w-2xl">
+                Download the official GST JSON for the filtered period (<span className="text-foreground font-mono">{fromDate}</span> to <span className="text-foreground font-mono">{toDate}</span>). Upload directly under <strong className="text-foreground">GST Portal → Returns Dashboard → GSTR-1 → Offline Upload</strong>. No Excel tool or VBA macro required!
+              </p>
+            </div>
+          </div>
+          <Button
+            size="sm"
+            onClick={handleExportGSTR1JSON}
+            className="shrink-0 bg-amber-500 hover:bg-amber-450 text-black font-semibold text-xs rounded-xl shadow-sm px-4 h-9"
+          >
+            <Upload className="size-3.5 mr-1.5" /> Download JSON for Portal
+          </Button>
+        </div>
       </div>
 
       {/* KPI Cards (hidden in print) */}
