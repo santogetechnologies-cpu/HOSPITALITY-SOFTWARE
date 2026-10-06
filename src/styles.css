@@ -241,7 +241,7 @@
 }
 
 /* 
- * Print Media Isolation for Official Tax Invoices & Folios
+ * Print Media Isolation for Official Tax Invoices, Statements & Folios
  */
 @media print {
   @page {
@@ -251,24 +251,40 @@
 
   html, body {
     background: #ffffff !important;
+    background-color: #ffffff !important;
     color: #000000 !important;
     height: auto !important;
     overflow: visible !important;
     font-size: 11pt !important;
   }
 
-  /* Hide everything in the PMS shell, sidebar, dialog overlays, header buttons */
+  /* Hide navigation, sidebar, dialog overlays, and header buttons */
   body * {
     visibility: hidden !important;
   }
 
-  /* Isolate and print only the active printable bill */
+  /* Isolate and print only the active printable bill or statement */
   #printable-bill,
-  #printable-bill * {
+  #printable-bill *,
+  #printableGroupBill,
+  #printableGroupBill *,
+  #einvoice-single-print-box,
+  #einvoice-single-print-box *,
+  #statement-ledger-print-box,
+  #statement-ledger-print-box *,
+  #batch-invoices-print-container,
+  #batch-invoices-print-container *,
+  .printable-area,
+  .printable-area * {
     visibility: visible !important;
   }
 
-  #printable-bill {
+  #printable-bill,
+  #printableGroupBill,
+  #einvoice-single-print-box,
+  #statement-ledger-print-box,
+  #batch-invoices-print-container,
+  .printable-area {
     position: absolute !important;
     top: 0 !important;
     left: 0 !important;
@@ -283,6 +299,15 @@
     color: #000000 !important;
     z-index: 9999999 !important;
     overflow: visible !important;
+    display: block !important;
+  }
+
+  /* Page break rules */
+  .page-break {
+    page-break-after: always !important;
+    break-after: page !important;
+    margin-bottom: 24px !important;
+    display: block !important;
   }
 
   /* Prevent awkward page break cuts */
