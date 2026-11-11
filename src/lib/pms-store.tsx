@@ -195,7 +195,21 @@ type Ctx = State & {
   runNightAudit: () => void;
   addPartyHallBooking: (b: { customerName: string; companyName?: string; phone: string; email: string; address?: string; gstNumber?: string; eventType: string; guests: number; date: string; startTime: string; endTime: string; baseAmount: number; advance: number; paymentMethod?: string; splits?: any[]; }) => Promise<{ success: boolean; error?: string }>;
   updatePartyHallBooking: (reservationId: string, updates: { customerName?: string; phone?: string; email?: string; eventType?: string; guests?: number; date?: string; startTime?: string; endTime?: string; baseAmount?: number; status?: string; }) => Promise<{ success: boolean; error?: string }>;
-  addReservationExtraCharge: (reservationId: string, additionalAmount: number, reason: string, options?: { newEndTime?: string; collectedAmount?: number; paymentMethod?: "CASH" | "UPI" | "CARD" | "COMPANY" | "BANK_TRANSFER" | "OTHER"; splits?: any[]; }) => Promise<{ success: boolean; error?: string }>;
+  addReservationExtraCharge: (
+    reservationId: string,
+    additionalAmount: number,
+    reason: string,
+    options?: {
+      newEndTime?: string;
+      collectedAmount?: number;
+      paymentMethod?: "CASH" | "UPI" | "CARD" | "COMPANY" | "BANK_TRANSFER" | "OTHER";
+      splits?: any[];
+      includeGst?: boolean;
+      gstRate?: number;
+      gstAmount?: number;
+      baseAmount?: number;
+    }
+  ) => Promise<{ success: boolean; error?: string }>;
   adjustRoomStay: (reservationId: string, params: {
     newEndDate: string;
     newCheckOutTime?: string;
@@ -1514,14 +1528,41 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
           if (!res) return { success: false, error: "Reservation not found" };
 
           const currentBase = Number(res.base_amount) || 0;
-          const newBase = currentBase + Number(additionalAmount);
+          const taxableBaseAddition = options?.includeGst && options.baseAmount !== undefined
+            ? Number(options.baseAmount) || 0
+            : Number(additionalAmount);
+          const newBase = currentBase + taxableBaseAddition;
 
           const resUpdates: any = { base_amount: newBase };
           if (options?.newEndTime) {
             resUpdates.end_time = options.newEndTime;
           }
+
+          // Record structured origin note for audit and bill breakdown
+          const noteText = options?.includeGst
+            ? `[Extra Charge: ${reason} - Base: ₹${options.baseAmount || taxableBaseAddition}, GST (${options.gstRate || 5}%): ₹${options.gstAmount || 0}, Total: ₹${additionalAmount}]`
+            : `[Extra Charge: ${reason} - Amount: ₹${additionalAmount}]`;
+          const updatedNotes = res.notes ? `${res.notes}\n${noteText}` : noteText;
+          resUpdates.notes = updatedNotes;
+
           const { error: rErr } = await withAuthRetry(() => supabase.from('reservations').update(resUpdates).eq('id', reservationId));
           if (rErr) throw rErr;
+
+          // Attempt to record itemized line in folio_lines
+          try {
+            await withAuthRetry(() => supabase.from('folio_lines').insert({
+              id: crypto.randomUUID(),
+              reservation_id: reservationId,
+              date: new Date().toISOString().split('T')[0],
+              description: options?.includeGst
+                ? `${reason} (Base: ₹${options.baseAmount || taxableBaseAddition} + ${options.gstRate || 5}% GST: ₹${options.gstAmount || 0})`
+                : `${reason}`,
+              category: reason.toLowerCase().includes("bed") ? "Extra Bed" : "Room Service",
+              amount: Number(additionalAmount)
+            }));
+          } catch (folioErr) {
+            console.warn("Folio lines insertion note:", folioErr);
+          }
 
           let payment = state.payments.find(p => p.reservation_id === reservationId || (p.reservation_id && reservationId && p.reservation_id.toLowerCase() === reservationId.toLowerCase()));
           const collected = Number(options?.collectedAmount) || 0;
@@ -1538,10 +1579,10 @@ export function PmsProvider({ children }: { children: React.ReactNode }) {
             const { error: pErr } = await withAuthRetry(() => supabase.from('payments').update(payUpdates).eq('id', payment.id));
             if (pErr) throw pErr;
           } else {
-            const status = collected >= newBase && newBase > 0 ? "COMPLETED" : collected > 0 ? "PARTIAL" : "PENDING";
+            const status = collected >= Number(additionalAmount) && Number(additionalAmount) > 0 ? "COMPLETED" : collected > 0 ? "PARTIAL" : "PENDING";
             const { error: pErr } = await withAuthRetry(() => supabase.from('payments').insert({
               reservation_id: reservationId,
-              total_amount: newBase,
+              total_amount: Number(additionalAmount),
               paid_amount: collected,
               status,
               payment_method: toDbPaymentMethod(method)

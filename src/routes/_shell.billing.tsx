@@ -107,6 +107,34 @@ function formatTimeAMPM(dateInput?: string | Date): string {
   return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
 }
 
+function parseExtraChargesFromNotes(notes?: string) {
+  if (!notes) return [];
+  const lines = notes.split("\n");
+  const parsed: Array<{ reason: string; base: number; gstRate?: number; gst?: number; total: number }> = [];
+  for (const line of lines) {
+    const matchWithGst = line.match(/\[Extra Charge:\s*(.+?)\s*-\s*Base:\s*₹?([\d.]+),\s*GST\s*\(([\d.]+)%\):\s*₹?([\d.]+),\s*Total:\s*₹?([\d.]+)\]/i);
+    if (matchWithGst) {
+      parsed.push({
+        reason: matchWithGst[1],
+        base: parseFloat(matchWithGst[2]) || 0,
+        gstRate: parseFloat(matchWithGst[3]) || 5,
+        gst: parseFloat(matchWithGst[4]) || 0,
+        total: parseFloat(matchWithGst[5]) || 0,
+      });
+      continue;
+    }
+    const matchSimple = line.match(/\[Extra Charge:\s*(.+?)\s*-\s*Amount:\s*₹?([\d.]+)\]/i);
+    if (matchSimple) {
+      parsed.push({
+        reason: matchSimple[1],
+        base: parseFloat(matchSimple[2]) || 0,
+        total: parseFloat(matchSimple[2]) || 0,
+      });
+    }
+  }
+  return parsed;
+}
+
 function BillingPage() {
   const { reservations, guests, rooms, payments, discounts, session, settlePayment, updateGuestDetails, editBillFinancials, paymentSplits } = usePms();
   const { settings } = useSettings();
@@ -1982,7 +2010,10 @@ function BillingPage() {
             } else {
               nightsCount = 1;
             }
-            const ratePerNight = nightsCount > 0 ? fin.taxableValue / nightsCount : fin.taxableValue;
+            const parsedExtraCharges = parseExtraChargesFromNotes(selectedResForBill.notes);
+            const extraBaseTotal = parsedExtraCharges.reduce((s, c) => s + c.base, 0);
+            const roomTaxable = Math.max(0, fin.taxableValue - extraBaseTotal);
+            const ratePerNight = nightsCount > 0 ? (extraBaseTotal > 0 ? roomTaxable : fin.taxableValue) / nightsCount : (extraBaseTotal > 0 ? roomTaxable : fin.taxableValue);
 
             // Generate daily rows
             const dailyTariffRows: { dateStr: string; amount: number }[] = [];
@@ -2373,7 +2404,24 @@ function BillingPage() {
                               <td className="py-1.5 px-3 text-right font-medium">{inr(row.amount)}</td>
                             </tr>
                           ))}
-                          {fin.addlCharges > 0 && (
+                          {parsedExtraCharges.map((item, idx) => (
+                            <tr key={`extra-${idx}`}>
+                              <td className="py-1.5 px-3 border-r border-neutral-900">{invoiceDateStr}</td>
+                              <td className="py-1.5 px-3 border-r border-neutral-900 font-medium">
+                                {item.reason}
+                                {item.gst && item.gst > 0 ? (
+                                  <span className="text-[10px] text-neutral-600 block">
+                                    Extra Charge: {inr(item.base)} + {item.gstRate}% GST ({inr(item.gst)})
+                                  </span>
+                                ) : null}
+                              </td>
+                              <td className="py-1.5 px-3 border-r border-neutral-900 text-right">
+                                {fin.isPartyHall ? "Party Hall" : (room?.room_number || "—")}
+                              </td>
+                              <td className="py-1.5 px-3 text-right font-medium">{inr(item.base)}</td>
+                            </tr>
+                          ))}
+                          {fin.addlCharges > 0 && !parsedExtraCharges.length && (
                             <tr>
                               <td className="py-1.5 px-3 border-r border-neutral-900">{invoiceDateStr}</td>
                               <td className="py-1.5 px-3 border-r border-neutral-900 font-medium">Additional Services / Extra Charges</td>
@@ -2426,6 +2474,13 @@ function BillingPage() {
                             <td className="py-1.5 px-3 border-r border-neutral-900 text-right">{inr(fin.taxableValue)}</td>
                             <td className="py-1.5 px-3 text-right font-medium">{inr(fin.sgst)}</td>
                           </tr>
+                          {parsedExtraCharges.some(c => (c.gst || 0) > 0) && (
+                            <tr className="bg-amber-50/50">
+                              <td colSpan={4} className="py-1 px-3 border-r border-neutral-900 text-neutral-800 text-[11px] font-medium">
+                                ℹ️ Tax Note: GST includes {parsedExtraCharges.filter(c => (c.gst || 0) > 0).map(c => `${c.reason} (${c.gstRate}% GST: ${inr(c.gst || 0)})`).join(", ")}
+                              </td>
+                            </tr>
+                          )}
                           <tr className="bg-neutral-50 font-bold border-t-2 border-neutral-900">
                             <td className="py-2 px-3 border-r border-neutral-900">Total GST</td>
                             <td className="py-2 px-3 border-r border-neutral-900 text-right">{fin.gstRatePercent}.0%</td>

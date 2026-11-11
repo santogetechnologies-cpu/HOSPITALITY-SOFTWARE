@@ -79,8 +79,10 @@ export function FrontDesk() {
   const [adjustCollectNow, setAdjustCollectNow] = React.useState(false);
   const [adjustCollectAmount, setAdjustCollectAmount] = React.useState("");
   const [adjustPaymentMethod, setAdjustPaymentMethod] = React.useState<"CASH" | "UPI" | "CARD" | "COMPANY" | "BANK_TRANSFER" | "OTHER">("CASH");
-  const [adjustExtraReason, setAdjustExtraReason] = React.useState("Room Service / Laundry / Addon");
+  const [adjustExtraReason, setAdjustExtraReason] = React.useState("Room Service / Food & Beverage");
   const [adjustExtraAmount, setAdjustExtraAmount] = React.useState("");
+  const [adjustExtraIncludeGst, setAdjustExtraIncludeGst] = React.useState(false);
+  const [adjustExtraGstRate, setAdjustExtraGstRate] = React.useState<number>(5);
   const [adjustSubmitting, setAdjustSubmitting] = React.useState(false);
 
   const getGuest = (guestId: string) => guests.find((g) => g.id === guestId);
@@ -521,10 +523,12 @@ export function FrontDesk() {
   const handleOpenExtraChargeModal = (r: typeof reservations[0]) => {
     setSelectedResForAdjust(r);
     setAdjustMode("EXTRA_CHARGE");
-    setAdjustExtraReason("Room Service / Laundry / Addon");
+    setAdjustExtraReason("Extra Bed / Rollaway Mattress");
     setAdjustExtraAmount("500");
+    setAdjustExtraIncludeGst(true);
+    setAdjustExtraGstRate(5);
     setAdjustCollectNow(false);
-    setAdjustCollectAmount("500");
+    setAdjustCollectAmount("525");
     setAdjustPaymentMethod("CASH");
     setAdjustModalOpen(true);
   };
@@ -637,14 +641,26 @@ export function FrontDesk() {
           return;
         }
 
+        const baseAmt = extraAmt;
+        const gstAmt = adjustExtraIncludeGst ? Number(((baseAmt * adjustExtraGstRate) / 100).toFixed(2)) : 0;
+        const totalToCharge = baseAmt + gstAmt;
+
         const collected = adjustCollectNow ? (parseFloat(adjustCollectAmount) || 0) : 0;
-        const res = await addReservationExtraCharge(r.id, extraAmt, adjustExtraReason, {
+        const res = await addReservationExtraCharge(r.id, totalToCharge, adjustExtraReason, {
           collectedAmount: collected,
-          paymentMethod: adjustPaymentMethod
+          paymentMethod: adjustPaymentMethod,
+          includeGst: adjustExtraIncludeGst,
+          gstRate: adjustExtraGstRate,
+          gstAmount: gstAmt,
+          baseAmount: baseAmt
         });
 
         if (res.success) {
-          toast.success(`Added extra charge of ${inr(extraAmt)} for ${adjustExtraReason}.`);
+          toast.success(
+            adjustExtraIncludeGst
+              ? `Added ${adjustExtraReason}: ${inr(baseAmt)} + ${adjustExtraGstRate}% GST (${inr(gstAmt)}) = ${inr(totalToCharge)} added to bill.`
+              : `Added extra charge of ${inr(totalToCharge)} for ${adjustExtraReason}.`
+          );
           setAdjustModalOpen(false);
           setSelectedResForAdjust(null);
         } else {
@@ -1895,7 +1911,17 @@ export function FrontDesk() {
                         <Label className="text-xs font-medium">Charge Reason / Service</Label>
                         <Select
                           value={adjustExtraReason}
-                          onValueChange={setAdjustExtraReason}
+                          onValueChange={(val) => {
+                            setAdjustExtraReason(val);
+                            if (val === "Extra Bed / Rollaway Mattress") {
+                              setAdjustExtraIncludeGst(true);
+                              const base = parseFloat(adjustExtraAmount) || 0;
+                              const tax = Number(((base * adjustExtraGstRate) / 100).toFixed(2));
+                              if (adjustCollectNow) {
+                                setAdjustCollectAmount(String(base + tax));
+                              }
+                            }
+                          }}
                         >
                           <SelectTrigger>
                             <SelectValue />
@@ -1919,11 +1945,98 @@ export function FrontDesk() {
                           required
                           value={adjustExtraAmount}
                           onChange={(e) => {
-                            setAdjustExtraAmount(e.target.value);
-                            setAdjustCollectAmount(e.target.value);
+                            const val = e.target.value;
+                            setAdjustExtraAmount(val);
+                            const base = parseFloat(val) || 0;
+                            const tax = adjustExtraIncludeGst ? Number(((base * adjustExtraGstRate) / 100).toFixed(2)) : 0;
+                            setAdjustCollectAmount(String(base + tax));
                           }}
                         />
                       </div>
+                    </div>
+
+                    {/* GST Option for Extra Bed & Services */}
+                    <div className="rounded-xl border border-border p-3 space-y-2.5 bg-secondary/15">
+                      <div className="flex items-center justify-between">
+                        <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer">
+                          <Checkbox
+                            checked={adjustExtraIncludeGst}
+                            onCheckedChange={(c) => {
+                              const checked = !!c;
+                              setAdjustExtraIncludeGst(checked);
+                              const base = parseFloat(adjustExtraAmount) || 0;
+                              const tax = checked ? Number(((base * adjustExtraGstRate) / 100).toFixed(2)) : 0;
+                              const total = base + tax;
+                              if (adjustCollectNow) {
+                                setAdjustCollectAmount(String(total));
+                              }
+                            }}
+                          />
+                          <span>Add GST to Extra Charge</span>
+                        </label>
+
+                        {adjustExtraIncludeGst && (
+                          <div className="flex items-center gap-1.5 text-xs">
+                            <span className="text-[11px] text-muted-foreground font-medium">Rate:</span>
+                            <div className="flex rounded-md border border-border overflow-hidden text-xs">
+                              {[5, 12, 18].map((rate) => (
+                                <button
+                                  key={rate}
+                                  type="button"
+                                  className={`px-2 py-0.5 text-xs font-semibold transition-colors ${
+                                    adjustExtraGstRate === rate
+                                      ? "bg-brass text-gold-foreground"
+                                      : "bg-secondary/40 text-muted-foreground hover:text-foreground"
+                                  }`}
+                                  onClick={() => {
+                                    setAdjustExtraGstRate(rate);
+                                    const base = parseFloat(adjustExtraAmount) || 0;
+                                    const tax = Number(((base * rate) / 100).toFixed(2));
+                                    const total = base + tax;
+                                    if (adjustCollectNow) {
+                                      setAdjustCollectAmount(String(total));
+                                    }
+                                  }}
+                                >
+                                  {rate}%
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Live Breakdown Box */}
+                      {(() => {
+                        const base = parseFloat(adjustExtraAmount) || 0;
+                        const tax = adjustExtraIncludeGst ? Number(((base * adjustExtraGstRate) / 100).toFixed(2)) : 0;
+                        const cgst = Number((tax / 2).toFixed(2));
+                        const sgst = Number((tax - cgst).toFixed(2));
+                        const grand = base + tax;
+
+                        return (
+                          <div className="text-xs bg-background/80 rounded-lg p-2.5 border border-border/80 flex items-center justify-between">
+                            <div className="space-y-0.5">
+                              <div className="text-muted-foreground">
+                                Base: <span className="font-semibold text-foreground">{inr(base)}</span>
+                                {adjustExtraIncludeGst && (
+                                  <>
+                                    {" + "}GST ({adjustExtraGstRate}%): <span className="font-semibold text-foreground">{inr(tax)}</span>
+                                    <span className="text-[10px] text-muted-foreground ml-1">({inr(cgst)} CGST + {inr(sgst)} SGST)</span>
+                                  </>
+                                )}
+                              </div>
+                              <div className="text-[11px] text-muted-foreground">
+                                Reason: <span className="font-medium text-foreground">{adjustExtraReason}</span>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-[10px] uppercase font-semibold text-muted-foreground">Total Added to Folio</div>
+                              <div className="text-sm font-bold text-foreground">{inr(grand)}</div>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
 
                     {/* Immediate Collection Option */}
@@ -1931,7 +2044,15 @@ export function FrontDesk() {
                       <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer">
                         <Checkbox
                           checked={adjustCollectNow}
-                          onCheckedChange={(c) => setAdjustCollectNow(!!c)}
+                          onCheckedChange={(c) => {
+                            const checked = !!c;
+                            setAdjustCollectNow(checked);
+                            if (checked) {
+                              const base = parseFloat(adjustExtraAmount) || 0;
+                              const tax = adjustExtraIncludeGst ? Number(((base * adjustExtraGstRate) / 100).toFixed(2)) : 0;
+                              setAdjustCollectAmount(String(base + tax));
+                            }
+                          }}
                         />
                         Collect extra charge immediately from guest
                       </label>
